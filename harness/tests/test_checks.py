@@ -89,3 +89,16 @@ def test_summaries_by_mode_and_base():
     assert faceted.facet_accuracy == pytest.approx(0.75)
     plain = by_key[("keyword", "keyword")]
     assert (plain.filter_violations, plain.facet_accuracy) == (None, None)
+
+
+def test_failed_check_fetches_are_counted_apart_from_unverifiable():
+    def c(tid, **kw):
+        return TaskCheck(task_id=tid, mode="faceted", base="keyword", **kw)
+
+    checks = [
+        c("1", facet_verifiable=False, check_error="EngineError: 500"),
+        c("2", facet_verifiable=False),
+        c("3", facet_verifiable=True, facet_accuracy=1.0),
+    ]
+    (s,) = summarize_checks(checks)
+    assert (s.facet_check_errors, s.facet_unverifiable, s.facet_verified) == (1, 1, 1)

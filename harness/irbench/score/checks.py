@@ -22,6 +22,7 @@ class TaskCheck(BaseModel):
     order_violations: int | None = None
     facet_accuracy: float | None = None
     facet_verifiable: bool | None = None
+    check_error: str | None = None
 
 
 class CheckSummary(BaseModel):
@@ -34,6 +35,7 @@ class CheckSummary(BaseModel):
     facet_accuracy: float | None = None
     facet_verified: int | None = None
     facet_unverifiable: int | None = None
+    facet_check_errors: int | None = None
 
 
 def check_task(
@@ -81,8 +83,10 @@ def summarize_checks(checks: list[TaskCheck]) -> list[CheckSummary]:
         faceted = [c for c in ok if c.facet_verifiable is not None]
         if faceted:
             verified = [c.facet_accuracy for c in faceted if c.facet_verifiable]
+            check_errors = sum(1 for c in faceted if c.check_error is not None)
             s.facet_verified = len(verified)
-            s.facet_unverifiable = len(faceted) - len(verified)
+            s.facet_check_errors = check_errors
+            s.facet_unverifiable = len(faceted) - len(verified) - check_errors
             s.facet_accuracy = sum(verified) / len(verified) if verified else None
         summaries.append(s)
     return summaries

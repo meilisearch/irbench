@@ -13,15 +13,20 @@ Image: `getmeili/meilisearch:v1.54.3` (host port 17700). Adapter: `adapter.py`.
 | Facet value limit (1000) | `faceting.maxValuesPerFacet` |
 | Shared vectors | embedder `default`, `source: userProvided`, documents carry `_vectors.default` |
 
-Everything else is Meilisearch's default: ranking rules, typo tolerance, prefix search, matching strategy, `pagination.maxTotalHits`.
+| Sorted mode orders results by the field | `rankingRules` with `sort` moved first (shipped order otherwise unchanged) |
+
+Everything else is Meilisearch's default: typo tolerance, prefix search, matching strategy, `pagination.maxTotalHits`.
+
+### Why `sort` is first
+
+With the shipped ranking rules, `sort` comes after `words`, `typo`, `proximity` and `attributeRank`, and vector search ranks by similarity before any rule. A `sort` parameter then only breaks ties: on WANDS, 1,272 of 1,540 sorted keyword queries returned results out of order. Moving `sort` first makes it strict. Queries without a `sort` parameter return identical results either way, because the rule is inactive without one (checked on v1.54.3 for keyword, semantic and hybrid queries).
 
 ## Modes
 
 - keyword: `q`.
 - semantic: `vector` with `hybrid.semanticRatio: 1.0`, no `q`.
 - hybrid: `q` + `vector` with Meilisearch's default `semanticRatio` (native fusion).
-- filtered / faceted: `filter`, `facets` on top of keyword or semantic.
-- sorted: `sort` on top of keyword. On the semantic base it is N/A: Meilisearch ranks vector results by similarity first (`vectorSort`), and `sort` only breaks ties, so the results are not ordered by the field. Verified on v1.54.3 by the contract test `test_sorted_semantic_orders`.
+- filtered / sorted / faceted: `filter`, `sort`, `facets` on top of keyword or semantic. On the semantic base, the vector query matches every document, so a strict sort orders the whole index by the field.
 
 ## Changing this configuration
 

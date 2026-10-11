@@ -121,3 +121,79 @@ def test_cli_run_rejects_unknown_stage(tmp_path, wands_raw):
     result = CliRunner().invoke(app, args)
     assert result.exit_code == 1
     assert "bogus" in result.output
+
+
+ENGINE_STAGES = ["up", "index", "render", "relevance", "score", "down"]
+
+
+def test_failed_rerun_clears_stale_results(tmp_path, wands_raw):
+    root = fake_root(tmp_path, wands_raw)
+    ok = run_pipeline(
+        root,
+        FAKE_SPEC,
+        ENGINE_STAGES,
+        runtime_factory=lambda *a: FakeRuntime(),
+        client_factory=_server(root).client_factory,
+    )
+    assert ok["status"] == "succeeded"
+    run_dir = RunContext(root, FAKE_SPEC).run_dir
+
+    failed = run_pipeline(
+        root,
+        FAKE_SPEC,
+        ENGINE_STAGES,
+        runtime_factory=lambda *a: FakeRuntime(),
+        client_factory=FakeServer(fail_index=True).client_factory,
+    )
+    assert failed["status"] == "failed"
+    assert set(failed["stages"]) == {"up", "index", "down"}
+    for stale in ("scores.json", "run.trec", "checks.jsonl", "na.json", "index.json", "rendered"):
+        assert not (run_dir / stale).exists(), stale
+
+
+def test_failure_inside_up_still_tears_down(tmp_path, wands_raw):
+    runtime = FakeRuntime(fail_up=True)
+    manifest = run_pipeline(
+        fake_root(tmp_path, wands_raw),
+        FAKE_SPEC,
+        ["up", "index"],
+        runtime_factory=lambda *a: runtime,
+    )
+    assert manifest["status"] == "failed" and "healthcheck" in manifest["stages"]["up"]["error"]
+    assert runtime.calls == ["up", "down"]
+
+
+def test_relevance_error_rate_above_limit_fails_the_run(tmp_path, wands_raw):
+    root = fake_root(tmp_path, wands_raw)
+    failing = next(t.task_id for t in RunContext(root, FAKE_SPEC).tasks if t.mode == "keyword")
+    manifest = run_pipeline(
+        root,
+        FAKE_SPEC,
+        ENGINE_STAGES,
+        runtime_factory=lambda *a: FakeRuntime(),
+        client_factory=_server(root, fail={failing}).client_factory,
+    )
+    assert manifest["status"] == "failed"
+    assert "error rate" in manifest["stages"]["relevance"]["error"]
+    assert "score" not in manifest["stages"]
+
+
+def test_scores_flag_groups_that_break_their_constraint(tmp_path, wands_raw):
+    root = fake_root(tmp_path, wands_raw)
+    ctx = RunContext(root, FAKE_SPEC)
+    answers, facets = perfect_answers(ctx)
+    for t in ctx.tasks:
+        if t.mode == "filtered" and t.base == "keyword":
+            answers[t.task_id] = answers[t.task_id] + ["unknown-doc"]
+    server = FakeServer(answers=answers, facets=facets)
+    manifest = run_pipeline(
+        root,
+        FAKE_SPEC,
+        ENGINE_STAGES,
+        runtime_factory=lambda *a: FakeRuntime(),
+        client_factory=server.client_factory,
+    )
+    assert manifest["status"] == "succeeded"
+    scores = read_json(ctx.run_dir / "scores.json")
+    assert list(scores["constraint_violations"]) == ["filtered:keyword"]
+    assert "filter violations" in scores["constraint_violations"]["filtered:keyword"]

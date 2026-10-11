@@ -86,6 +86,7 @@ def test_failed_check_fetch_keeps_result_and_marks_facets_unverifiable(tmp_path,
     run = read_run(ctx.run_dir / "run.trec")
     checks = [c for c in read_jsonl(ctx.run_dir / "checks.jsonl") if c["mode"] == "faceted"]
     assert checks and all(c["facet_verifiable"] is False and c["error"] is None for c in checks)
+    assert all("500" in c["check_error"] for c in checks)
     assert all(run[c["task_id"]] == answers[c["task_id"]] for c in checks if answers[c["task_id"]])
     errors = list(read_jsonl(ctx.run_dir / "errors.jsonl"))
     assert errors and {e["request"] for e in errors} == {"check"}

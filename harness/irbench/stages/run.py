@@ -1,3 +1,4 @@
+import shutil
 import time
 from collections.abc import Callable
 from dataclasses import asdict
@@ -23,6 +24,14 @@ from irbench.stages.score_run import score_stage
 
 RuntimeFactory = Callable[[Path, str, HardwareProfile], Runtime]
 GENERATED_KEYS = ("irbench_version", "git_sha", "created_at")
+# Files each stage writes in the run dir; re-running a stage invalidates its own
+# outputs and those of every later stage.
+STAGE_OUTPUTS = {
+    "index": ("index.json",),
+    "render": ("rendered", "na.json"),
+    "relevance": ("run.trec", "checks.jsonl", "errors.jsonl"),
+    "score": ("scores.json",),
+}
 
 
 def _now() -> str:
@@ -61,6 +70,7 @@ def run_pipeline(
         hardware=profile.model_dump(),
     )
     log: dict[str, Any] = manifest.setdefault("stages", {})
+    _invalidate_from(ctx.run_dir, log, ordered[0] if ordered else None)
 
     def execute(stage: str) -> Any:
         if stage == "prepare":
@@ -77,7 +87,15 @@ def run_pipeline(
         if stage == "render":
             return asdict(render_stage(ctx))
         if stage == "relevance":
-            return asdict(relevance_stage(ctx))
+            result = relevance_stage(ctx)
+            rate = result.n_errors / result.n_tasks if result.n_tasks else 0.0
+            limit = ctx.scenario.max_error_rate
+            if rate > limit:
+                raise RuntimeError(
+                    f"error rate {rate:.2%} ({result.n_errors}/{result.n_tasks}) exceeds "
+                    f"{limit:.2%}: see errors.jsonl"
+                )
+            return asdict(result)
         if stage == "score":
             report = score_stage(ctx)
             return {"errors": report["errors"], "not_applicable": len(report["not_applicable"])}
@@ -105,11 +123,11 @@ def run_pipeline(
         for stage in ordered:
             if stage == "down":
                 continue
-            log.pop(stage, None)
+            # A failing `up` may already have created the container: always tear down.
+            started_up = started_up or stage == "up"
             if not record(stage, lambda s=stage: execute(s)):
                 status = "failed"
                 break
-            started_up = started_up or stage == "up"
         clean = status == "succeeded"
     finally:
         if "down" in ordered or (started_up and not clean):
@@ -120,6 +138,19 @@ def run_pipeline(
     _describe_inputs(ctx, manifest)
     write_manifest(manifest_path, manifest)
     return manifest
+
+
+def _invalidate_from(run_dir: Path, log: dict[str, Any], first: str | None) -> None:
+    if first is None:
+        return
+    for stage in STAGES[STAGES.index(first) :]:
+        log.pop(stage, None)
+        for name in STAGE_OUTPUTS.get(stage, ()):
+            path = run_dir / name
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink(missing_ok=True)
 
 
 def _describe_inputs(ctx: RunContext, manifest: dict[str, Any]) -> None:

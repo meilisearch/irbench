@@ -135,6 +135,15 @@ def test_sorted_keyword_orders_and_puts_missing_values_last(engine):
     assert set(result.ids) == _ids_where(lambda i: ITEMS[i % 10] == "chair")
 
 
+def test_sorted_keyword_orders_across_relevance_buckets(engine):
+    # "grey chair": doc 53 matches both words, other grey docs and chairs match one.
+    sort = Sort(field="review_count", direction="desc")
+    task = make_task("sorted", "keyword", text="grey chair", sort=sort)
+    result = engine.search(task)
+    assert len(result.ids) > 1
+    assert check_task(task, result, None, engine.docs_by_id, VERIFY_LIMIT).order_violations == 0
+
+
 def test_sorted_semantic_orders(engine):
     task = make_task("sorted", "semantic", sort=Sort(field="review_count", direction="desc"))
     result = engine.search(task, engine.vec("42"))

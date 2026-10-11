@@ -126,6 +126,8 @@ def run(
                 typer.echo(f"{g['mode']}/{g['base']}: nDCG@10={ndcg:.4f} n={g['n']}")
         for key, reason in scores["not_applicable"].items():
             typer.echo(f"{key.replace(':', '/')}: N/A ({reason})")
+        for key, what in scores["constraint_violations"].items():
+            typer.echo(f"{key.replace(':', '/')}: CONSTRAINT VIOLATED ({what})")
     typer.echo(f"run dir: {run_dir}")
     if manifest["status"] != "succeeded":
         raise typer.Exit(code=1)

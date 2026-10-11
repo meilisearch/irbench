@@ -41,6 +41,7 @@ class Scenario(BaseModel):
     max_facet_values: int = 1000
     facet_verify_limit: int = 1000
     request_timeout_s: float = 10.0
+    max_error_rate: float = 0.001
     index_timeout_s: int
     perturbations: PerturbationSpec
     synonyms: str

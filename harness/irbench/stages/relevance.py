@@ -55,17 +55,20 @@ def relevance_stage(ctx: RunContext) -> RelevanceResult:
                 )
                 continue
             found = SearchResult(ids=found.ids[: scenario.top_k], facets=found.facets)
-            check_ids = None
+            check_ids, check_error = None, None
             if task.facets:
                 try:
                     check_request = _load(ctx.rendered_path(task, check=True))
                     check_ids = run_request(client, adapter, task, check_request, timeout).ids
                 except REQUEST_ERRORS as e:
-                    errors.append({"task_id": task.task_id, "request": "check", "error": _error(e)})
+                    check_error = _error(e)
+                    errors.append(
+                        {"task_id": task.task_id, "request": "check", "error": check_error}
+                    )
             results[task.task_id] = found.ids
-            checks.append(
-                check_task(task, found, check_ids, ctx.docs_by_id, scenario.facet_verify_limit)
-            )
+            check = check_task(task, found, check_ids, ctx.docs_by_id, scenario.facet_verify_limit)
+            check.check_error = check_error
+            checks.append(check)
 
     write_run(
         ctx.run_dir / "run.trec", {t: ids for t, ids in results.items() if ids}, ctx.spec.run_id

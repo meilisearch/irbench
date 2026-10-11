@@ -109,11 +109,14 @@ class FakeServer:
 
 
 class FakeRuntime:
-    def __init__(self):
+    def __init__(self, fail_up=False):
         self.calls: list[str] = []
+        self.fail_up = fail_up
 
     def up(self):
         self.calls.append("up")
+        if self.fail_up:
+            raise RuntimeError("healthcheck never passed")
 
     def down(self):
         self.calls.append("down")
