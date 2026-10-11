@@ -49,6 +49,12 @@ def test_duplicate_ids_keep_first_rank():
     assert _group(deduped).metrics["ndcg@10"] == pytest.approx(1.0)
 
 
+def test_duplicates_do_not_pull_later_docs_up():
+    # d1 sits at rank 3; collapsing the duplicate must not move it to rank 2.
+    scores = score_relevance([_task("t2")], {"t2": {"d1": 1}}, {"t2": ["x", "x", "d1"]})
+    assert _group(scores).metrics["ndcg@10"] == pytest.approx(0.5)  # 1 / log2(3 + 1)
+
+
 def test_groups_by_mode_and_perturbation():
     tasks = [_task("t1"), _task("t2", perturbation="typo")]
     scores = score_relevance(tasks, QRELS, {"t1": ["d1"], "t2": ["d5"]})

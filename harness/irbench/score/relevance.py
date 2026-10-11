@@ -20,8 +20,13 @@ class GroupScore(BaseModel):
 
 
 def _ranked_scores(ids: list[str]) -> dict[str, float]:
-    unique = list(dict.fromkeys(ids))  # duplicates keep their first (best) rank
-    return {doc_id: float(len(unique) - i) for i, doc_id in enumerate(unique)}
+    # A duplicate keeps its first (best) rank; later copies become non-relevant
+    # placeholders so they still occupy their position and never pull docs up.
+    scores: dict[str, float] = {}
+    for i, doc_id in enumerate(ids):
+        key = doc_id if doc_id not in scores else f"__duplicate_{i}"
+        scores[key] = float(len(ids) - i)
+    return scores
 
 
 def _evaluate(task_ids: list[str], qrels: Qrels, run: RunResults) -> dict[str, float]:
