@@ -1,0 +1,21 @@
+[package]
+name = "irbench-loadgen"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+description = "Replays IRBench rendered requests to measure engine latency and throughput"
+
+[dependencies]
+anyhow = "1.0.104"
+clap = { version = "4.6.7", features = ["derive"] }
+hdrhistogram = "7.6.0"
+reqwest = { version = "0.13.5", default-features = false }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+tokio = { version = "1.53.2", features = ["rt-multi-thread", "macros", "time", "sync"] }
+walkdir = "2.5.0"
+
+[dev-dependencies]
+axum = "0.8.9"
+tokio = { version = "1.53.2", features = ["rt-multi-thread", "macros", "time", "sync", "net"] }
