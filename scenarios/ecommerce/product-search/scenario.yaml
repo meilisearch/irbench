@@ -1,0 +1,35 @@
+id: ecommerce/product-search
+dataset: wands
+id_field: id
+
+# Order of `searchable` is the field priority every engine must respect.
+index_fields:
+  searchable: [name, product_class, category, features, description]
+  filterable: [product_class, category, average_rating, review_count]
+  sortable: [average_rating, review_count]
+  facets: [product_class]
+
+modes: [keyword, semantic, hybrid, filtered, sorted, faceted]
+# filtered/sorted/faceted run on top of each of these retrieval bases.
+structured_bases: [keyword, semantic]
+
+# Doc text sent to embedding models: these fields, joined with ". ", empty ones skipped.
+embedding_fields: [name, product_class, description]
+
+filter_templates:
+  - {field: product_class, op: eq}
+  - {field: average_rating, op: gte, values: [3.0, 4.0, 4.5]}
+
+sort_templates:
+  - {field: average_rating, direction: desc}
+  - {field: review_count, direction: desc}
+
+top_k: 100
+index_timeout_s: 1800
+
+perturbations:
+  seed: 20261009
+  kinds: [typo, prefix, synonym]
+  vocabulary: vocab_mismatch.txt
+
+synonyms: synonyms.txt

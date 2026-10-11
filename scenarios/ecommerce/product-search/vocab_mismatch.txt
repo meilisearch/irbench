@@ -1,0 +1,30 @@
+# Vocabulary-mismatch groups used to generate `synonym` query variants.
+# Shoppers use one word, the catalog uses another. Reviewed by hand.
+# Must stay disjoint from synonyms.txt (enforced by tests).
+sofa, couch, settee
+armchair, accent chair
+nightstand, bedside table
+dresser, chest of drawers
+wardrobe, armoire
+rug, carpet
+ottoman, footstool, pouf
+bookcase, bookshelf
+tv stand, media console, entertainment center
+comforter, duvet
+drapes, curtains
+sconce, wall light
+chandelier, ceiling light
+vanity, dressing table
+loveseat, two seater sofa
+sectional, corner sofa
+recliner, lounger
+barstool, counter stool
+faucet, tap
+sink, basin
+crib, cot
+office chair, desk chair
+coffee table, cocktail table
+end table, side table
+console table, entryway table
+mattress topper, mattress pad
+throw pillow, cushion

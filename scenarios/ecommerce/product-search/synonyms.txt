@@ -1,0 +1,11 @@
+# Synonyms an engine MAY load into its synonym feature (shared by all engines).
+# Typical merchant configuration: spelling variants and number words.
+# Must stay disjoint from vocab_mismatch.txt (enforced by tests).
+grey, gray
+colour, color
+microfibre, microfiber
+television, tv
+bathtub, tub
+three seater, 3 seater
+two drawer, 2 drawer
+kids, children
