@@ -11,7 +11,10 @@ def write_vectors(path: Path, ids: list[str], vectors: np.ndarray) -> None:
     flat = pa.array(np.ascontiguousarray(vectors, dtype=np.float32).reshape(-1))
     column = pa.FixedSizeListArray.from_arrays(flat, vectors.shape[1])
     path.parent.mkdir(parents=True, exist_ok=True)
-    pq.write_table(pa.table({"id": pa.array(ids, pa.string()), "vector": column}), path)
+    # Write then rename, so an interrupted write never destroys the previous file.
+    tmp = path.with_name(path.name + ".tmp")
+    pq.write_table(pa.table({"id": pa.array(ids, pa.string()), "vector": column}), tmp)
+    tmp.replace(path)
 
 
 def read_vectors(path: Path) -> tuple[list[str], np.ndarray]:

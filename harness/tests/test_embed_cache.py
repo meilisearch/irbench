@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -28,6 +30,25 @@ def test_vectors_roundtrip(tmp_path):
     ids, back = read_vectors(tmp_path / "v.parquet")
     assert ids == ["a", "b", "c"]
     np.testing.assert_array_equal(back, vecs)
+
+
+def test_crash_during_save_keeps_previous_cache(tmp_path, monkeypatch):
+    path = tmp_path / "cache.parquet"
+    cache = VectorCache(path)
+    embed_with_cache(FakeEmbedder(), ["sofa"], "doc", cache)
+    cache.save()
+
+    def crash_midway(table, where, *args, **kwargs):
+        Path(where).write_bytes(b"truncated parquet")
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("irbench.embed.vectors.pq.write_table", crash_midway)
+    embed_with_cache(FakeEmbedder(), ["bed"], "doc", cache)
+    with pytest.raises(KeyboardInterrupt):
+        cache.save()
+    monkeypatch.undo()
+
+    assert len(VectorCache(path)) == 1  # previous save still readable
 
 
 def test_text_key_depends_on_kind():
