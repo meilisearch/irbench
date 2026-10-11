@@ -1,0 +1,21 @@
+# Pinned engine image. The resolved digest is recorded in every run manifest.
+services:
+  engine:
+    image: elasticsearch:9.5.5
+    container_name: irbench-elasticsearch
+    ports:
+      - "19200:9200"
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"   # local benchmark only
+      # No heap override: Elasticsearch sizes its heap from the container memory limit.
+    volumes:
+      - data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS 'http://127.0.0.1:9200/_cluster/health?wait_for_status=yellow&timeout=1s' >/dev/null"]
+      interval: 2s
+      timeout: 3s
+      retries: 90
+
+volumes:
+  data:

@@ -1,0 +1,6 @@
+id: aws-c7i-4xlarge
+description: >-
+  AWS c7i.4xlarge (16 vCPU, 32 GB), gp3 SSD. Engine container pinned to
+  8 vCPU / 16 GB; loadgen on a disjoint 4-vCPU set.
+engine: {cpuset: "0-7", memory: "16g"}
+loadgen: {cpuset: "8-11"}

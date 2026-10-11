@@ -12,6 +12,7 @@ class IndexFields(BaseModel):
     filterable: list[str]
     sortable: list[str]
     facets: list[str]
+    numeric: list[str] = []
 
 
 class FilterTemplate(BaseModel):
@@ -37,6 +38,10 @@ class Scenario(BaseModel):
     filter_templates: list[FilterTemplate]
     sort_templates: list[Sort]
     top_k: int = 100
+    max_facet_values: int = 1000
+    facet_verify_limit: int = 1000
+    request_timeout_s: float = 10.0
+    max_error_rate: float = 0.001
     index_timeout_s: int
     perturbations: PerturbationSpec
     synonyms: str
@@ -52,6 +57,15 @@ class Scenario(BaseModel):
             if (t.op == "eq") != (t.values is None):
                 raise ValueError(
                     f"filter template {t.field!r}: eq takes no values, ranges need values"
+                )
+            if t.op != "eq" and t.field not in f.numeric:
+                raise ValueError(
+                    f"range filter template field {t.field!r} must be listed in index_fields.numeric"
+                )
+        for name in f.sortable:
+            if name not in f.numeric:
+                raise ValueError(
+                    f"sortable field {name!r} must be numeric (v0.1 sorts numbers only)"
                 )
         for s in self.sort_templates:
             if s.field not in f.sortable:

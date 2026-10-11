@@ -1,0 +1,6 @@
+id: local
+description: >-
+  Developer machine. No CPU or memory pinning; results are not comparable
+  with the reference profile and are never published.
+engine: {cpuset: null, memory: null}
+loadgen: {cpuset: null}

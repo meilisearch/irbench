@@ -3,6 +3,7 @@ import pytest
 
 from irbench.embed.models import MODELS, get_embedder
 from irbench.embed.vectors import read_vectors
+from irbench.paths import Workspace
 from irbench.stages.embed import embed_scenario
 from irbench.stages.prepare import prepare
 from test_embed_cache import FakeEmbedder
@@ -66,3 +67,10 @@ def test_bge_small_real_model():
     vecs = emb.embed(["grey velvet sofa"], "query")
     assert vecs.shape == (1, 384)
     assert np.isclose(np.linalg.norm(vecs[0]), 1.0, atol=1e-4)
+
+
+def test_vectors_land_at_workspace_paths(prepared_root):
+    result = embed_scenario(prepared_root, SCENARIO, "fake", embedder=FakeEmbedder())
+    ws = Workspace(prepared_root)
+    assert result.docs_path == ws.doc_vectors_path("wands", "fake")
+    assert result.queries_path == ws.query_vectors_path(SCENARIO, "fake")

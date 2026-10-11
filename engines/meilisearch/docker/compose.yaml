@@ -1,0 +1,20 @@
+# Pinned engine image. The resolved digest is recorded in every run manifest.
+services:
+  engine:
+    image: getmeili/meilisearch:v1.54.3
+    container_name: irbench-meilisearch
+    ports:
+      - "17700:7700"
+    environment:
+      MEILI_ENV: development      # no master key: local benchmark only
+      MEILI_NO_ANALYTICS: "true"
+    volumes:
+      - data:/meili_data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:7700/health >/dev/null || wget -qO- http://127.0.0.1:7700/health >/dev/null"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+
+volumes:
+  data:

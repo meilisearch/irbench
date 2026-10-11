@@ -33,8 +33,11 @@ packages = ["harness/irbench"]
 
 [tool.pytest.ini_options]
 testpaths = ["harness/tests"]
-markers = ["slow: needs network or large models"]
-addopts = "-m 'not slow'"
+markers = [
+  "slow: needs network or large models",
+  "docker: starts real engine containers (run with -m docker)",
+]
+addopts = "-m 'not slow and not docker'"
 
 [tool.ruff]
 line-length = 100
@@ -46,4 +49,7 @@ ignore = ["E501"]
 
 [tool.ruff.lint.isort]
 # Test helpers are imported as top-level modules (pytest rootdir import mode).
-known-first-party = ["irbench", "conftest", "test_prepare", "test_embed_cache"]
+known-first-party = [
+  "irbench", "conftest", "test_prepare", "test_embed_cache",
+  "fake_engine", "adapter_helpers", "contract_fixture",
+]
