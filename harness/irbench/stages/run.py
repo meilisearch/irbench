@@ -12,11 +12,12 @@ from irbench.embed.base import Embedder
 from irbench.io import read_json
 from irbench.manifest import write_manifest
 from irbench.runs import STAGES, RunSpec
-from irbench.runtime.docker import DockerRuntime, Runtime
+from irbench.runtime.docker import DockerRuntime, Runner, Runtime, run_command
 from irbench.runtime.hardware import HardwareProfile, load_hardware
 from irbench.stages.context import ClientFactory, RunContext, default_client
 from irbench.stages.embed import embed_scenario
 from irbench.stages.index import index_stage
+from irbench.stages.perf import perf_stage
 from irbench.stages.prepare import prepare
 from irbench.stages.relevance import relevance_stage
 from irbench.stages.render import render_stage
@@ -30,6 +31,7 @@ STAGE_OUTPUTS = {
     "index": ("index.json",),
     "render": ("rendered", "na.json"),
     "relevance": ("run.trec", "checks.jsonl", "errors.jsonl"),
+    "perf": ("perf.json",),
     "score": ("scores.json",),
 }
 
@@ -47,6 +49,7 @@ def run_pipeline(
     client_factory: ClientFactory | None = None,
     prepare_client: httpx.Client | None = None,
     embedder: Embedder | None = None,
+    loadgen_runner: Runner | None = None,
 ) -> dict[str, Any]:
     unknown = [s for s in stages if s not in STAGES]
     if unknown:
@@ -96,6 +99,8 @@ def run_pipeline(
                     f"{limit:.2%}: see errors.jsonl"
                 )
             return asdict(result)
+        if stage == "perf":
+            return perf_stage(ctx, profile, runner=loadgen_runner or run_command)
         if stage == "score":
             report = score_stage(ctx)
             return {"errors": report["errors"], "not_applicable": len(report["not_applicable"])}

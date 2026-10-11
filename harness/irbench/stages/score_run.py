@@ -4,6 +4,7 @@ from irbench.io import read_json, read_jsonl, read_run, write_json
 from irbench.score.checks import CheckSummary, TaskCheck, summarize_checks
 from irbench.score.relevance import score_relevance
 from irbench.stages.context import RunContext
+from irbench.stages.perf import summarize_perf
 
 
 def score_stage(ctx: RunContext) -> dict[str, Any]:
@@ -33,6 +34,9 @@ def score_stage(ctx: RunContext) -> dict[str, Any]:
         "constraint_violations": _constraint_violations(summaries),
         "not_applicable": not_applicable,
         "errors": sum(1 for e in read_jsonl(run_dir / "errors.jsonl") if e["request"] == "search"),
+        "perf": summarize_perf(read_json(run_dir / "perf.json"))
+        if (run_dir / "perf.json").exists()
+        else None,
     }
     write_json(run_dir / "scores.json", report)
     return report

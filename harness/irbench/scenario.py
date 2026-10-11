@@ -27,6 +27,17 @@ class PerturbationSpec(BaseModel):
     vocabulary: str
 
 
+class PerfSpec(BaseModel):
+    """Spec §5.7 load protocol, identical for every engine."""
+
+    concurrency: list[int] = [1, 2, 4, 8, 16, 32, 64]
+    step_seconds: float = 20.0
+    p99_limit_ms: float = 100.0
+    max_error_rate: float = 0.001
+    throughput_groups: list[str] = ["keyword/keyword", "semantic/semantic", "hybrid/hybrid"]
+    warmup_concurrency: int = 4
+
+
 class Scenario(BaseModel):
     id: str
     dataset: str
@@ -42,6 +53,7 @@ class Scenario(BaseModel):
     facet_verify_limit: int = 1000
     request_timeout_s: float = 10.0
     max_error_rate: float = 0.001
+    perf: PerfSpec = PerfSpec()
     index_timeout_s: int
     perturbations: PerturbationSpec
     synonyms: str

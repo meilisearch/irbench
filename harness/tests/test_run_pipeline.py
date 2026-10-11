@@ -7,6 +7,7 @@ from fake_engine import (
     SCENARIO,
     FakeRuntime,
     FakeServer,
+    fake_loadgen,
     fake_root,
     perfect_answers,
 )
@@ -36,6 +37,7 @@ def test_pipeline_end_to_end_with_fake_engine(tmp_path, wands_raw):
         client_factory=server.client_factory,
         prepare_client=fixture_client(wands_raw),
         embedder=FakeEmbedder(),
+        loadgen_runner=fake_loadgen(),
     )
 
     assert manifest["status"] == "succeeded", manifest["stages"]
@@ -58,6 +60,8 @@ def test_pipeline_end_to_end_with_fake_engine(tmp_path, wands_raw):
     assert checks[("filtered", "keyword")]["filter_violations"] == 0
     assert checks[("faceted", "keyword")]["facet_accuracy"] == 1.0
     assert scores["errors"] == 0
+    assert manifest["stages"]["perf"]["result"]["keyword/keyword"]["max_qps"] == 812.5
+    assert scores["perf"]["keyword/keyword"]["max_qps_concurrency"] == 16
 
 
 def test_failed_stage_records_reason_and_tears_down(tmp_path, wands_raw):
@@ -197,3 +201,15 @@ def test_scores_flag_groups_that_break_their_constraint(tmp_path, wands_raw):
     scores = read_json(ctx.run_dir / "scores.json")
     assert list(scores["constraint_violations"]) == ["filtered:keyword"]
     assert "filter violations" in scores["constraint_violations"]["filtered:keyword"]
+
+
+def test_cli_run_prints_perf(tmp_path, wands_raw, monkeypatch):
+    root = fake_root(tmp_path, wands_raw)
+    monkeypatch.setattr("irbench.stages.run.DockerRuntime", lambda *a: FakeRuntime())
+    monkeypatch.setattr("irbench.stages.run.default_client", _server(root).client_factory)
+    monkeypatch.setattr("irbench.stages.run.run_command", fake_loadgen())
+    args = ["run", "--scenario", SCENARIO, "--engine", "fake", "--model", "fake"]
+    args += ["--stages", "up,index,render,relevance,perf,score,down", "--root", str(root)]
+    result = CliRunner().invoke(app, args)
+    assert result.exit_code == 0, result.output
+    assert "perf keyword/keyword: p50=1.50ms p99=4.00ms max_qps=812 (c=16)" in result.stdout

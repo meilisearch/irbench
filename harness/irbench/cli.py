@@ -128,6 +128,17 @@ def run(
             typer.echo(f"{key.replace(':', '/')}: N/A ({reason})")
         for key, what in scores["constraint_violations"].items():
             typer.echo(f"{key.replace(':', '/')}: CONSTRAINT VIOLATED ({what})")
+        for group, p in (scores.get("perf") or {}).items():
+            if group == "all":
+                continue
+            qps = (
+                "n/a"
+                if p["max_qps"] is None
+                else f"{p['max_qps']:.0f} (c={p['max_qps_concurrency']})"
+            )
+            typer.echo(
+                f"perf {group}: p50={p['p50_ms']:.2f}ms p99={p['p99_ms']:.2f}ms max_qps={qps}"
+            )
     typer.echo(f"run dir: {run_dir}")
     if manifest["status"] != "succeeded":
         raise typer.Exit(code=1)
