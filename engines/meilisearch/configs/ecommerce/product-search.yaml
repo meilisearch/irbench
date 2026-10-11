@@ -1,0 +1,15 @@
+# Meilisearch on ecommerce/product-search.
+#
+# default: Meilisearch as shipped. adapter.py generates only what the scenario
+#   schema requires (searchable order, filterable/sortable/facet fields,
+#   synonyms.txt, userProvided embedder, facet value limit).
+# tuned: changes within the parity rules (docs/methodology/parity). Add a
+#   `tuned:` block here; it is deep-merged over `default`.
+#
+# Keys: index (merged into index settings), search.<keyword|semantic|hybrid>
+# (merged into search bodies of that base), unsupported (key -> reason),
+# justification (key -> why a non-default ANN or ranking parameter is set).
+default:
+  index: {}
+  search: {}
+  unsupported: {}
