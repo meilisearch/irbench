@@ -12,4 +12,8 @@
 default:
   index: {}
   search: {}
-  unsupported: {}
+  unsupported:
+    "sorted:semantic": >-
+      Meilisearch ranks vector search results by similarity first (the vectorSort
+      rule); `sort` only breaks ties between equal similarities, so results are
+      not ordered by the sort field.

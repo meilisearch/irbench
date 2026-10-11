@@ -20,7 +20,8 @@ Everything else is Meilisearch's default: ranking rules, typo tolerance, prefix 
 - keyword: `q`.
 - semantic: `vector` with `hybrid.semanticRatio: 1.0`, no `q`.
 - hybrid: `q` + `vector` with Meilisearch's default `semanticRatio` (native fusion).
-- filtered / sorted / faceted: `filter`, `sort`, `facets` on top of keyword or semantic.
+- filtered / faceted: `filter`, `facets` on top of keyword or semantic.
+- sorted: `sort` on top of keyword. On the semantic base it is N/A: Meilisearch ranks vector results by similarity first (`vectorSort`), and `sort` only breaks ties, so the results are not ordered by the field. Verified on v1.54.3 by the contract test `test_sorted_semantic_orders`.
 
 ## Changing this configuration
 

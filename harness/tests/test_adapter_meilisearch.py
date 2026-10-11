@@ -13,9 +13,10 @@ def _body(task, vector=None, limit=100, facets=True, track=None):
     return make_adapter("meilisearch", track).render(task, vector, limit, facets).body
 
 
-def test_config_loads_and_declares_nothing_unsupported():
-    config = load_engine_config(REPO_ROOT, "meilisearch", SCENARIO)
-    assert config.track("default").unsupported == {}
+def test_config_declares_only_sorted_semantic_unsupported():
+    track = load_engine_config(REPO_ROOT, "meilisearch", SCENARIO).track("default")
+    assert list(track.unsupported) == ["sorted:semantic"]
+    assert "vectorSort" in track.unsupported["sorted:semantic"]
 
 
 def test_index_settings_follow_the_scenario():
