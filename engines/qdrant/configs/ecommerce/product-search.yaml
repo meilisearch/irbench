@@ -1,0 +1,23 @@
+# Qdrant on ecommerce/product-search.
+#
+# default: Qdrant as shipped. adapter.py generates only what the scenario
+#   schema requires (Cosine vectors, payload indexes for filterable, sortable
+#   and facet fields). HNSW and search parameters are Qdrant's defaults.
+# tuned: changes within the parity rules; add a `tuned:` block (deep-merged).
+#
+# Keys: index (merged into the create-collection body),
+# search.<keyword|semantic|hybrid> (merged into query bodies of that base),
+# unsupported (key -> reason, shown as N/A in results), justification.
+default:
+  index: {}
+  search: {}
+  unsupported:
+    "*:keyword": >-
+      Not implemented by the IRBench v0.1 Qdrant adapter. Qdrant's ranked keyword
+      search uses sparse BM25 vectors; contributions adding it are welcome.
+    hybrid: >-
+      Needs keyword retrieval, which the IRBench v0.1 Qdrant adapter does not
+      implement (see *:keyword).
+    "faceted:semantic": >-
+      Qdrant's facet API counts the points matching a filter, not the points
+      returned by a vector query, so counts cannot describe the query's results.
