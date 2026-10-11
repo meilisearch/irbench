@@ -4,12 +4,14 @@ from pathlib import Path
 import typer
 
 from irbench import __version__
-from irbench.io import read_jsonl, read_qrels, read_run
+from irbench.io import read_json, read_jsonl, read_qrels, read_run
 from irbench.models import QueryTask
 from irbench.paths import Workspace
+from irbench.runs import STAGES, RunSpec
 from irbench.score.relevance import score_relevance
 from irbench.stages.embed import embed_scenario
 from irbench.stages.prepare import prepare as run_prepare
+from irbench.stages.run import run_pipeline
 
 app = typer.Typer(no_args_is_help=True, help="IRBench: information retrieval benchmark harness.")
 
@@ -86,3 +88,44 @@ def score(
     for g in groups:
         if g.perturbation == "all":
             typer.echo(f"{g.mode}/{g.base}: nDCG@10={g.metrics['ndcg@10']:.4f} n={g.n}")
+
+
+@app.command()
+def run(
+    scenario: str = typer.Option(..., "--scenario"),
+    engine: str = typer.Option(..., "--engine", help="Folder name under engines/."),
+    model: str = typer.Option(..., "--model"),
+    track: str = typer.Option("default", "--track", help="default or tuned."),
+    hardware: str = typer.Option("local", "--hardware", help="Profile under hardware/."),
+    host: str = typer.Option("localhost", "--host", help="Host publishing the engine port."),
+    stages: str = typer.Option(",".join(STAGES), "--stages", help="Comma-separated stages."),
+    root: Path = ROOT_OPTION,
+) -> None:
+    """Run the pipeline for one scenario × engine × model × track."""
+    spec = RunSpec(
+        scenario=scenario, engine=engine, model=model, track=track, hardware=hardware, host=host
+    )
+    names = [s.strip() for s in stages.split(",") if s.strip()]
+    try:
+        manifest = run_pipeline(root, spec, names)
+    except ValueError as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(code=1) from e
+
+    for name, info in manifest["stages"].items():
+        line = f"{name}: {info['status']}"
+        if info["status"] == "failed":
+            line += f" — {info['error']}"
+        typer.echo(line)
+    run_dir = Workspace(root).run_dir(spec.run_id)
+    if manifest["stages"].get("score", {}).get("status") == "succeeded":
+        scores = read_json(run_dir / "scores.json")
+        for g in scores["relevance"]:
+            if g["perturbation"] == "all":
+                ndcg = g["metrics"]["ndcg@10"]
+                typer.echo(f"{g['mode']}/{g['base']}: nDCG@10={ndcg:.4f} n={g['n']}")
+        for key, reason in scores["not_applicable"].items():
+            typer.echo(f"{key.replace(':', '/')}: N/A ({reason})")
+    typer.echo(f"run dir: {run_dir}")
+    if manifest["status"] != "succeeded":
+        raise typer.Exit(code=1)
