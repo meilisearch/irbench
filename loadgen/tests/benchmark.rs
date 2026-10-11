@@ -36,10 +36,10 @@ async fn latency_per_group_follows_the_injected_distribution() {
 
     let kw = &report.latency["keyword/keyword"];
     assert_eq!(kw.count, 100);
-    assert!(kw.p50_ms >= 5.0 && kw.p50_ms < 15.0, "{kw:?}");
-    assert!(kw.p99_ms >= 50.0 && kw.p99_ms < 90.0, "{kw:?}");
+    assert!((5.0..15.0).contains(&kw.p50_ms.unwrap()), "{kw:?}");
+    assert!((50.0..90.0).contains(&kw.p99_ms.unwrap()), "{kw:?}");
     let sem = &report.latency["semantic/semantic"];
-    assert!(sem.p50_ms >= 20.0 && sem.p50_ms < 35.0, "{sem:?}");
+    assert!((20.0..35.0).contains(&sem.p50_ms.unwrap()), "{sem:?}");
     assert_eq!(report.latency["all"].count, 120);
     assert_eq!(report.requests, 120);
 }
@@ -97,6 +97,79 @@ async fn errors_invalidate_the_step_and_stop_stepping() {
     assert!(!t.steps[0].valid && t.steps[0].error_rate > 0.01);
     assert_eq!((t.max_qps, t.max_qps_concurrency), (None, None));
     assert_eq!(report.latency["keyword/keyword"].errors, 5);
+    assert!(
+        report
+            .failures
+            .iter()
+            .any(|f| f.starts_with("latency keyword/keyword")),
+        "{:?}",
+        report.failures
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn dead_engine_fails_instead_of_reporting_zero_latency() {
+    let dir = tmp_dir("dead");
+    write_group(&dir, "keyword/keyword", &[(1, 200); 5]);
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+
+    let report = run_benchmark(&config(dir, &format!("http://127.0.0.1:{port}")))
+        .await
+        .unwrap();
+
+    assert!(
+        report.failures.iter().any(|f| f.starts_with("warm-up")),
+        "{:?}",
+        report.failures
+    );
+    let kw = &report.latency["keyword/keyword"];
+    assert_eq!((kw.count, kw.errors, kw.p50_ms), (0, 5, None));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn healthy_engine_has_no_failures() {
+    let mock = spawn_mock().await;
+    let dir = tmp_dir("healthy");
+    write_group(&dir, "keyword/keyword", &[(1, 200); 10]);
+    let report = run_benchmark(&config(dir, &mock.base_url)).await.unwrap();
+    assert!(report.failures.is_empty(), "{:?}", report.failures);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn cli_writes_the_report_and_exits_nonzero_on_failure() {
+    let dir = tmp_dir("cli-dead");
+    write_group(&dir, "keyword/keyword", &[(1, 200); 3]);
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let out = dir.join("perf.json");
+    let status = std::process::Command::new(env!("CARGO_BIN_EXE_irbench-loadgen"))
+        .args([
+            "--requests",
+            dir.to_str().unwrap(),
+            "--base-url",
+            &format!("http://127.0.0.1:{port}"),
+        ])
+        .args([
+            "--out",
+            out.to_str().unwrap(),
+            "--concurrency",
+            "1",
+            "--step-seconds",
+            "0.1",
+        ])
+        .status()
+        .unwrap();
+    assert_eq!(status.code(), Some(2));
+    let report: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(out).unwrap()).unwrap();
+    assert!(!report["failures"].as_array().unwrap().is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

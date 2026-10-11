@@ -59,5 +59,11 @@ async fn main() -> anyhow::Result<()> {
     }
     std::fs::write(&args.out, serde_json::to_string_pretty(&report)? + "\n")
         .with_context(|| format!("writing {}", args.out.display()))?;
+    if !report.failures.is_empty() {
+        for failure in &report.failures {
+            eprintln!("FAILED {failure}");
+        }
+        std::process::exit(2);
+    }
     Ok(())
 }

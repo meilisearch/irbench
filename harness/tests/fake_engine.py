@@ -212,6 +212,8 @@ def fake_loadgen(report=None, calls=None):
     def run(cmd):
         if calls is not None:
             calls.append(cmd)
+        if cmd[0] == "cargo":
+            return ""
         out = Path(cmd[cmd.index("--out") + 1])
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(report or SAMPLE_PERF))

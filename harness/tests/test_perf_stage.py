@@ -54,7 +54,9 @@ def test_perf_stage_runs_the_binary_and_summarizes(tmp_path, wands_raw):
     render_stage(ctx)
     calls = []
     summary = perf_stage(ctx, LOCAL, runner=fake_loadgen(calls=calls))
-    assert len(calls) == 1
+    assert calls[0][:3] == ["cargo", "build", "--release"]
+    assert calls[0][-1] == str(ctx.root / "loadgen" / "Cargo.toml")
+    assert calls[1][0] == str(ctx.root / LOADGEN_PATH)
     assert read_json(ctx.run_dir / "perf.json") == SAMPLE_PERF
     assert summary["keyword/keyword"] == {
         "p50_ms": 1.5,
@@ -65,7 +67,8 @@ def test_perf_stage_runs_the_binary_and_summarizes(tmp_path, wands_raw):
         "max_qps": 812.5,
         "max_qps_concurrency": 16,
     }
-    assert summary["all"]["max_qps"] is None
+    # "all" mixes different query sets per engine (N/A modes differ): not comparable.
+    assert "all" not in summary
 
 
 def test_perf_needs_rendered_requests_and_the_binary(tmp_path, wands_raw):
@@ -75,7 +78,7 @@ def test_perf_needs_rendered_requests_and_the_binary(tmp_path, wands_raw):
         perf_stage(ctx, LOCAL, runner=fake_loadgen())
     render_stage(ctx)
     (root / LOADGEN_PATH).unlink()
-    with pytest.raises(FileNotFoundError, match="cargo build --release"):
+    with pytest.raises(FileNotFoundError, match="loadgen build produced no binary"):
         perf_stage(ctx, LOCAL, runner=fake_loadgen())
 
 

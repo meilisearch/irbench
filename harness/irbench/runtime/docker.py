@@ -26,7 +26,7 @@ def run_command(cmd: list[str]) -> str:
     try:
         out = subprocess.run(cmd, capture_output=True, text=True, check=True)
     except FileNotFoundError as e:
-        raise RuntimeError(f"{cmd[0]} not found: is Docker installed and on PATH?") from e
+        raise RuntimeError(f"{cmd[0]} not found: is it installed and on PATH?") from e
     except subprocess.CalledProcessError as e:
         raise RuntimeError(
             f"{' '.join(cmd)} failed ({e.returncode}): {e.stderr.strip()[-2000:]}"

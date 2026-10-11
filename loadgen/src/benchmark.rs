@@ -45,6 +45,27 @@ pub struct Report {
     pub latency: BTreeMap<String, LatencySummary>,
     pub throughput: BTreeMap<String, GroupThroughput>,
     pub skipped_groups: Vec<String>,
+    /// Phases where the engine did not answer reliably. Non-empty means the
+    /// measurement is not valid and the CLI exits non-zero.
+    pub failures: Vec<String>,
+}
+
+/// An engine that errors above the limit (or answers nothing) in a phase that
+/// should be easy is broken, not slow.
+fn check_phase(name: &str, rec: &Recorder, limits: &Limits, failures: &mut Vec<String>) {
+    if rec.successes() == 0 {
+        failures.push(format!(
+            "{name}: no successful requests ({} errors)",
+            rec.errors()
+        ));
+    } else if rec.error_rate() > limits.max_error_rate {
+        failures.push(format!(
+            "{name}: error rate {:.3}% > {:.3}% ({} errors)",
+            rec.error_rate() * 100.0,
+            limits.max_error_rate * 100.0,
+            rec.errors()
+        ));
+    }
 }
 
 /// Spec §5.7: warm-up pass (discarded), latency pass at concurrency 1 per group,
@@ -68,6 +89,7 @@ pub async fn run_benchmark(cfg: &Config) -> Result<Report> {
             .push(req.clone());
     }
 
+    let mut failures = Vec::new();
     let (warm, warm_seconds) = run(
         target.clone(),
         Arc::new(all.clone()),
@@ -80,6 +102,7 @@ pub async fn run_benchmark(cfg: &Config) -> Result<Report> {
         warm.total(),
         warm.errors()
     );
+    check_phase("warm-up", &warm, &cfg.limits, &mut failures);
 
     let mut latency = BTreeMap::new();
     let mut overall = Recorder::new();
@@ -87,8 +110,14 @@ pub async fn run_benchmark(cfg: &Config) -> Result<Report> {
         let (rec, _) = run(target.clone(), Arc::new(requests.clone()), 1, Stop::Pass).await;
         let summary = rec.summary();
         eprintln!(
-            "latency {group}: p50={:.2}ms p99={:.2}ms errors={}",
+            "latency {group}: p50={:?}ms p99={:?}ms errors={}",
             summary.p50_ms, summary.p99_ms, summary.errors
+        );
+        check_phase(
+            &format!("latency {group}"),
+            &rec,
+            &cfg.limits,
+            &mut failures,
         );
         overall.merge(&rec);
         latency.insert(group.clone(), summary);
@@ -120,12 +149,21 @@ pub async fn run_benchmark(cfg: &Config) -> Result<Report> {
             .await;
             let result = StepResult::new(concurrency, seconds, &rec, &cfg.limits);
             eprintln!(
-                "throughput {group} c={concurrency}: {:.0} qps p99={:.2}ms errors={:.3}% valid={}",
+                "throughput {group} c={concurrency}: {:.0} qps p99={:?}ms errors={:.3}% {}",
                 result.qps,
                 result.p99_ms,
                 result.error_rate * 100.0,
-                result.valid
+                result.invalid_reason.as_deref().unwrap_or("valid")
             );
+            if steps.is_empty() {
+                // The lowest step failing on errors means the engine broke, not saturated.
+                check_phase(
+                    &format!("throughput {group} c={concurrency}"),
+                    &rec,
+                    &cfg.limits,
+                    &mut failures,
+                );
+            }
             let valid = result.valid;
             steps.push(result);
             if !valid {
@@ -155,5 +193,6 @@ pub async fn run_benchmark(cfg: &Config) -> Result<Report> {
         latency,
         throughput,
         skipped_groups,
+        failures,
     })
 }

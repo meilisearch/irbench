@@ -19,3 +19,10 @@ A request is an error when the connection fails, it times out, the status is not
 ## Tests
 
 `cargo test --manifest-path loadgen/Cargo.toml` runs the unit tests and the integration tests against an in-process mock engine with injected latencies and errors.
+
+## Limits of the measurement
+
+- **Throughput is closed-loop.** Each simulated client waits for its response before sending the next request. During an engine stall (garbage collection, segment merge), a closed loop records at most one slow sample per client, where an open-loop client sending at a fixed rate would record every request that queued behind the stall. Throughput-step p99 is therefore closed-loop service time, and it understates tail latency under load, more so for engines with intermittent pauses. The concurrency-1 latency pass is not affected.
+- **One trial per step.** Each concurrency step runs once for `--step-seconds`; a single noisy step can end stepping early. Max QPS is the best step within the leading run of valid steps.
+- **Same query order every step.** Every engine replays the same requests in the same order, so engine-side result caches act the same way for all of them.
+- **A broken engine fails the run.** If the warm-up, a latency pass, or the lowest throughput step answers nothing or errors above `--max-error-rate`, the report lists it under `failures` and the CLI exits with status 2. Latencies with no successful request are `null`, never 0.

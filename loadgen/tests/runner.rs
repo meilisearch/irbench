@@ -31,8 +31,8 @@ async fn one_pass_sends_each_request_once_and_measures_injected_latency() {
     assert_eq!(mock.hits.load(Ordering::SeqCst), 100);
     let s = rec.summary();
     assert_eq!((s.count, s.errors), (100, 0));
-    assert!(s.p50_ms >= 5.0 && s.p50_ms < 15.0, "p50 {s:?}");
-    assert!(s.p95_ms >= 50.0 && s.p95_ms < 90.0, "p95 {s:?}");
+    assert!((5.0..15.0).contains(&s.p50_ms.unwrap()), "p50 {s:?}");
+    assert!((50.0..90.0).contains(&s.p95_ms.unwrap()), "p95 {s:?}");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

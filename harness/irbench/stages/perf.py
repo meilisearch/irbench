@@ -48,8 +48,12 @@ def loadgen_command(ctx: RunContext, profile: HardwareProfile, taskset: str | No
 
 
 def summarize_perf(report: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    # The loadgen's "all" mixes whichever modes the engine supports, so it is not
+    # comparable across engines and stays out of the summary.
     summary = {}
     for group, lat in report["latency"].items():
+        if group == "all":
+            continue
         t = report["throughput"].get(group, {})
         summary[group] = {
             "p50_ms": lat["p50_ms"],
@@ -69,8 +73,13 @@ def perf_stage(
     """Replay the rendered requests with the Rust loadgen (spec §5.7)."""
     if not ctx.rendered_dir.exists():
         raise FileNotFoundError(f"{ctx.rendered_dir} missing: run the render stage first")
+    # Build from this commit (a no-op when fresh) so a stale binary never measures.
+    manifest = str(ctx.root / "loadgen" / "Cargo.toml")
+    runner(["cargo", "build", "--release", "--quiet", "--manifest-path", manifest])
     binary = ctx.root / LOADGEN_PATH
     if not binary.exists():
-        raise FileNotFoundError(f"{binary} missing: build it with `{BUILD_HINT}`")
+        raise FileNotFoundError(
+            f"{binary} missing: loadgen build produced no binary ({BUILD_HINT})"
+        )
     runner(loadgen_command(ctx, profile, shutil.which("taskset")))
     return summarize_perf(read_json(ctx.run_dir / "perf.json"))

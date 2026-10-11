@@ -129,8 +129,6 @@ def run(
         for key, what in scores["constraint_violations"].items():
             typer.echo(f"{key.replace(':', '/')}: CONSTRAINT VIOLATED ({what})")
         for group, p in (scores.get("perf") or {}).items():
-            if group == "all":
-                continue
             qps = (
                 "n/a"
                 if p["max_qps"] is None
