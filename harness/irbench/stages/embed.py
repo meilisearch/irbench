@@ -60,8 +60,8 @@ def embed_scenario(
     finally:
         cache.save()
 
-    docs_path = emb_dir / "docs.parquet"
-    queries_path = ws.scenario_dir(scenario_id) / "embeddings" / emb_dir.name / "queries.parquet"
+    docs_path = ws.doc_vectors_path(scenario.dataset, model_id)
+    queries_path = ws.query_vectors_path(scenario_id, model_id)
     write_vectors(docs_path, [d[scenario.id_field] for d in docs], doc_vectors)
     write_vectors(queries_path, [v["qid"] for v in variants], query_vectors)
     return EmbedResult(

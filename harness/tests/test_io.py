@@ -1,6 +1,15 @@
 import pytest
 
-from irbench.io import read_jsonl, read_qrels, read_run, write_jsonl, write_qrels, write_run
+from irbench.io import (
+    read_json,
+    read_jsonl,
+    read_qrels,
+    read_run,
+    write_json,
+    write_jsonl,
+    write_qrels,
+    write_run,
+)
 from irbench.models import Filter, QueryTask
 
 
@@ -54,3 +63,12 @@ def test_query_task_json_roundtrip():
 
 def test_filter_keeps_string_values_as_strings():
     assert Filter(field="product_class", op="eq", value="Beds").value == "Beds"
+
+
+def test_json_roundtrip_creates_parents(tmp_path):
+    path = tmp_path / "a" / "b.json"
+    write_json(path, {"b": 1, "a": [1.5]})
+    assert read_json(path) == {"b": 1, "a": [1.5]}
+    assert path.read_text().endswith("\n")
+    write_json(path, {"x": [1, 2]}, indent=None)
+    assert path.read_text() == '{"x": [1, 2]}\n'

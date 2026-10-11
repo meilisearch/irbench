@@ -67,3 +67,13 @@ def read_run(path: Path) -> RunResults:
             task_id, _, doc_id, rank, _score, _tag = line.split()
             ranked.setdefault(task_id, []).append((int(rank), doc_id))
     return {tid: [doc for _, doc in sorted(pairs)] for tid, pairs in ranked.items()}
+
+
+def write_json(path: Path, data: Any, indent: int | None = 2) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(data, indent=indent, sort_keys=indent is not None, ensure_ascii=False)
+    path.write_text(text + "\n", encoding="utf-8")
+
+
+def read_json(path: Path) -> Any:
+    return json.loads(path.read_text(encoding="utf-8"))

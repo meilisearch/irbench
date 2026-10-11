@@ -47,3 +47,36 @@ def test_filter_template_must_target_filterable_field(tmp_path):
     (target / "scenario.yaml").write_text(yaml.safe_dump(raw))
     with pytest.raises(ValueError, match="description"):
         load_scenario(tmp_path, SCENARIO)
+
+
+def _scenario_with(tmp_path, mutate):
+    raw = yaml.safe_load((REPO_ROOT / "scenarios" / SCENARIO / "scenario.yaml").read_text())
+    mutate(raw)
+    target = tmp_path / "scenarios" / SCENARIO
+    target.mkdir(parents=True)
+    (target / "scenario.yaml").write_text(yaml.safe_dump(raw))
+    return lambda: load_scenario(tmp_path, SCENARIO)
+
+
+def test_scenario_declares_numeric_fields_and_facet_limits():
+    s = load_scenario(REPO_ROOT, SCENARIO)
+    assert s.index_fields.numeric == ["average_rating", "review_count"]
+    assert s.max_facet_values >= 601  # WANDS has 601 distinct product_class values
+    assert s.facet_verify_limit == 1000
+    assert s.request_timeout_s == 10
+
+
+def test_range_filter_on_non_numeric_field_is_rejected(tmp_path):
+    load = _scenario_with(
+        tmp_path, lambda raw: raw["index_fields"].update(numeric=["review_count"])
+    )
+    with pytest.raises(ValueError, match="average_rating"):
+        load()
+
+
+def test_sortable_field_must_be_numeric(tmp_path):
+    def mutate(raw):
+        raw["index_fields"]["sortable"].append("product_class")
+
+    with pytest.raises(ValueError, match="product_class"):
+        _scenario_with(tmp_path, mutate)()
