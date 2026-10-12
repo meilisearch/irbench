@@ -115,22 +115,27 @@ async fn prime_prepares_statements_on_every_connection() {
     assert!(target.send(2, &ok).await);
 }
 
-/// ParadeDB only (IRBENCH_PG_URL on the paradedb engine, port 15433, with the database's
-/// `plan_cache_mode = force_custom_plan` applied): the boost cast on a bound parameter must
-/// keep working past the switch to a generic plan.
+/// ParadeDB only: `IRBENCH_PARADEDB_URL=postgresql://postgres:irbench@localhost:15433/irbench`.
+/// The test applies the engine's `plan_cache_mode = force_custom_plan` to the database itself
+/// before connecting, then checks that the boost cast on a bound parameter keeps working past
+/// the point where Postgres would switch a prepared statement to a generic plan.
 #[tokio::test]
 #[ignore]
 async fn paradedb_keyword_statement_survives_generic_plan_switch() {
     let _serial = SERIAL.lock().await;
     use irbench_loadgen::requests::PreparedRequest;
-    let Some(url) = pg_url() else { return };
+    let Ok(url) = std::env::var("IRBENCH_PARADEDB_URL") else {
+        return;
+    };
     let (admin, conn) = tokio_postgres::connect(&url, tokio_postgres::NoTls)
         .await
         .unwrap();
     tokio::spawn(conn);
     admin
         .batch_execute(
-            "CREATE EXTENSION IF NOT EXISTS pg_search;
+            "DO $$ BEGIN EXECUTE format('ALTER DATABASE %I SET plan_cache_mode = force_custom_plan', current_database()); END $$;
+             CREATE EXTENSION IF NOT EXISTS vector;
+             CREATE EXTENSION IF NOT EXISTS pg_search;
              DROP TABLE IF EXISTS pdb_plan_t;
              CREATE TABLE pdb_plan_t (id text PRIMARY KEY, name text, description text);
              INSERT INTO pdb_plan_t SELECT i::text, 'white table ' || i, 'a sofa' FROM generate_series(1, 200) i;

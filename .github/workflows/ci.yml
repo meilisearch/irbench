@@ -55,6 +55,14 @@ jobs:
         ports: ["15432:5432"]
         options: >-
           --health-cmd "pg_isready -U postgres -d irbench" --health-interval 2s --health-retries 30
+      paradedb:
+        image: paradedb/paradedb:0.26.1-pg17
+        env:
+          POSTGRES_PASSWORD: irbench
+          POSTGRES_DB: irbench
+        ports: ["15433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d irbench" --health-interval 2s --health-retries 30
     defaults:
       run:
         working-directory: loadgen
@@ -72,6 +80,7 @@ jobs:
       - run: cargo test -- --ignored
         env:
           IRBENCH_PG_URL: postgresql://postgres:irbench@localhost:15432/irbench
+          IRBENCH_PARADEDB_URL: postgresql://postgres:irbench@localhost:15433/irbench
 
   docs:
     runs-on: ubuntu-24.04

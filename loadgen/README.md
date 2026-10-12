@@ -27,7 +27,16 @@ A `--base-url` of `postgresql://user:pass@host:port/db` selects the Postgres wir
 
 ## Tests
 
-`cargo test --manifest-path loadgen/Cargo.toml` runs the unit tests and the integration tests against an in-process mock engine with injected latencies and errors. The live Postgres test is ignored by default: `IRBENCH_PG_URL=postgresql://postgres:irbench@localhost:15432/irbench cargo test -- --ignored` (start `engines/postgres/docker/compose.yaml` first).
+`cargo test --manifest-path loadgen/Cargo.toml` runs the unit tests and the integration tests against an in-process mock engine with injected latencies and errors. The live Postgres tests are ignored by default and each skips (returns early) when its URL variable is unset:
+
+- `IRBENCH_PG_URL` (any Postgres engine; the CI job uses pgvector on port 15432): the prepared-statement, dead-connection, timeout-margin and prime tests. Start `engines/postgres/docker/compose.yaml` first.
+- `IRBENCH_PARADEDB_URL` (the ParadeDB engine, port 15433): `paradedb_keyword_statement_survives_generic_plan_switch`. It runs `ALTER DATABASE ... SET plan_cache_mode = force_custom_plan` on the database itself, so it needs `pg_search` and a superuser. Start `engines/postgres-paradedb/docker/compose.yaml` first.
+
+```bash
+IRBENCH_PG_URL=postgresql://postgres:irbench@localhost:15432/irbench \
+IRBENCH_PARADEDB_URL=postgresql://postgres:irbench@localhost:15433/irbench \
+  cargo test -- --ignored
+```
 
 ## Limits of the measurement
 
