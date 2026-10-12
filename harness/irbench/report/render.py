@@ -74,7 +74,7 @@ def fmt_group(group: str) -> str:
 def _safe_url(url: str | None) -> str | None:
     """Only http(s) URLs are safe to render as a live link; config files come from
     contributor PRs and could set e.g. a `javascript:` URL otherwise."""
-    if url and url.lower().startswith(("http://", "https://")):
+    if isinstance(url, str) and url.lower().startswith(("http://", "https://")):
         return url
     return None
 

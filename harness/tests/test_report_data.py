@@ -1,7 +1,14 @@
+import json
+import shutil
+
 import pytest
 
 from irbench.report.data import group_key, load_results
 from report_fixtures import write_bundle
+
+
+def _edit_json(path, fn):
+    path.write_text(json.dumps(fn(json.loads(path.read_text()))))
 
 
 def test_runs_are_grouped_by_scenario_and_profile(tmp_path):
@@ -156,3 +163,91 @@ def test_malformed_files_are_unreadable(tmp_path, corrupt_fn, healthy_count):
         or "perf.json" in unreadable[0].error
         or "index.json" in unreadable[0].error
     )
+
+
+@pytest.mark.parametrize(
+    "corrupt_fn",
+    [
+        lambda d: _edit_json(d / "manifest.json", lambda m: {**m, "stages": ["prepare"]}),
+        lambda d: _edit_json(d / "manifest.json", lambda m: {**m, "config": None}),
+        lambda d: _edit_json(
+            d / "manifest.json",
+            lambda m: {**m, "config": {**m["config"], "credits": [{"url": "https://x"}]}},
+        ),
+        lambda d: _edit_json(
+            d / "manifest.json",
+            lambda m: {
+                **m,
+                "config": {**m["config"], "credits": [{"name": "Jane", "url": 123}]},
+            },
+        ),
+        lambda d: _edit_json(
+            d / "scores.json",
+            lambda s: {
+                **s,
+                "relevance": [
+                    {k: v for k, v in s["relevance"][0].items() if k != "mode"},
+                    *s["relevance"][1:],
+                ],
+            },
+        ),
+        lambda d: _edit_json(d / "index.json", lambda i: {**i, "seconds": "42.5"}),
+        lambda d: _edit_json(
+            d / "scores.json",
+            lambda s: {
+                **s,
+                "not_applicable": {**s["not_applicable"], "renamedmode:keyword": "old bundle"},
+            },
+        ),
+    ],
+    ids=[
+        "manifest_stages_is_a_list",
+        "manifest_config_is_null",
+        "credit_without_name",
+        "credit_url_not_a_string",
+        "relevance_item_missing_mode",
+        "index_seconds_is_a_string",
+        "not_applicable_key_has_unknown_mode",
+    ],
+)
+def test_malformed_shapes_are_unreadable_not_fatal(tmp_path, corrupt_fn):
+    write_bundle(tmp_path, "meilisearch")
+    corrupt = write_bundle(tmp_path, "qdrant")
+    corrupt_fn(corrupt)
+    scenarios, unreadable = load_results(tmp_path)
+    assert sum(len(s.runs) for s in scenarios) == 1
+    assert len(unreadable) == 1
+    assert unreadable[0].path == corrupt.name
+
+
+def test_run_id_path_traversal_is_unreadable(tmp_path):
+    d = write_bundle(tmp_path, "meilisearch")
+    _edit_json(d / "manifest.json", lambda m: {**m, "run_id": "../../escaped"})
+    scenarios, unreadable = load_results(tmp_path)
+    assert sum(len(s.runs) for s in scenarios) == 0
+    assert len(unreadable) == 1 and unreadable[0].path == d.name
+
+
+def test_run_id_not_matching_directory_is_unreadable(tmp_path):
+    d = write_bundle(tmp_path, "meilisearch")
+    _edit_json(d / "manifest.json", lambda m: {**m, "run_id": "some-other-id"})
+    scenarios, unreadable = load_results(tmp_path)
+    assert sum(len(s.runs) for s in scenarios) == 0
+    assert len(unreadable) == 1 and unreadable[0].path == d.name
+
+
+def test_hardware_id_path_traversal_is_unreadable(tmp_path):
+    d = write_bundle(tmp_path, "meilisearch")
+    _edit_json(d / "manifest.json", lambda m: {**m, "hardware": {"id": "../escaped"}})
+    scenarios, unreadable = load_results(tmp_path)
+    assert sum(len(s.runs) for s in scenarios) == 0
+    assert len(unreadable) == 1 and unreadable[0].path == d.name
+
+
+def test_tmp_and_old_directories_are_ignored(tmp_path):
+    d = write_bundle(tmp_path, "meilisearch")
+    shutil.copytree(d, tmp_path / f"{d.name}.tmp")
+    shutil.copytree(d, tmp_path / f"{d.name}.old")
+    scenarios, unreadable = load_results(tmp_path)
+    assert sum(len(s.runs) for s in scenarios) == 1
+    assert unreadable == []

@@ -1,3 +1,4 @@
+import json
 import shutil
 
 import pytest
@@ -313,6 +314,67 @@ def test_run_page_shows_its_perf(tmp_path):
     build_site(results, out)
     page = read(out, f"runs/{d.name}.html")
     assert "Performance" in page and "170" in page
+
+
+def _edit_json(path, fn):
+    path.write_text(json.dumps(fn(json.loads(path.read_text()))))
+
+
+@pytest.mark.parametrize(
+    "corrupt_fn",
+    [
+        lambda d: _edit_json(d / "manifest.json", lambda m: {**m, "stages": ["prepare"]}),
+        lambda d: _edit_json(d / "manifest.json", lambda m: {**m, "config": None}),
+        lambda d: _edit_json(
+            d / "manifest.json",
+            lambda m: {**m, "config": {**m["config"], "credits": [{"url": "https://x"}]}},
+        ),
+        lambda d: _edit_json(
+            d / "scores.json",
+            lambda s: {
+                **s,
+                "relevance": [
+                    {k: v for k, v in s["relevance"][0].items() if k != "mode"},
+                    *s["relevance"][1:],
+                ],
+            },
+        ),
+        lambda d: _edit_json(d / "index.json", lambda i: {**i, "seconds": "42.5"}),
+        lambda d: _edit_json(
+            d / "scores.json",
+            lambda s: {
+                **s,
+                "not_applicable": {**s["not_applicable"], "renamedmode:keyword": "old bundle"},
+            },
+        ),
+    ],
+    ids=[
+        "manifest_stages_is_a_list",
+        "manifest_config_is_null",
+        "credit_without_name",
+        "relevance_item_missing_mode",
+        "index_seconds_is_a_string",
+        "not_applicable_key_has_unknown_mode",
+    ],
+)
+def test_malformed_bundle_shapes_do_not_crash_the_build(tmp_path, corrupt_fn):
+    results, out = site(tmp_path)
+    write_bundle(results, "meilisearch")
+    bad = write_bundle(results, "qdrant")
+    corrupt_fn(bad)
+    result = build_site(results, out)
+    assert len(result.unreadable) == 1 and result.unreadable[0].path == bad.name
+    assert f'href="{PAGE}"' in read(out, "index.html")  # the healthy sibling still renders
+
+
+def test_malicious_run_id_does_not_escape_out(tmp_path):
+    results, out = site(tmp_path)
+    d = write_bundle(results, "meilisearch")
+    _edit_json(d / "manifest.json", lambda m: {**m, "run_id": "../../escaped"})
+    build_site(results, out)
+    assert not (out.parent / "escaped.html").exists()
+    assert not (tmp_path / "escaped.html").exists()
+    assert not list(out.rglob("escaped.html"))
 
 
 def test_cli_exits_1_on_unreadable_bundles(tmp_path):
