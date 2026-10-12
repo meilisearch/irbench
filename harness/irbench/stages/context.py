@@ -27,7 +27,7 @@ ClientFactory = Callable[[str], Any]
 
 
 def default_client(base_url: str) -> Any:
-    if base_url.startswith("postgresql://"):
+    if base_url.startswith(("postgresql://", "postgres://")):
         return PostgresClient(base_url)
     return httpx.Client(base_url=base_url, timeout=60.0)
 
