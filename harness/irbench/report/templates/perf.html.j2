@@ -1,8 +1,10 @@
 <section>
 <h2>Performance</h2>
 <p class="note">Measured by replaying the exact requests scored for relevance (warm-up pass
-discarded). Latency is at one client. Throughput steps up the number of concurrent clients;
-max QPS is the best step with p99 ≤ 100 ms and ≤ 0.1% errors. Indexing is wall-clock time
+discarded). Latency is at one client. Throughput steps up the number of concurrent clients and
+stops at the first invalid step, so max QPS is the best (highest-QPS) step within that leading
+run of valid steps{% if view.perf.limits %} (p99 ≤ {{ view.perf.limits.p99_ms|g }} ms and ≤
+{{ (view.perf.limits.max_error_rate * 100)|g }}% errors){% endif %}. Indexing is wall-clock time
 until the engine reports every document indexed.</p>
 {% if view.perf.unmeasured %}
 <p class="note">Performance was not measured for: {{ view.perf.unmeasured|join(", ") }}.</p>

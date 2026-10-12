@@ -10,6 +10,7 @@ from typing import Any
 
 import jinja2
 
+from irbench.publish import UNPUBLISHABLE_PROFILES as UNPUBLISHED_PROFILES
 from irbench.report.charts import Point, Series, qps_chart
 from irbench.report.data import (
     PERTURBATIONS,
@@ -24,7 +25,6 @@ MARKER = ".irbench-report"
 DEFAULT_DOCS_URL = "https://github.com/meilisearch/irbench/tree/main/docs"
 BASE_GROUPS = ("keyword/keyword", "semantic/semantic", "hybrid/hybrid")
 VECTOR_GROUPS = ("semantic/semantic", "hybrid/hybrid")
-UNPUBLISHED_PROFILES = ("local",)
 MAX_SLOTS = 8  # categorical palette size; later engines fold into "other" (slot 0)
 
 
@@ -69,6 +69,11 @@ def fmt_bytes(n: int | None) -> str:
 def fmt_group(group: str) -> str:
     mode, _, base = group.partition("/")
     return mode if mode == base else f"{mode} ({base})"
+
+
+def fmt_g(value: float) -> str:
+    """Like `fmt_ms` but with no fixed decimals — matches NO_VALID_STEP's `{p99:g}`."""
+    return f"{value:g}"
 
 
 def _safe_url(url: str | None) -> str | None:
@@ -245,6 +250,10 @@ def perf_view(s: ScenarioResults, slots: dict[str, int]) -> dict[str, Any]:
             )
     return {
         "runs": measured,
+        # Limits are the same for every run of a scenario; take them from the first
+        # measured run (the leading run referred to in the note below is per-run steps,
+        # not this list).
+        "limits": measured[0].perf["limits"] if measured else None,
         "latency": [
             {"group": g, "cells": [_latency_cell(r, g) for r in measured]} for g in latency_groups
         ],
@@ -326,7 +335,7 @@ def _env() -> jinja2.Environment:
         lstrip_blocks=True,
     )
     env.filters.update(
-        score=fmt_score, delta=fmt_delta, ms=fmt_ms, bytes=fmt_bytes, group=fmt_group
+        score=fmt_score, delta=fmt_delta, ms=fmt_ms, bytes=fmt_bytes, group=fmt_group, g=fmt_g
     )
     return env
 

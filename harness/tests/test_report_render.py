@@ -286,6 +286,16 @@ def test_performance_section(tmp_path):
     assert "727.3 MB" in page and "1.6 GB" in page and "42.5" in page  # indexing cost
 
 
+def test_perf_limits_are_rendered_from_the_fixture(tmp_path):
+    results, out = site(tmp_path)
+    pr = perf_report({"keyword/keyword": (85.0, 4)})
+    pr["limits"]["p99_ms"] = 50.0
+    write_bundle(results, "meilisearch", perf_report=pr)
+    build_site(results, out)
+    page = read(out, PAGE)
+    assert "50 ms" in page
+
+
 def test_no_valid_step_is_explicit(tmp_path):
     results, out = site(tmp_path)
     write_bundle(results, "meilisearch", perf_report=perf_report({"keyword/keyword": (50.0, 0)}))
