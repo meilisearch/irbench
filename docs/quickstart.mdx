@@ -40,9 +40,9 @@ This runs the full pipeline on the `local` hardware profile: it embeds any
 vectors that aren't cached yet, starts the Meilisearch container, indexes the
 dataset, renders every query variant × mode to a request file, executes those
 requests once to score relevance, replays them with the Rust load generator to
-measure performance, and scores the run. Progress for each stage is printed as
-it completes, with its status (`succeeded` or `failed`) and timing; a full
-run's manifest, scores, and performance numbers land under
+measure performance, and scores the run. Once the run finishes, each stage's
+result is printed with its status (`succeeded` or `failed`); a full run's
+manifest, scores, and performance numbers land under
 `.irbench/runs/<run-id>/`.
 
 ## Preview a report

@@ -43,9 +43,10 @@ credits:
   `*:<base>`) to a short reason; see [N/A handling](/methodology/parity#how-na-is-decided-and-shown).
 - **`justification`** — maps a setting path (e.g. `rankingRules`,
   `index.hnsw.ef`) to prose explaining why it departs from the engine's
-  shipped defaults. Required for every setting under `index` or `search`
-  that isn't already present in Meilisearch's or any other engine's truly
-  default configuration — `irbench lint` enforces this (`unjustified-setting`).
+  shipped defaults. Every leaf setting under `index` or `search` needs a
+  justification entry that names it or one of its parents (see `_justified`
+  in `harness/irbench/lint.py`) — `irbench lint` enforces this
+  (`unjustified-setting`).
 
 ## A worked tuned example
 
@@ -101,8 +102,8 @@ uv run pytest -m docker -k <engine>
 
 ## Maintainers re-run on the reference machine
 
-CI runs the contract tests and a smoke subset on every PR, but only
-maintainer-run results on the pinned reference hardware profile are
-published (`irbench publish` refuses the `local` profile). A config or
-adapter change doesn't appear in published results until a maintainer has
-re-run it there.
+CI runs `irbench lint` (after `irbench prepare`) and the Docker contract
+tests on every PR, but only maintainer-run results on the pinned reference
+hardware profile are published (`irbench publish` refuses the `local`
+profile). A config or adapter change doesn't appear in published results
+until a maintainer has re-run it there.

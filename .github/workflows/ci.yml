@@ -71,7 +71,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-      - run: npx --yes mint@latest broken-links
+      - run: npx --yes mint@4.2.1006 broken-links
 
   report:
     runs-on: ubuntu-24.04

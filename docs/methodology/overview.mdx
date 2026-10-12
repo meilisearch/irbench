@@ -5,9 +5,11 @@ description: The pipeline, the dataset, modes, perturbations, metrics and error 
 
 ## The nine pipeline stages
 
-Each stage reads and writes files under `.irbench/runs/<run-id>/`; any stage
-is re-runnable, and re-running a stage invalidates its own outputs and every
-later stage's.
+`prepare` and `embed` write under `.irbench/data`, `.irbench/scenarios` and
+`.irbench/embeddings` — shared across every run of a scenario/model. Only the
+run stages (`up` through `down`) write under `.irbench/runs/<run-id>/`. Any
+stage is re-runnable, and re-running a stage invalidates its own outputs and
+every later stage's.
 
 | # | Stage | Writes |
 |---|---|---|
