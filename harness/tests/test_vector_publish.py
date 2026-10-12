@@ -90,7 +90,7 @@ def test_tampered_asset_is_refused(tmp_path, wands_raw):
     files[0].write_bytes(b"not parquet")
     docs, _ = vector_paths(root)
     docs.unlink()
-    with pytest.raises(ChecksumError):
+    with pytest.raises(ChecksumError, match="--compute"):
         embed_scenario(root, SCENARIO, "fake", client=serve(tmp_path / "dist"))
     assert not docs.exists()
 

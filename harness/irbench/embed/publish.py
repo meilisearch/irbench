@@ -9,7 +9,7 @@ import httpx
 import yaml
 from pydantic import BaseModel, ConfigDict
 
-from irbench.datasets.fetch import fetch_file, sha256_file
+from irbench.datasets.fetch import ChecksumError, fetch_file, sha256_file
 from irbench.embed.vectors import read_vectors
 from irbench.io import read_json, read_jsonl
 from irbench.paths import Workspace, slug
@@ -157,7 +157,13 @@ def download_published(
     }
     for kind, (dest, ids) in expected.items():
         asset: VectorAsset = getattr(entry, kind)
-        fetch_file(asset.url, dest, asset.sha256, client=client)
+        try:
+            fetch_file(asset.url, dest, asset.sha256, client=client)
+        except ChecksumError as e:
+            raise ChecksumError(
+                f"{e}; the published asset does not match the registry checksum; "
+                "run `irbench embed --compute` to embed locally instead"
+            ) from e
         got_ids, vectors = read_vectors(dest)
         if got_ids != ids or vectors.shape[1] != asset.dim:
             dest.unlink()
