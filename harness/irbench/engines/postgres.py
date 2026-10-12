@@ -130,6 +130,12 @@ class PostgresAdapter(EngineAdapter):
     def extra_columns(self) -> list[tuple[str, str]]:
         return []
 
+    def keyword_tiebreak(self) -> str:
+        """Suffix after `score DESC` wherever the keyword base is ranked by score. ", id" makes
+        the order total; an engine whose BM25 scan can only push a bare score order down to
+        the index (Top-K) returns "" and accepts arbitrary order among equal scores."""
+        return ", id"
+
     @abstractmethod
     def text_index_ddl(self) -> str: ...
 
@@ -179,7 +185,8 @@ class PostgresAdapter(EngineAdapter):
             if k_limit is None:
                 return head
             order = "score" if scored else p.score
-            return f"{head} ORDER BY {order} DESC, id LIMIT {q.p(k_limit, 'int')}"
+            tb = self.keyword_tiebreak()
+            return f"{head} ORDER BY {order} DESC{tb} LIMIT {q.p(k_limit, 'int')}"
         if k_limit is None:
             raise ValueError("an unbounded pool is only defined for the keyword base")
         if task.base == "semantic":
@@ -190,11 +197,12 @@ class PostgresAdapter(EngineAdapter):
             )
         # hybrid: RRF over the keyword and vector top_k (spec §7 amendment)
         top_k = q.p(self.ctx.scenario.top_k, "int")
+        tb = self.keyword_tiebreak()
         fused = (
             f"SELECT coalesce(kw.id, vec.id) AS id, coalesce(1.0 / ({RRF_K} + kw.r), 0) "
             f"+ coalesce(1.0 / ({RRF_K} + vec.r), 0) AS score "
-            f"FROM (SELECT id, row_number() OVER (ORDER BY {p.score} DESC, id) AS r FROM {t} "
-            f"WHERE {p.pred} AND {p.where} ORDER BY {p.score} DESC, id LIMIT {top_k}) kw "
+            f"FROM (SELECT id, row_number() OVER (ORDER BY {p.score} DESC{tb}) AS r FROM {t} "
+            f"WHERE {p.pred} AND {p.where} ORDER BY {p.score} DESC{tb} LIMIT {top_k}) kw "
             f"FULL OUTER JOIN (SELECT id, row_number() OVER (ORDER BY embedding <=> {p.vec}, id) AS r "
             f"FROM {t} WHERE {p.where} ORDER BY embedding <=> {p.vec}, id LIMIT {top_k}) vec "
             f"ON kw.id = vec.id"
@@ -230,15 +238,15 @@ class PostgresAdapter(EngineAdapter):
             if task.base == "keyword":
                 # counts over every match, hits ranked from the same match set
                 m = self._ranked(q, task, p, None, terms)
-                hits_src, order = "m", "score DESC"
+                hits_src, order = "m", f"score DESC{self.keyword_tiebreak()}"
             elif task.base == "semantic":
                 # counts over every filtered document with no ordering or limit (an HNSW scan
                 # would be capped by hnsw.max_scan_tuples); hits from a separate nearest query
                 m = f"SELECT {', '.join(terms)} FROM {t} WHERE {p.where}"
-                hits_src, order = f"{t} WHERE {p.where}", f"embedding <=> {p.vec}"
+                hits_src, order = f"{t} WHERE {p.where}", f"embedding <=> {p.vec}, id"
             else:
                 m = self._ranked(q, task, p, every, terms)
-                hits_src, order = "m", "score DESC"
+                hits_src, order = "m", "score DESC, id"
             lim = q.p(limit, "int")
             facet_sql = ", ".join(
                 f"'{n}', (SELECT coalesce(json_object_agg(v, c), '{{}}') FROM "
@@ -246,13 +254,14 @@ class PostgresAdapter(EngineAdapter):
                 for n in (ident(f) for f in task.facets)
             )
             sql = (
-                f"WITH m AS ({m}), hits AS (SELECT id, row_number() OVER (ORDER BY {order}, id) AS o "
-                f"FROM {hits_src} ORDER BY {order}, id LIMIT {lim}) "
+                f"WITH m AS ({m}), hits AS (SELECT id, row_number() OVER (ORDER BY {order}) AS o "
+                f"FROM {hits_src} ORDER BY {order} LIMIT {lim}) "
                 f"SELECT (SELECT coalesce(json_agg(id ORDER BY o), '[]') FROM hits) AS ids, "
                 f"json_build_object({facet_sql}) AS facets"
             )
         else:
-            sql = f"SELECT id FROM ({self._ranked(q, task, p, limit)}) m ORDER BY score DESC, id"
+            tb = self.keyword_tiebreak() if task.base == "keyword" else ", id"
+            sql = f"SELECT id FROM ({self._ranked(q, task, p, limit)}) m ORDER BY score DESC{tb}"
         extra = self.search_params(task)
         if extra:
             raise ValueError(

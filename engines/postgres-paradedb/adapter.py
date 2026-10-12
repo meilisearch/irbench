@@ -14,6 +14,11 @@ class Adapter(PostgresAdapter):
         # No key_field: deprecated no-op in pg_search 0.26 (the primary key is used).
         return f"CREATE INDEX ON {self.table} USING bm25 (id, {', '.join(self.searchable)})"
 
+    def keyword_tiebreak(self) -> str:
+        # pg_search pushes a Top-K order down to the BM25 index only when the whole ORDER BY
+        # is the score: a trailing `, id` leaves a full scan plus a Postgres sort of every match.
+        return ""
+
     def keyword_match(self, q: Sql, text: str) -> tuple[str, str]:
         ph = q.p(text)
         n = len(self.searchable)
