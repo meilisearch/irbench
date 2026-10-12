@@ -15,6 +15,7 @@ default:
   index: {}
   search: {}
   unsupported: {}
+  synonyms: null   # or a reason string
   justification: {}
 tuned:
   # same shape, deep-merged over `default`
@@ -41,6 +42,10 @@ credits:
   search request bodies for that retrieval base only.
 - **`unsupported`** — maps a mode key (`<mode>`, `<mode>:<base>`, or
   `*:<base>`) to a short reason; see [N/A handling](/methodology/parity#how-na-is-decided-and-shown).
+- **`synonyms`** — optional prose reason the engine cannot load the shared
+  `synonyms.txt` (e.g. "Qdrant has no synonym support"). It is not a setting,
+  needs no justification, and is shown on the run page as "Synonyms not
+  loaded: ...". The contract test for shared synonyms skips for that engine.
 - **`justification`** — maps a setting path (e.g. `rankingRules`,
   `index.hnsw.ef`) to prose explaining why it departs from the engine's
   shipped defaults. Every leaf setting under `index` or `search` needs a

@@ -14,7 +14,8 @@ automatically by `uv run irbench lint` in CI.
   `index_fields.searchable` list. Engines with no native field-weighting
   mechanism use their closest native equivalent, noted in their config.
 - **One shared `synonyms.txt` per scenario.** An engine either loads it, or
-  declares `synonyms: unsupported` with a reason.
+  declares a `synonyms:` reason in its config (for example Qdrant, whose BM25
+  tokenizer takes no synonym list). The reason is shown on the run page.
 - **Same vectors, cosine similarity, same top-k.** ANN parameters start at
   each engine's documented defaults; any change requires a `justification:`
   entry.
@@ -42,7 +43,7 @@ automatically by `uv run irbench lint` in CI.
 | Rule | What it catches | Example |
 |---|---|---|
 | `unjustified-setting` | A setting in `index` or `search.<base>` that departs from the engine as shipped, with no matching `justification:` entry. | Meilisearch's config moves `sort` first in `rankingRules` and must carry a `justification.rankingRules` explaining why. |
-| `unsupported-key` | An `unsupported` key that isn't `<mode>`, `<mode>:<base>` or `*:<base>`. | Qdrant's `unsupported: {"*:keyword": "..."}` is valid; `unsupported: {"keyword-ish": "..."}` would not be. |
+| `unsupported-key` | An `unsupported` key that isn't `<mode>`, `<mode>:<base>` or `*:<base>`. | `unsupported: {"*:keyword": "..."}` is valid; `unsupported: {"keyword-ish": "..."}` would not be. |
 | `query-leak` | A string value under `index` or `search` that equals, contains, or is an id of a query or task from the prepared query set. | A config hard-coding a WANDS query string or query id inside a `search.keyword` body. |
 | `image-pin` | The compose file's `services.engine.image` has no version tag, or is pinned to `latest`. | `image: qdrant/qdrant:latest` fails; `image: qdrant/qdrant:v1.19.2` passes. |
 | `engine-files` | A required file is missing for an engine: `adapter.py`, `README.md`, or `docker/compose.yaml`. | An engine folder with no `README.md` fails lint even if its adapter works. |
@@ -54,9 +55,9 @@ automatically by `uv run irbench lint` in CI.
 An adapter reports a mode as not applicable through its config's
 `unsupported` map, keyed by `<mode>:<base>`, `<mode>` (every base), or
 `*:<base>` (every mode on that base), each mapped to a short reason. For
-example, Qdrant's config marks `*:keyword` (and therefore `hybrid`, which
-needs keyword retrieval) and `faceted:semantic` as unsupported, each with the
-reason shown in the report. Tasks whose mode/base combination resolves to an
+example, Qdrant's config marks `faceted` (every base) as unsupported, because
+its facet API counts the points matching a filter, not the points a query
+returned. The reason is shown in the report. Tasks whose mode/base combination resolves to an
 `unsupported` entry are written to `na.json` during the `render` stage,
 excluded from scoring, and listed in the run's `not_applicable` map
 (`scores.json`) rather than scored as zero — N/A is never counted against an
