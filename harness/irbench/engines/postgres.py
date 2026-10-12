@@ -248,9 +248,12 @@ class PostgresAdapter(EngineAdapter):
                 m = self._ranked(q, task, p, every, terms)
                 hits_src, order = "m", "score DESC, id"
             lim = q.p(limit, "int")
+            # at most max_facet_values buckets per facet, most frequent first (as ES/Meilisearch)
+            cap = q.p(self.ctx.scenario.max_facet_values, "int")
             facet_sql = ", ".join(
                 f"'{n}', (SELECT coalesce(json_object_agg(v, c), '{{}}') FROM "
-                f"(SELECT unnest({n}__terms) AS v, count(*) AS c FROM m GROUP BY 1) x)"
+                f"(SELECT unnest({n}__terms) AS v, count(*) AS c FROM m GROUP BY 1 "
+                f"ORDER BY c DESC, v LIMIT {cap}) x)"
                 for n in (ident(f) for f in task.facets)
             )
             sql = (

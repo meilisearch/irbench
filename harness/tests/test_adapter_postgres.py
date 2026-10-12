@@ -189,7 +189,7 @@ def test_faceted_semantic_counts_without_order_or_limit(adapter):
     m = r.sql.split(", hits AS")[0]
     assert "ORDER BY" not in m and "LIMIT" not in m
     assert "ORDER BY embedding <=> $1::text::vector" in r.sql
-    assert r.params == [[0.1, 0.2, 0.3], 100]
+    assert r.params == [[0.1, 0.2, 0.3], 100, adapter.ctx.scenario.max_facet_values]
 
 
 def _settings_script(adapter, settings):
@@ -224,3 +224,12 @@ def test_settings_accept_core_names(adapter):
 def test_settings_reject_unsafe_names_and_values(adapter, name, value):
     with pytest.raises(ValueError, match="unsafe setting"):
         _settings_script(adapter, {name: value})
+
+
+def test_facet_buckets_are_capped_at_the_scenario_max(adapter):
+    cap = adapter.ctx.scenario.max_facet_values
+    task = make_task("faceted", "keyword", text="sofa", facets=["product_class", "category"])
+    r = adapter.render(task, None, 100)
+    n = r.params.index(cap) + 1
+    assert r.params.count(cap) == 1
+    assert r.sql.count(f"ORDER BY c DESC, v LIMIT ${n}::text::int") == 2
