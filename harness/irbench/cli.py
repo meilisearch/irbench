@@ -8,6 +8,7 @@ from irbench.io import read_json, read_jsonl, read_qrels, read_run
 from irbench.lint import lint_repo
 from irbench.models import QueryTask
 from irbench.paths import Workspace
+from irbench.publish import publish_run
 from irbench.runs import STAGES, RunSpec
 from irbench.score.relevance import score_relevance
 from irbench.stages.embed import embed_scenario
@@ -151,4 +152,24 @@ def run(
             )
     typer.echo(f"run dir: {run_dir}")
     if manifest["status"] != "succeeded":
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def publish(
+    run_ids: list[str] = typer.Argument(..., help="Run ids (folder names under .irbench/runs)."),
+    results: Path | None = typer.Option(None, "--results", help="Default: <root>/results."),
+    root: Path = ROOT_OPTION,
+) -> None:
+    """Copy finished runs into results/ (reference hardware profiles only)."""
+    failed = False
+    for run_id in run_ids:
+        try:
+            dest = publish_run(root, run_id, results)
+        except (FileNotFoundError, ValueError) as e:
+            typer.echo(f"{run_id}: {e}", err=True)
+            failed = True
+        else:
+            typer.echo(f"published {dest.relative_to(root) if dest.is_relative_to(root) else dest}")
+    if failed:
         raise typer.Exit(code=1)
