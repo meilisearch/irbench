@@ -5,6 +5,7 @@ import typer
 
 from irbench import __version__
 from irbench.io import read_json, read_jsonl, read_qrels, read_run
+from irbench.lint import lint_repo
 from irbench.models import QueryTask
 from irbench.paths import Workspace
 from irbench.runs import STAGES, RunSpec
@@ -88,6 +89,17 @@ def score(
     for g in groups:
         if g.perturbation == "all":
             typer.echo(f"{g.mode}/{g.base}: nDCG@10={g.metrics['ndcg@10']:.4f} n={g.n}")
+
+
+@app.command()
+def lint(root: Path = ROOT_OPTION) -> None:
+    """Check engine configs against the machine-checkable parity rules (spec §7)."""
+    n, findings = lint_repo(root)
+    for finding in findings:
+        typer.echo(str(finding), err=True)
+    typer.echo(f"lint: {n} configs, {len(findings)} findings")
+    if findings:
+        raise typer.Exit(code=1)
 
 
 @app.command()

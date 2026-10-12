@@ -164,6 +164,10 @@ def _describe_inputs(ctx: RunContext, manifest: dict[str, Any]) -> None:
             "path": str(ctx.config.path.relative_to(ctx.root)),
             "hash": ctx.config.hash(ctx.spec.track),
             "diff_vs_default": ctx.config.diff(ctx.spec.track),
+            # Credits belong to the tuned track (spec §11); the default track is the engine as shipped.
+            "credits": [c.model_dump() for c in ctx.config.credits]
+            if ctx.spec.track == "tuned"
+            else [],
         }
     except (FileNotFoundError, ValueError) as e:
         manifest["config"] = {"error": str(e)}

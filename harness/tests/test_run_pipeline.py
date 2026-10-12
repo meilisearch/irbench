@@ -203,6 +203,26 @@ def test_scores_flag_groups_that_break_their_constraint(tmp_path, wands_raw):
     assert "filter violations" in scores["constraint_violations"]["filtered:keyword"]
 
 
+def test_manifest_credits_tuned_configs_only(tmp_path, wands_raw):
+    config = {
+        **FAKE_CONFIG,
+        "tuned": {"index": {"x": 1}, "justification": {"x": "test"}},
+        "credits": [{"name": "Jane Doe", "url": "https://github.com/jane"}],
+    }
+    root = fake_root(tmp_path, wands_raw, config=config)
+    common = dict(
+        runtime_factory=lambda *a: FakeRuntime(), prepare_client=fixture_client(wands_raw)
+    )
+
+    tuned = run_pipeline(
+        root, FAKE_SPEC.model_copy(update={"track": "tuned"}), ["prepare"], **common
+    )
+    default = run_pipeline(root, FAKE_SPEC, ["prepare"], **common)
+
+    assert tuned["config"]["credits"] == [{"name": "Jane Doe", "url": "https://github.com/jane"}]
+    assert default["config"]["credits"] == []
+
+
 def test_cli_run_prints_perf(tmp_path, wands_raw, monkeypatch):
     root = fake_root(tmp_path, wands_raw)
     monkeypatch.setattr("irbench.stages.run.DockerRuntime", lambda *a: FakeRuntime())

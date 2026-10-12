@@ -59,6 +59,15 @@ class TrackConfig(BaseModel):
         return None
 
 
+class Credit(BaseModel):
+    """Who contributed a tuned config; shown on the report's run page (spec §11)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    url: str | None = None
+
+
 @dataclass(frozen=True)
 class EngineConfig:
     path: Path
@@ -88,6 +97,13 @@ class EngineConfig:
         canonical = json.dumps(self.track(name).model_dump(), sort_keys=True)
         return hashlib.sha256(canonical.encode()).hexdigest()
 
+    @property
+    def credits(self) -> list[Credit]:
+        items = self.raw.get("credits") or []
+        if not isinstance(items, list):
+            raise ValueError("credits must be a list of {name, url}")
+        return [Credit.model_validate(c) for c in items]
+
 
 def config_path(root: Path, engine: str, scenario_id: str) -> Path:
     return root / "engines" / engine / "configs" / f"{scenario_id}.yaml"
@@ -100,13 +116,18 @@ def load_engine_config(root: Path, engine: str, scenario_id: str) -> EngineConfi
             f"{path} missing: engine {engine!r} has no config for {scenario_id}"
         )
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    unknown = sorted(set(raw) - set(TRACKS))
+    unknown = sorted(set(raw) - set(TRACKS) - {"credits"})
     if unknown or "default" not in raw:
         raise ValueError(
-            f"{path}: top-level keys must be 'default' and optional 'tuned', got {sorted(raw)}"
+            f"{path}: top-level keys must be 'default', optional 'tuned' and optional "
+            f"'credits', got {sorted(raw)}"
         )
     config = EngineConfig(path, raw)
     for name in TRACKS:
         if name in raw:
             config.track(name)
+    try:
+        config.credits
+    except ValueError as e:
+        raise ValueError(f"{path}: credits: {e}") from e
     return config

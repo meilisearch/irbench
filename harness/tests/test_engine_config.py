@@ -85,6 +85,44 @@ def test_missing_config_file_names_the_path(tmp_path):
         load_engine_config(tmp_path, "e", SCENARIO)
 
 
+def _write_credit_config(root, data):
+    path = root / "engines" / "eng" / "configs" / "ecommerce" / "product-search.yaml"
+    path.parent.mkdir(parents=True)
+    path.write_text(yaml.safe_dump(data))
+    return path
+
+
+def test_credits_are_optional_and_typed(tmp_path):
+    _write_credit_config(
+        tmp_path,
+        {
+            "default": {},
+            "tuned": {"index": {"m": 32}, "justification": {"m": "recall"}},
+            "credits": [{"name": "Jane Doe", "url": "https://github.com/jane"}, {"name": "Ann"}],
+        },
+    )
+    config = load_engine_config(tmp_path, "eng", "ecommerce/product-search")
+    assert [c.model_dump() for c in config.credits] == [
+        {"name": "Jane Doe", "url": "https://github.com/jane"},
+        {"name": "Ann", "url": None},
+    ]
+
+
+def test_config_without_credits_has_none(tmp_path):
+    _write_credit_config(tmp_path, {"default": {}})
+    assert load_engine_config(tmp_path, "eng", "ecommerce/product-search").credits == []
+
+
+@pytest.mark.parametrize(
+    "credits", [{"name": "x"}, [{"url": "https://x"}], [{"name": "x", "x": 1}]]
+)
+def test_malformed_credits_name_the_file(tmp_path, credits):
+    path = _write_credit_config(tmp_path, {"default": {}, "credits": credits})
+    with pytest.raises(ValueError, match="credits") as error:
+        load_engine_config(tmp_path, "eng", "ecommerce/product-search")
+    assert str(path) in str(error.value)
+
+
 def test_unsupported_reason_precedence(tmp_path):
     _write(
         tmp_path,
