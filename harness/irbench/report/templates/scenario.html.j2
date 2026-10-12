@@ -1,0 +1,89 @@
+{% extends "base.html.j2" %}
+{% block title %}{{ s.scenario }} · {{ s.hardware }} · IRBench{% endblock %}
+{% block main %}
+<h1>{{ s.scenario }}</h1>
+<p class="meta">Hardware profile <code>{{ s.hardware }}</code> · {{ s.runs|length }} runs ·
+<a href="{{ docs_url }}">how this is measured</a></p>
+{% if not view.comparable %}
+<p class="alert">Profile <code>{{ s.hardware }}</code> is a developer machine. These numbers check
+the method; they are not comparable with published results.</p>
+{% endif %}
+
+<section>
+<h2>Relevance: nDCG@10 by mode</h2>
+<p class="note">N/A marks a mode the engine does not support (reasons below). ⚠ marks a score
+whose results broke the mode's contract (filter or order violations); it does not measure that mode.</p>
+<div class="scroll"><table class="matrix">
+  <thead><tr><th>Engine</th><th>Model</th>{% for g in view.columns %}<th>{{ g|group }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for row in view.matrix %}
+    <tr>
+      <th scope="row"><a href="runs/{{ row.run.run_id }}.html">{{ row.run.label }}</a></th>
+      <td>{{ row.run.model }}</td>
+      {% if row.run.failure %}
+      <td class="failed" colspan="{{ view.columns|length }}">{{ row.run.status }}: {{ row.run.failure }}</td>
+      {% else %}
+      {% for c in row.cells %}
+      <td class="num {{ c.kind }}"{% if c.note %} title="{{ c.note }}"{% endif %}>{% if c.kind == "violated" %}⚠ {% endif %}{{ c.text }}</td>
+      {% endfor %}
+      {% endif %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% if view.na_notes %}
+<h3>Not applicable</h3>
+<ul class="notes">
+{% for n in view.na_notes %}
+  <li><strong>{{ n.label }}</strong> — {{ n.groups|map("group")|join(", ") }}: {{ n.reason }}</li>
+{% endfor %}
+</ul>
+{% endif %}
+</section>
+
+<section>
+<h2>Imperfect queries</h2>
+<p class="note">nDCG@10 on the original queries, and the change when the same queries carry a
+typo, are cut short (search as you type) or use a synonym. Perturbation rules are in the methodology.</p>
+<div class="scroll"><table>
+  <thead><tr><th>Engine</th><th>Model</th><th>Mode</th><th>original</th><th>typo</th><th>prefix</th><th>synonym</th></tr></thead>
+  <tbody>
+  {% for r in view.perturbations %}
+    <tr>
+      <th scope="row">{{ r.run.label }}</th><td>{{ r.run.model }}</td><td>{{ r.group|group }}</td>
+      <td class="num">{{ r.original|score }}</td>
+      {% for p in ["typo", "prefix", "synonym"] %}<td class="num delta">{{ r.deltas[p]|delta }}</td>{% endfor %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+</section>
+
+{% if view.models %}
+<section>
+<h2>Embedding models</h2>
+{% for t in view.models %}
+<h3>{{ t.group|group }}: nDCG@10</h3>
+<div class="scroll"><table>
+  <thead><tr><th>Engine</th>{% for m in s.models %}<th>{{ m }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for row in t.rows %}
+    <tr><th scope="row">{{ row.label }}</th>{% for c in row.cells %}<td class="num {{ c.kind }}"{% if c.note %} title="{{ c.note }}"{% endif %}>{{ c.text }}</td>{% endfor %}</tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% endfor %}
+</section>
+{% endif %}
+
+{# performance #}
+
+<section>
+<h2>Runs</h2>
+<ul class="runs">
+{% for r in s.runs %}
+  <li><a href="runs/{{ r.run_id }}.html">{{ r.label }} · {{ r.model }}</a> — {{ r.status }}</li>
+{% endfor %}
+</ul>
+</section>
+{% endblock %}

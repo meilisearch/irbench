@@ -9,6 +9,7 @@ from irbench.lint import lint_repo
 from irbench.models import QueryTask
 from irbench.paths import Workspace
 from irbench.publish import publish_run
+from irbench.report.render import DEFAULT_DOCS_URL, build_site
 from irbench.runs import STAGES, RunSpec
 from irbench.score.relevance import score_relevance
 from irbench.stages.embed import embed_scenario
@@ -172,4 +173,23 @@ def publish(
         else:
             typer.echo(f"published {dest.relative_to(root) if dest.is_relative_to(root) else dest}")
     if failed:
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def report(
+    results: Path = typer.Option(..., "--results", help="results/ or .irbench/runs for a preview."),
+    out: Path = typer.Option(..., "--out", help="Output directory (replaced on every build)."),
+    docs_url: str = typer.Option(DEFAULT_DOCS_URL, "--docs-url"),
+) -> None:
+    """Build the static HTML report from run bundles."""
+    try:
+        site = build_site(results, out, docs_url)
+    except (FileNotFoundError, FileExistsError) as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(code=1) from e
+    for u in site.unreadable:
+        typer.echo(f"unreadable bundle {u.path}: {u.error}", err=True)
+    typer.echo(f"report: {len(site.pages)} pages in {out}")
+    if site.unreadable:
         raise typer.Exit(code=1)

@@ -468,6 +468,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
+    { name = "jinja2" },
     { name = "numpy" },
     { name = "pyarrow" },
     { name = "pydantic" },
@@ -494,6 +495,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
+    { name = "jinja2", specifier = ">=3.1" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "openai", marker = "extra == 'embed-api'", specifier = ">=1.40" },
     { name = "pyarrow", specifier = ">=16" },
