@@ -1,9 +1,12 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+import httpx
+
 from irbench.embed.base import Embedder, render_doc_text
 from irbench.embed.cache import VectorCache, embed_with_cache
 from irbench.embed.models import get_embedder
+from irbench.embed.publish import download_published, find_published
 from irbench.embed.vectors import write_vectors
 from irbench.io import read_jsonl
 from irbench.paths import Workspace
@@ -20,10 +23,17 @@ class EmbedResult:
     n_docs: int
     n_queries: int
     n_computed: int
+    source: str = "computed"  # or "published": downloaded from embeddings/published.yaml
 
 
 def embed_scenario(
-    root: Path, scenario_id: str, model_id: str, embedder: Embedder | None = None
+    root: Path,
+    scenario_id: str,
+    model_id: str,
+    embedder: Embedder | None = None,
+    *,
+    compute: bool = False,
+    client: httpx.Client | None = None,
 ) -> EmbedResult:
     ws = Workspace(root)
     variants_path = ws.scenario_dir(scenario_id) / "queries.variants.jsonl"
@@ -31,6 +41,15 @@ def embed_scenario(
         raise FileNotFoundError(
             f"{variants_path} missing: run `irbench prepare --scenario {scenario_id}` first"
         )
+
+    # An injected embedder or --compute means "compute"; otherwise prefer published vectors.
+    if embedder is None and not compute:
+        entry = find_published(root, scenario_id, model_id)
+        if entry is not None:
+            docs_path, queries_path = download_published(root, entry, client)
+            return EmbedResult(
+                docs_path, queries_path, entry.docs.count, entry.queries.count, 0, "published"
+            )
 
     scenario = load_scenario(root, scenario_id)
     emb = embedder or get_embedder(model_id)

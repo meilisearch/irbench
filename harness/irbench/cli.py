@@ -4,6 +4,7 @@ from pathlib import Path
 import typer
 
 from irbench import __version__
+from irbench.embed.publish import DEFAULT_RELEASE, REGISTRY, RELEASE_REPO, pack_vectors
 from irbench.io import read_json, read_jsonl, read_qrels, read_run
 from irbench.lint import lint_repo
 from irbench.models import QueryTask
@@ -19,6 +20,9 @@ from irbench.stages.run import run_pipeline
 app = typer.Typer(no_args_is_help=True, help="IRBench: information retrieval benchmark harness.")
 
 ROOT_OPTION = typer.Option(Path.cwd(), "--root", help="Repository root.")
+
+vectors_app = typer.Typer(no_args_is_help=True, help="Pack embedding vectors for publishing.")
+app.add_typer(vectors_app, name="vectors")
 
 
 @app.callback()
@@ -52,12 +56,45 @@ def prepare(
 def embed(
     scenario: str = typer.Option(..., "--scenario"),
     model: str = typer.Option(..., "--model", help="Model id from the embedding registry."),
+    compute: bool = typer.Option(
+        False, "--compute", help="Embed locally even when published vectors exist."
+    ),
     root: Path = ROOT_OPTION,
 ) -> None:
-    """Embed docs and query variants with one model (cached, resumable)."""
-    r = embed_scenario(root, scenario, model)
-    typer.echo(f"{model}: {r.n_docs} docs, {r.n_queries} queries, {r.n_computed} newly embedded")
+    """Embed docs and query variants with one model, or download its published vectors."""
+    r = embed_scenario(root, scenario, model, compute=compute)
+    typer.echo(
+        f"{model}: {r.n_docs} docs, {r.n_queries} queries, {r.n_computed} newly embedded "
+        f"({r.source})"
+    )
     typer.echo(f"docs: {r.docs_path}\nqueries: {r.queries_path}")
+
+
+@vectors_app.command("pack")
+def vectors_pack(
+    scenario: str = typer.Option(..., "--scenario"),
+    model: str = typer.Option(..., "--model"),
+    release: str = typer.Option(DEFAULT_RELEASE, "--release", help="GitHub release tag."),
+    out: Path = typer.Option(Path("dist/vectors"), "--out"),
+    root: Path = ROOT_OPTION,
+) -> None:
+    """Copy computed vectors into release assets and record them in embeddings/published.yaml."""
+    out_dir = out if out.is_absolute() else root / out
+    entry, files = pack_vectors(root, scenario, model, out_dir, release)
+    typer.echo(
+        f"packed {entry.docs.count} doc and {entry.queries.count} query vectors "
+        f"(dim {entry.docs.dim}); updated {REGISTRY}"
+    )
+    typer.echo("upload them, then commit the registry:")
+    typer.echo(
+        f"  gh release view {release} -R {RELEASE_REPO} >/dev/null 2>&1 || "
+        f"gh release create {release} -R {RELEASE_REPO} --title 'Published vectors' "
+        "--notes 'Embedding vectors used by IRBench runs.'"
+    )
+    typer.echo(
+        f"  gh release upload {release} {' '.join(str(f) for f in files)} "
+        f"-R {RELEASE_REPO} --clobber"
+    )
 
 
 @app.command()

@@ -80,7 +80,7 @@ def run_pipeline(
             return {"tasks": prepare(root, spec.scenario, client=prepare_client).n_tasks}
         if stage == "embed":
             result = embed_scenario(root, spec.scenario, spec.model, embedder)
-            return {"computed": result.n_computed}
+            return {"computed": result.n_computed, "source": result.source}
         if stage == "up":
             runtime.up()
             manifest["engine_image"] = runtime.image_info()
