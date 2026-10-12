@@ -112,8 +112,7 @@ def _check_engine_files(root: Path, engine_dir: Path) -> list[Finding]:
     ]
     compose = engine_dir / "docker" / "compose.yaml"
     if compose.exists():
-        data = yaml.safe_load(compose.read_text(encoding="utf-8")) or {}
-        image = data.get("services", {}).get("engine", {}).get("image")
+        image = _compose_image(compose.read_text(encoding="utf-8"))
         match = IMAGE_RE.match(image or "")
         if not match or match["tag"] == "latest":
             out.append(
@@ -124,6 +123,19 @@ def _check_engine_files(root: Path, engine_dir: Path) -> list[Finding]:
                 )
             )
     return out
+
+
+def _compose_image(text: str) -> str | None:
+    # A malformed compose file (bad YAML, or `services`/`services.engine` not a mapping)
+    # has no image to pin; the caller turns that into an `image-pin` finding, not a crash.
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError:
+        return None
+    services = data.get("services") if isinstance(data, dict) else None
+    engine = services.get("engine") if isinstance(services, dict) else None
+    image = engine.get("image") if isinstance(engine, dict) else None
+    return image if isinstance(image, str) else None
 
 
 def _check_config(

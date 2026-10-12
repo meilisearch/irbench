@@ -149,6 +149,22 @@ def test_image_with_digest_is_accepted(tmp_path):
     assert lint(make_repo(tmp_path, {"default": {}}, image=image))[1] == []
 
 
+@pytest.mark.parametrize(
+    "compose_text",
+    [
+        "services:\n",  # services is null
+        "services: [engine]\n",  # services is a list
+        "services:\n  engine: nginx\n",  # services.engine is a string
+        "- a\n",  # the whole document is a list
+        "services: [\n",  # invalid YAML
+    ],
+)
+def test_malformed_compose_is_a_finding_not_a_crash(tmp_path, compose_text):
+    root = make_repo(tmp_path, {"default": {}})
+    (root / "engines" / "eng" / "docker" / "compose.yaml").write_text(compose_text)
+    assert rules(lint(root)[1]) == ["image-pin"]
+
+
 def test_missing_engine_files_are_flagged(tmp_path):
     _, findings = lint(make_repo(tmp_path, {"default": {}}, skip=("README.md",)))
     assert rules(findings) == ["engine-files"]
