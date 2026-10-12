@@ -41,7 +41,7 @@
 2. **A Postgres request file given to an HTTP target, or the reverse.** The loadgen refuses to start with a clear message instead of counting every request as an error. Test: Task 5 `rejects_protocol_mismatch`.
 3. **A statement that exceeds the 10 s timeout during relevance.** It becomes an `EngineError` (task scored 0, logged), and the connection stays usable for the next task. Test: Task 2 `test_timeout_is_an_engine_error_and_connection_survives` (docker).
 4. **A document with null numeric fields or empty text fields.** It loads, never matches a numeric range filter, sorts last, and an empty field contributes nothing to keyword scoring. Tests: Task 3 contract fixture includes such docs; `test_sorted_keyword_orders_and_puts_missing_values_last` already covers ordering.
-5. **The synonym file drifts from `synonyms.txt`.** A test fails and prints the expected file content. Test: Task 3 `test_synonym_file_matches_scenario_synonyms`.
+5. **The synonym file drifts from `synonyms.txt`.** A test fails and prints the expected file content. Test: Task 3 `test_thesaurus_file_matches_scenario_synonyms`.
 
 ---
 

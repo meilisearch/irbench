@@ -15,6 +15,8 @@ Benchmark Postgres as two engines, with the extensions people actually use for s
 
 Both run the existing scenario (`ecommerce/product-search` on WANDS) through the full pipeline (relevance and performance) and appear in the report next to Meilisearch, Elasticsearch and Qdrant. Comparing the two Postgres engines shows what the extension adds.
 
+Both engines use database `irbench`, user `postgres`, password `irbench` (local benchmark only). Host ports: `postgres` 15432, `postgres-paradedb` 15433 (both map to 5432 in the container).
+
 Non-goals: other engines; Postgres-specific scenarios; the published-vector reuse fix (tracked separately).
 
 ## 2. Decisions (agreed with the user)
@@ -27,6 +29,7 @@ Non-goals: other engines; Postgres-specific scenarios; the published-vector reus
 | Vanilla keyword matching | Postgres as shipped: `websearch_to_tsquery('english', …)`, which requires every term (AND). Documented; a tuned track may change it. |
 | pgvector `ef_search` | `hnsw.ef_search = 100` (the default 40 caps results below the scenario's `top_k = 100`) and `hnsw.iterative_scan = relaxed_order` (filtered vector queries can fill top_k). Both are set with a `justification:` as the minimum to load the scenario. |
 | ParadeDB matching | Disjunction (`|||`), matching Elasticsearch's `multi_match` and BM25 convention. |
+| ParadeDB `plan_cache_mode` | `force_custom_plan`, set per database with a `justification:`. pg_search's boost cast on a bound parameter (`$n::text::pdb.boost(k)`) fails once Postgres switches a prepared statement to a generic plan (psycopg after 5 executions; the loadgen always prepares). Cost: every ParadeDB execution, semantic ones included, is planned each time; vanilla Postgres runs with the default `auto`. |
 
 ## 3. Request protocol (amends parent §5 step 5)
 
@@ -55,7 +58,7 @@ Rendered request files gain a second protocol. The parent spec's `{protocol: htt
 
 - Schema: one table `docs` with the scenario's fields (text fields `text`, numeric fields `double precision`, multi-valued fields `text[]`), the original id as `id text primary key`, and `embedding vector(dim)`.
 - Load with `COPY ... FROM STDIN` in batches; then `CREATE INDEX` for text search (GIN or BM25), HNSW on `embedding` (`vector_cosine_ops`, defaults `m = 16`, `ef_construction = 64`), and B-tree indexes on filterable/sortable numeric columns. Then `ANALYZE`.
-- pgvector settings (`hnsw.ef_search`, `hnsw.iterative_scan`) are applied with `ALTER DATABASE irbench SET ...`, which every new connection picks up (including the loadgen's), and with `SET` on the indexing session.
+- Database settings (`hnsw.ef_search`, `hnsw.iterative_scan`, and on ParadeDB `plan_cache_mode = force_custom_plan`, see §2) are applied with `ALTER DATABASE irbench SET ...`, which every new connection picks up (including the loadgen's), and with `SET` on the indexing session.
 - Vanilla synonyms come from a dictionary file committed in `engines/postgres/docker/tsearch/` and mounted read-only into `/usr/share/postgresql/17/tsearch_data/` (that directory is root-owned, so the file cannot be written from a SQL session).
 - The BM25 index (ParadeDB) is `CREATE INDEX ... USING bm25 (id, <fields>)` without `key_field`, which is deprecated and a no-op in pg_search 0.26.
 - "Indexed" = every `CREATE INDEX` and `ANALYZE` has returned. Indexing time covers load + index builds. Memory and disk come from the same container metrics as the other engines (`memory.peak`, data directory size).
@@ -64,15 +67,15 @@ Rendered request files gain a second protocol. The parent spec's `{protocol: htt
 
 - `requests.rs` accepts `protocol: "postgres"` files; `Target` gains a Postgres variant (connection string from the run config, passed by the harness like `--base-url` today).
 - One `tokio-postgres` connection per concurrent client, opened before the measured phase. Statements are prepared once per connection per distinct SQL text, then executed with each file's params.
-- A request completes when all rows are received. Errors (SQL error, timeout via `statement_timeout`, broken connection) count as errors; the step-validity and max-QPS rules are unchanged.
+- A request completes when all rows are received. Errors (SQL error, timeout via `statement_timeout`, broken connection) count as errors. A client-side timeout of `statement_timeout` plus a 1 s margin guards against a stalled connection; a request that hits it, or whose connection is broken, is an error and the connection is replaced (statements re-prepared) before the next request. Connects are bounded by the same timeout, and a failed reconnect is retried on the next request; the step-validity and max-QPS rules are unchanged.
 - The HTTP path is unchanged.
 
 ## 5. Mode mapping
 
 | Mode | `postgres` | `postgres-paradedb` |
 |---|---|---|
-| Keyword | Generated `tsvector` column with GIN index; `websearch_to_tsquery('english', $1::text)`; `ts_rank` with default weights | BM25 index (pg_search) over the searchable fields, no `key_field`; per-field `col ||| $n::text::pdb.boost(k)` combined with OR; scored with `pdb.score(id)`. The default tokenizer does not stem (same as Elasticsearch's standard analyzer) |
-| Field priority | `setweight` A–D in scenario order; 5 fields onto 4 classes: `name` A, `product_class` B, `category` C, `features` and `description` D (documented) | Per-field boost `n − i` (`name` 5 … `description` 1), the same precedent as the Elasticsearch and Qdrant adapters |
+| Keyword | Generated `tsvector` column with GIN index; `websearch_to_tsquery('english', $1::text)`; `ts_rank` with default weights | BM25 index (pg_search) over the searchable fields, no `key_field`; per-field `col ||| $n::text::pdb.boost(k)` combined with OR; scored with `pdb.score(id)`, ordered by score alone with no `id` tie-break, because pg_search pushes a Top-K order down to the BM25 index only when the whole `ORDER BY` is the score (equal scores come back in arbitrary order). The default tokenizer does not stem (same as Elasticsearch's standard analyzer) |
+| Field priority | `setweight` A–D in scenario order; 5 fields onto 4 classes: `name` A, `product_class` B, `category` C, `features` and `description` D (documented) | Per-field boost `n − i` (`name` 5 … `description` 1), one clause per field with summed scores, like Qdrant (Elasticsearch's `multi_match` `best_fields` takes the best field instead) |
 | Typo / prefix | None (not in Postgres FTS by default); documented | Fuzzy matching is opt-in in ParadeDB, off in the default track; a tuned track may enable it with a justification |
 | Synonyms | Built-in `thesaurus` dictionary (sub-dictionary `english_stem`, so both sides are stemmed and unify) in the text search configuration, built from `synonyms.txt`. Groups with digit tokens (`3 seater`, `2 drawer`) are dropped because `websearch_to_tsquery` does not expand multi-word thesaurus phrases in queries; they are listed in the README. | Not supported by pg_search 0.26.1; declared with `synonyms: <reason>` |
 | Semantic | `ORDER BY embedding <=> $1::text::vector LIMIT top_k` with HNSW | same |
@@ -100,7 +103,7 @@ Amended: "Hybrid uses the engine's native fusion. For SQL engines, a fusion quer
 
 ## 8. Testing
 
-- Spike first, on the pinned images: pg_search boost syntax, default tokenizer, synonym support, pgvector `iterative_scan`, the RRF and facet statements, and `EXPLAIN` showing each mode uses its index (GIN, BM25, HNSW) rather than a sequential scan.
+- A spike on the pinned images preceded implementation and covered: pg_search boost syntax, default tokenizer, synonym support, pgvector `iterative_scan`, the RRF and facet statements, and `EXPLAIN` showing each mode uses its index (GIN, BM25, HNSW) rather than a sequential scan.
 - Unit: rendered SQL and params per mode for both adapters; `Request` round-trip for both protocols; loadgen parsing of Postgres files.
 - Contract (Docker): both engines join `harness/tests/test_contract.py`'s known-answer tests for every mode they claim; declared N/A and synonym skips come from their configs.
 - Loadgen: the Postgres path is tested against a real Postgres container (gated so plain `cargo test` stays offline; run in CI's contract job).
