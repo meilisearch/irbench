@@ -10,8 +10,8 @@ Benchmark Postgres as two engines, with the extensions people actually use for s
 
 | Engine folder | Image | Search stack |
 |---|---|---|
-| `engines/postgres` | `pgvector/pgvector:pg17` (pinned tag, digest recorded) | built-in full-text search (`tsvector`) + pgvector |
-| `engines/postgres-paradedb` | `paradedb/paradedb` (pinned tag, digest recorded) | pg_search (BM25) + pgvector |
+| `engines/postgres` | `pgvector/pgvector:0.8.7-pg17` (digest recorded) | built-in full-text search (`tsvector`) + pgvector |
+| `engines/postgres-paradedb` | `paradedb/paradedb:0.26.1-pg17` (digest recorded; ships pg_search 0.26.1 and pgvector 0.8.6) | pg_search (BM25) + pgvector |
 
 Both run the existing scenario (`ecommerce/product-search` on WANDS) through the full pipeline (relevance and performance) and appear in the report next to Meilisearch, Elasticsearch and Qdrant. Comparing the two Postgres engines shows what the extension adds.
 
@@ -37,7 +37,9 @@ Rendered request files gain a second protocol. The parent spec's `{protocol: htt
 {"protocol": "postgres", "sql": "SELECT id FROM docs WHERE ... LIMIT $3", "params": ["sofa", [0.01, ...], 100]}
 ```
 
-- `sql` uses positional placeholders `$1..$n`; `params` is a JSON array. Typed values: strings, numbers, booleans, null, and a vector as a JSON array of floats, bound as a pgvector `vector` (the SQL casts it: `$2::vector`).
+- `sql` uses positional placeholders `$1..$n`; `params` is a JSON array. Typed values: strings, numbers, booleans, null, and a vector as a JSON array of floats.
+- Params are bound as text. Every placeholder is written `$n::text`, optionally followed by a further cast (`$2::text::vector`, `$3::text::int`).
+- Bind rule, identical in the Python and Rust clients: null → NULL; bool → `true`/`false`; int → decimal; float → shortest repr; string → itself; list of numbers → pgvector literal `[a,b,...]`.
 - The file stays the single source of truth: relevance and perf execute exactly this SQL with these params.
 - Results are rows. The adapter's `parse` reads them: column `id` (text) in rank order; for faceted queries, facet rows are returned by the same statement (see §5).
 
@@ -53,6 +55,9 @@ Rendered request files gain a second protocol. The parent spec's `{protocol: htt
 
 - Schema: one table `docs` with the scenario's fields (text fields `text`, numeric fields `double precision`, multi-valued fields `text[]`), the original id as `id text primary key`, and `embedding vector(dim)`.
 - Load with `COPY ... FROM STDIN` in batches; then `CREATE INDEX` for text search (GIN or BM25), HNSW on `embedding` (`vector_cosine_ops`, defaults `m = 16`, `ef_construction = 64`), and B-tree indexes on filterable/sortable numeric columns. Then `ANALYZE`.
+- pgvector settings (`hnsw.ef_search`, `hnsw.iterative_scan`) are applied with `ALTER DATABASE irbench SET ...`, which every new connection picks up (including the loadgen's), and with `SET` on the indexing session.
+- Vanilla synonyms come from a dictionary file committed in `engines/postgres/docker/tsearch/` and mounted read-only into `/usr/share/postgresql/17/tsearch_data/` (that directory is root-owned, so the file cannot be written from a SQL session).
+- The BM25 index (ParadeDB) is `CREATE INDEX ... USING bm25 (id, <fields>)` without `key_field`, which is deprecated and a no-op in pg_search 0.26.
 - "Indexed" = every `CREATE INDEX` and `ANALYZE` has returned. Indexing time covers load + index builds. Memory and disk come from the same container metrics as the other engines (`memory.peak`, data directory size).
 
 ### 4.3 Loadgen (perf stage)
@@ -66,15 +71,15 @@ Rendered request files gain a second protocol. The parent spec's `{protocol: htt
 
 | Mode | `postgres` | `postgres-paradedb` |
 |---|---|---|
-| Keyword | Generated `tsvector` column with GIN index; `websearch_to_tsquery('english', $1)`; `ts_rank` with default weights | BM25 index (pg_search) over the searchable fields; disjunction `|||` |
+| Keyword | Generated `tsvector` column with GIN index; `websearch_to_tsquery('english', $1::text)`; `ts_rank` with default weights | BM25 index (pg_search) over the searchable fields, no `key_field`; per-field `col ||| $n::text::pdb.boost(k)` combined with OR; scored with `pdb.score(id)`. The default tokenizer does not stem (same as Elasticsearch's standard analyzer) |
 | Field priority | `setweight` A–D in scenario order; 5 fields onto 4 classes: `name` A, `product_class` B, `category` C, `features` and `description` D (documented) | Per-field boost `n − i` (`name` 5 … `description` 1), the same precedent as the Elasticsearch and Qdrant adapters |
 | Typo / prefix | None (not in Postgres FTS by default); documented | Fuzzy matching is opt-in in ParadeDB, off in the default track; a tuned track may enable it with a justification |
-| Synonyms | Built-in synonym dictionary in the `english` text search configuration, built from `synonyms.txt`. Single-word groups only; multi-word entries are dropped and listed in the README. | Loaded if pg_search supports synonyms on the pinned version (verified in the spike); otherwise declared `synonyms: <reason>` |
-| Semantic | `ORDER BY embedding <=> $1::vector LIMIT top_k` with HNSW | same |
+| Synonyms | Built-in synonym dictionary in the `english` text search configuration, built from `synonyms.txt`. Single-word groups only; multi-word entries are dropped and listed in the README. | Not supported by pg_search 0.26.1; declared with `synonyms: <reason>` |
+| Semantic | `ORDER BY embedding <=> $1::text::vector LIMIT top_k` with HNSW | same |
 | Hybrid | RRF (k = 60) over a keyword CTE and a vector CTE (each top_k), one statement | same pattern, as published in ParadeDB's hybrid search docs |
 | Filtered | `WHERE` predicates (`=` on text, `>=`/`<=` on numeric) | `WHERE` predicates, or pg_search's own filter syntax if ParadeDB documents it as the way to keep the BM25 index in play |
 | Sorted | `ORDER BY <field> <dir> NULLS LAST`: over every keyword match on the keyword base, over the top_k nearest on the semantic base (same rules as the other engines) | same |
-| Faceted | Facet counts over the query's own result set in the same statement (`GROUP BY` over the matched rows, returned alongside the hits) | same |
+| Faceted | Facet counts over the query's own match set (keyword: every match; semantic: every document passing the filter), in the same statement as the hits (`GROUP BY` over that set, returned alongside the top `limit` hits) | same |
 
 All parameters not listed here are each engine's defaults. Every non-default setting in `configs/ecommerce/product-search.yaml` carries a `justification:` (enforced by `irbench lint`).
 
