@@ -1,0 +1,75 @@
+---
+title: Introduction
+description: What IRBench measures, and what it deliberately does not claim
+---
+
+IRBench is a public, reproducible benchmark that measures **relevance** and
+**performance** of search engines and embedding models on realistic, imperfect
+search scenarios (e-commerce, media, knowledge base, …).
+
+## What it is
+
+- A declarative way to configure each engine's indexing and query settings,
+  isolated per engine, editable by that engine's community through a pull
+  request.
+- A "requests as data" architecture: every request an engine receives is
+  rendered to a file and inspectable before it is sent.
+- A hybrid query set: real queries and human relevance judgments from public
+  datasets, plus a seeded, documented perturbation layer (typo, prefix,
+  synonym) that tests robustness to imperfect queries.
+- A performance harness that replays the exact same rendered requests against
+  a pinned reference machine.
+
+## What it is not
+
+IRBench does not try to prove that any engine is better than another. The
+project is maintained by Meilisearch, but it is built to stay credible to
+Meilisearch's competitors: configuration is declarative and isolated per
+engine, and anyone can open a pull request to change how their engine is
+configured.
+
+Relevance and performance are never blended into one score. Results are
+always shown broken down by query imperfection (typo, prefix, synonym) and by
+performance dimension (latency, throughput, indexing cost) — there is no
+leaderboard number and no ranking.
+
+### Success criteria
+
+- Anyone can reproduce a published result with one command on the reference
+  hardware profile.
+- Every engine's configuration is declarative, isolated, and editable by that
+  engine's community through a PR.
+- Every request sent to an engine is inspectable as a file.
+- Results show relevance broken down by query imperfection (typo, prefix,
+  synonym), and performance (latency, throughput, indexing cost) separately —
+  never blended into one score.
+
+## v0.1 scope
+
+The first vertical slice covers:
+
+- **Scenario:** `ecommerce/product-search`, on the **WANDS** dataset (Wayfair;
+  ~43k products, 480 queries, human judgments, MIT license).
+- **Engines:** Meilisearch, Elasticsearch, Qdrant.
+- **Modes:** keyword, semantic, hybrid, filtered, sorted, faceted — unsupported
+  modes are marked N/A rather than worked around.
+- **Models:** `bge-small-en-v1.5` (open) and `text-embedding-3-small` (API,
+  cached and published so reproduction needs no API key).
+
+Later milestones add more engines (Typesense, OpenSearch, Lucene, Postgres,
+Milvus, Pinecone relevance-only), more datasets and scenarios, more models,
+and an LLM-generated query track labelled separately from the human-judged
+one.
+
+## Neutrality
+
+IRBench is maintained by Meilisearch, but:
+
+- Every engine's configuration lives in its own folder under `engines/` and
+  is editable by that engine's community through a PR.
+- Parity rules are machine-checked (see
+  [Parity rules](/methodology/parity)) so that no engine's configuration can
+  be fitted to the query set or given an undocumented advantage.
+- Only results produced on the pinned reference hardware profile are
+  published; anything run on a developer machine is for local iteration only
+  and is never published or compared.

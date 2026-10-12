@@ -1,0 +1,63 @@
+---
+title: Parity rules
+description: The fairness rules every engine configuration must follow, and how they're checked
+---
+
+Parity rules keep engine configurations comparable: no engine should win or
+lose because of an advantage the benchmark gave it rather than one the engine
+earned. The rules are documented here and, where they can be, checked
+automatically by `uv run irbench lint` in CI.
+
+## The rules
+
+- **Same searchable fields and priority order.** Taken from the scenario's
+  `index_fields.searchable` list. Engines with no native field-weighting
+  mechanism use their closest native equivalent, noted in their config.
+- **One shared `synonyms.txt` per scenario.** An engine either loads it, or
+  declares `synonyms: unsupported` with a reason.
+- **Same vectors, cosine similarity, same top-k.** ANN parameters start at
+  each engine's documented defaults; any change requires a `justification:`
+  entry.
+- **Hybrid uses the engine's native fusion only.** No harness-side fusion is
+  applied. If an engine has no native fusion, hybrid is N/A for it.
+- **Typo tolerance, prefix search, stemming: language defaults.** Settings
+  that are required just to turn a feature on (e.g. `fuzziness: AUTO`) are
+  allowed and stay visible in the config.
+- **Modes are supported natively or through a documented, commonly used
+  extension** (e.g. pgvector, ParadeDB/pg_search for Postgres). No custom
+  workarounds.
+- **No per-query or qrels-fitted tuning.** CI rejects any config containing
+  query IDs or query strings from the query set.
+
+## Tracks
+
+- **default** — the engine as shipped, plus the minimum configuration needed
+  to load the scenario's schema (field names, types, vector dimension). No
+  setting departs from the engine's own defaults without a reason.
+- **tuned** — changes within the parity rules above, contributed through a
+  PR, and credited in the report.
+
+## Rules `irbench lint` enforces
+
+| Rule | What it catches | Example |
+|---|---|---|
+| `unjustified-setting` | A setting in `index` or `search.<base>` that departs from the engine as shipped, with no matching `justification:` entry. | Meilisearch's config moves `sort` first in `rankingRules` and must carry a `justification.rankingRules` explaining why. |
+| `unsupported-key` | An `unsupported` key that isn't `<mode>`, `<mode>:<base>` or `*:<base>`. | Qdrant's `unsupported: {"*:keyword": "..."}` is valid; `unsupported: {"keyword-ish": "..."}` would not be. |
+| `query-leak` | A string value under `index` or `search` that equals, contains, or is an id of a query or task from the prepared query set. | A config hard-coding a WANDS query string or query id inside a `search.keyword` body. |
+| `image-pin` | The compose file's `services.engine.image` has no version tag, or is pinned to `latest`. | `image: qdrant/qdrant:latest` fails; `image: qdrant/qdrant:v1.19.2` passes. |
+| `engine-files` | A required file is missing for an engine: `adapter.py`, `README.md`, or `docker/compose.yaml`. | An engine folder with no `README.md` fails lint even if its adapter works. |
+| `config-load` | An engine config fails to load or validate (bad YAML, unknown top-level key, invalid track). | A config with a typo'd top-level key instead of `default`/`tuned`/`credits`. |
+| `not-prepared` | The scenario a config targets hasn't been prepared yet, so its query set can't be checked for leaks. | Running `irbench lint` before `irbench prepare --scenario ecommerce/product-search`. |
+
+## How N/A is decided and shown
+
+An adapter reports a mode as not applicable through its config's
+`unsupported` map, keyed by `<mode>:<base>`, `<mode>` (every base), or
+`*:<base>` (every mode on that base), each mapped to a short reason. For
+example, Qdrant's config marks `*:keyword` (and therefore `hybrid`, which
+needs keyword retrieval) and `faceted:semantic` as unsupported, each with the
+reason shown in the report. Tasks whose mode/base combination resolves to an
+`unsupported` entry are written to `na.json` during the `render` stage,
+excluded from scoring, and listed in the run's `not_applicable` map
+(`scores.json`) rather than scored as zero — N/A is never counted against an
+engine's relevance numbers.

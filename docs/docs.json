@@ -1,0 +1,15 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "IRBench",
+  "colors": { "primary": "#2a78d6" },
+  "navigation": {
+    "groups": [
+      { "group": "Get started", "pages": ["index", "quickstart"] },
+      { "group": "Methodology", "pages": ["methodology/overview", "methodology/parity", "methodology/performance"] },
+      { "group": "Contributing", "pages": ["contributing/engine-config", "contributing/new-engine"] },
+      { "group": "Reference", "pages": ["reference/cli", "reference/results"] }
+    ]
+  },
+  "footer": { "socials": { "github": "https://github.com/meilisearch/irbench" } }
+}

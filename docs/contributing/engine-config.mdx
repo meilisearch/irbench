@@ -1,0 +1,108 @@
+---
+title: Editing an engine config
+description: The file most contributors touch — layout, a worked tuned example, and PR checks
+---
+
+Most contributions to IRBench are a single file:
+`engines/<engine>/configs/<scenario>.yaml`. This page explains its layout,
+using Meilisearch's `engines/meilisearch/configs/ecommerce/product-search.yaml`
+as the reference.
+
+## Layout
+
+```yaml
+default:
+  index: {}
+  search: {}
+  unsupported: {}
+  justification: {}
+tuned:
+  # same shape, deep-merged over `default`
+credits:
+  - name: "..."
+    url: "..."
+```
+
+- **`default`** — the engine as shipped, plus the minimum needed to load the
+  scenario's schema. The adapter generates the rest (searchable order,
+  filterable/sortable/facet fields, synonyms, embedder wiring) from the
+  scenario itself; this block only needs settings that don't follow from the
+  schema automatically, such as Meilisearch's `rankingRules` override.
+- **`tuned`** — optional. Changes within the [parity rules](/methodology/parity),
+  deep-merged over `default`. This is where community tuning PRs land.
+- **`credits`** — optional list of `{name, url}` entries, shown on the
+  report's run page for the `tuned` track. The `default` track is always
+  "engine as shipped" and carries no credits.
+
+### Keys inside a track
+
+- **`index`** — merged into the index/collection creation request.
+- **`search.<base>`** (`keyword`, `semantic`, or `hybrid`) — merged into
+  search request bodies for that retrieval base only.
+- **`unsupported`** — maps a mode key (`<mode>`, `<mode>:<base>`, or
+  `*:<base>`) to a short reason; see [N/A handling](/methodology/parity#how-na-is-decided-and-shown).
+- **`justification`** — maps a setting path (e.g. `rankingRules`,
+  `index.hnsw.ef`) to prose explaining why it departs from the engine's
+  shipped defaults. Required for every setting under `index` or `search`
+  that isn't already present in Meilisearch's or any other engine's truly
+  default configuration — `irbench lint` enforces this (`unjustified-setting`).
+
+## A worked tuned example
+
+Meilisearch's config moves `sort` first in `rankingRules` under `default`,
+because without it a `sort` parameter only breaks ties after
+words/typo/proximity/attributeRank. Its `justification.rankingRules` entry
+reads:
+
+```yaml
+default:
+  index:
+    rankingRules: [sort, words, typo, proximity, attributeRank, wordPosition, exactness]
+  justification:
+    rankingRules: >-
+      The scenario's sorted mode requires results ordered by the sort field.
+      With the shipped order, `sort` ranks after words/typo/proximity/attributeRank
+      (and after vector similarity), so it only breaks ties. Moving it first makes
+      `sort` strict on both bases. Requests without `sort` are unaffected: the
+      rule is inactive without a sort parameter (checked on v1.54.3 for keyword,
+      semantic and hybrid queries).
+```
+
+A hypothetical community PR enabling fuzziness on Elasticsearch keyword
+queries would add a `tuned` block (from `engines/elasticsearch/configs/ecommerce/product-search.yaml`'s
+header comment):
+
+```yaml
+tuned:
+  search:
+    keyword: {query: {multi_match: {fuzziness: AUTO}}}
+  justification:
+    search.keyword.query.multi_match.fuzziness: >-
+      Enables Elasticsearch's built-in typo tolerance; not on by default.
+credits:
+  - name: "Jane Doe"
+    url: "https://github.com/janedoe"
+```
+
+## Checks a PR must pass
+
+```bash
+uv run irbench lint
+uv run pytest -m docker -k <engine>
+```
+
+- `irbench lint` checks every engine config against the
+  [parity rules](/methodology/parity): unjustified settings, malformed
+  `unsupported` keys, query leaks, image pinning, missing engine files, and
+  config-load errors.
+- `uv run pytest -m docker -k <engine>` runs that engine's adapter contract
+  tests in Docker — it indexes a fixture and checks known-answer queries for
+  every mode the config claims to support.
+
+## Maintainers re-run on the reference machine
+
+CI runs the contract tests and a smoke subset on every PR, but only
+maintainer-run results on the pinned reference hardware profile are
+published (`irbench publish` refuses the `local` profile). A config or
+adapter change doesn't appear in published results until a maintainer has
+re-run it there.
