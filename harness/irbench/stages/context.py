@@ -10,6 +10,7 @@ from irbench.embed.vectors import read_vectors
 from irbench.engines.base import (
     EngineAdapter,
     IndexContext,
+    engine_base_url,
     index_name,
     load_adapter_class,
 )
@@ -119,7 +120,7 @@ class RunContext:
 
     @property
     def base_url(self) -> str:
-        return f"http://{self.spec.host}:{self.adapter_cls.host_port}"
+        return engine_base_url(self.adapter_cls, self.spec.host)
 
     def client(self) -> httpx.Client:
         return self.client_factory(self.base_url)

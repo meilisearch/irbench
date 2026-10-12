@@ -34,13 +34,15 @@ def pg():
         capture_output=True,
     )
     client = PostgresClient(DSN)
-    deadline = time.monotonic() + 60
-    while not client.ping():
-        assert time.monotonic() < deadline, "postgres did not start"
-        time.sleep(1)
-    yield client
-    client.close()
-    subprocess.run(["docker", "rm", "-f", name], capture_output=True)
+    try:
+        deadline = time.monotonic() + 60
+        while not client.ping():
+            assert time.monotonic() < deadline, "postgres did not start"
+            time.sleep(1)
+        yield client
+    finally:
+        client.close()
+        subprocess.run(["docker", "rm", "-f", name], capture_output=True)
 
 
 def test_execute_binds_text_params(pg):
