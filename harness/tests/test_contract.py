@@ -23,7 +23,7 @@ from irbench.terms import load_term_groups
 
 pytestmark = pytest.mark.docker
 
-ENGINES = ["meilisearch", "elasticsearch", "qdrant"]
+ENGINES = ["meilisearch", "elasticsearch", "qdrant", "postgres"]
 INDEX = "irbench_contract"
 TOP_K = 100
 VERIFY_LIMIT = 1000
@@ -165,3 +165,8 @@ def test_facet_counts_match_the_result_set(engine, base):
     check = check_task(task, result, check_ids, engine.docs_by_id, VERIFY_LIMIT)
     assert check.facet_verifiable is True
     assert check.facet_accuracy == 1.0, (result.facets, check_ids)
+
+
+def test_hostile_query_text_is_harmless(engine):
+    engine.search(make_task("keyword", text='sofa\'; DROP TABLE x; -- "grey" | !velvet'))
+    assert engine.search(make_task("keyword", text="sofa")).ids  # still answers afterwards
