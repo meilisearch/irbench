@@ -16,11 +16,12 @@ from irbench.engines.base import (
     require_vector,
 )
 from irbench.engines.config import deep_merge
-from irbench.models import Filter, QueryTask
+from irbench.models import Filter, QueryTask, Sort
 
 BATCH_SIZE = 256
 DENSE = "dense"
 BM25 = "qdrant/bm25"
+LOWEST = 1e18
 
 
 def point_id(doc_id: str) -> int | str:
@@ -143,6 +144,15 @@ class Adapter(EngineAdapter):
             body["filter"] = query_filter
         return body
 
+    @staticmethod
+    def _sort_formula(sort: Sort) -> dict[str, Any]:
+        """Order by the payload value with a formula, not `order_by`, which drops points
+        lacking the field. The formula score is the field alone (no relevance mixed in);
+        a missing value defaults to the lowest score so those points sort last."""
+        if sort.direction == "desc":
+            return {"formula": sort.field, "defaults": {sort.field: -LOWEST}}
+        return {"formula": {"neg": sort.field}, "defaults": {sort.field: LOWEST}}
+
     def _retrieve(
         self,
         task: QueryTask,
@@ -180,7 +190,7 @@ class Adapter(EngineAdapter):
         if task.sort is not None:
             body = {
                 "prefetch": self._retrieve(task, vector, top_k, query_filter),
-                "query": {"order_by": {"key": task.sort.field, "direction": task.sort.direction}},
+                "query": self._sort_formula(task.sort),
             }
         else:
             body = self._retrieve(task, vector, limit, query_filter)

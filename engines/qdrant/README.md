@@ -18,7 +18,7 @@ Image: `qdrant/qdrant:v1.19.2` (host port 16333). Adapter: `adapter.py`.
 - keyword: one prefetch per searchable field (`using: <field>`, `limit: top_k`), combined by a `formula` weighted sum. Field priority follows the scenario order with weight `n - i` (`name` 5 ... `description` 1), missing scores default to 0. This mirrors the Elasticsearch adapter's `name^5 ... description^1` boosts, with one difference: Elasticsearch's `multi_match` takes the best field, while Qdrant formulas have no max, so the fields are summed.
 - hybrid: the keyword query above and the dense query as two prefetches, fused by Qdrant's native `fusion: rrf`.
 - filtered (any base): `filter.must` with `match` / `range`, applied in every prefetch and at the top level.
-- sorted (any base): `prefetch` the base's `top_k` results, then `order_by` the sort field. Qdrant's `order_by` leaves out points that lack the field.
+- sorted (any base): `prefetch` the base's `top_k` results, then rank them with a `formula` query that is the sort field alone (`neg` of it for ascending), so the relevance score is not mixed in. Missing values get a `defaults` entry of `-1e18` (`1e18` before the negation for ascending) and sort last. Qdrant's `order_by` was not used because it leaves out points that lack the field.
 - N/A, with the reason in the config: faceted on every base (Qdrant's facet API counts the points matching a filter, not a query's results).
 - Synonyms: `synonyms.txt` is not loaded (Qdrant's BM25 tokenizer takes no synonym list; expanding queries in the harness would break parity). Declared with the config's `synonyms:` reason.
 

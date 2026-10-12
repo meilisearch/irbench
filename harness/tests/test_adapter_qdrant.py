@@ -147,9 +147,17 @@ def test_sorted_request_reorders_the_nearest_neighbours():
     s = make_task("sorted", "semantic", sort=Sort(field="review_count", direction="desc"))
     assert _body(s) == {
         "prefetch": {"query": V, "using": "dense", "limit": 100},
-        "query": {"order_by": {"key": "review_count", "direction": "desc"}},
+        "query": {"formula": "review_count", "defaults": {"review_count": -1e18}},
         "limit": 100,
         "with_payload": ["id"],
+    }
+
+
+def test_ascending_sort_negates_and_missing_values_still_sort_last():
+    s = make_task("sorted", "semantic", sort=Sort(field="average_rating", direction="asc"))
+    assert _body(s)["query"] == {
+        "formula": {"neg": "average_rating"},
+        "defaults": {"average_rating": 1e18},
     }
 
 
@@ -191,7 +199,7 @@ def test_sorted_keyword_prefetches_the_keyword_ranking_then_orders():
     s = make_task("sorted", "keyword", sort=Sort(field="review_count", direction="desc"))
     assert _body(s, None) == {
         "prefetch": _formula(),
-        "query": {"order_by": {"key": "review_count", "direction": "desc"}},
+        "query": {"formula": "review_count", "defaults": {"review_count": -1e18}},
         "limit": 100,
         "with_payload": ["id"],
     }
