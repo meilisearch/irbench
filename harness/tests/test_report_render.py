@@ -15,6 +15,7 @@ from irbench.report.render import (
     fmt_ms,
     fmt_score,
 )
+from report_fixtures import perf as perf_report
 from report_fixtures import write_bundle
 
 PAGE = "ecommerce__product-search__aws-c7i-4xlarge.html"
@@ -253,6 +254,65 @@ def test_checks_facet_fields_render_dash_for_none(tmp_path):
     build_site(results, out)
     page = read(out, f"runs/{d.name}.html")
     assert ">None<" not in page
+
+
+def test_performance_section(tmp_path):
+    results, out = site(tmp_path)
+    write_bundle(
+        results,
+        "meilisearch",
+        perf_report=perf_report(
+            {"keyword/keyword": (85.0, 4), "semantic/semantic": (30.0, 2)},
+            latency_groups=["keyword/keyword", "semantic/semantic", "filtered/keyword"],
+        ),
+    )
+    write_bundle(
+        results,
+        "qdrant",
+        groups={"semantic/semantic": 0.5},
+        na={"keyword:keyword": "no BM25"},
+        perf_report=perf_report({"semantic/semantic": (100.0, 8)}, skipped=["keyword/keyword"]),
+    )
+    write_bundle(results, "elasticsearch", perf_report=None)
+    build_site(results, out)
+    page = read(out, PAGE)
+
+    assert page.count('<svg class="chart"') == 2  # keyword, semantic for one model
+    assert "340" in page  # meilisearch keyword max QPS (85 × 4)
+    assert "2.50 / 12.2" in page  # p50 / p99 latency cell
+    assert "no BM25" in page  # skipped throughput is N/A with reason
+    assert "elasticsearch" in page and "Performance was not measured" in page
+    assert "727.3 MB" in page and "1.6 GB" in page and "42.5" in page  # indexing cost
+
+
+def test_no_valid_step_is_explicit(tmp_path):
+    results, out = site(tmp_path)
+    write_bundle(results, "meilisearch", perf_report=perf_report({"keyword/keyword": (50.0, 0)}))
+    build_site(results, out)
+    page = read(out, PAGE)
+    assert "none" in page and "no concurrency step met" in page
+
+
+def test_engine_color_follows_the_engine_across_pages(tmp_path):
+    results, out = site(tmp_path)
+    write_bundle(
+        results, "meilisearch", hardware="a", perf_report=perf_report({"keyword/keyword": (1.0, 1)})
+    )
+    write_bundle(
+        results, "qdrant", hardware="b", perf_report=perf_report({"keyword/keyword": (1.0, 1)})
+    )
+    build_site(results, out)
+    assert "var(--series-2)" in read(out, "ecommerce__product-search__b.html")  # qdrant is slot 2
+
+
+def test_run_page_shows_its_perf(tmp_path):
+    results, out = site(tmp_path)
+    d = write_bundle(
+        results, "meilisearch", perf_report=perf_report({"keyword/keyword": (85.0, 2)})
+    )
+    build_site(results, out)
+    page = read(out, f"runs/{d.name}.html")
+    assert "Performance" in page and "170" in page
 
 
 def test_cli_exits_1_on_unreadable_bundles(tmp_path):

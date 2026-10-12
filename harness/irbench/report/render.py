@@ -10,6 +10,7 @@ from typing import Any
 
 import jinja2
 
+from irbench.report.charts import Point, Series, qps_chart
 from irbench.report.data import (
     PERTURBATIONS,
     RunResult,
@@ -158,6 +159,104 @@ def na_notes(s: ScenarioResults) -> list[dict[str, Any]]:
     ]
 
 
+NO_VALID_STEP = "no concurrency step met p99 ≤ {p99:g} ms and ≤ {err:.1%} errors"
+
+
+def _latency_cell(run: RunResult, group: str) -> Cell:
+    lat = run.perf["latency"].get(group)
+    if lat is None:
+        return Cell("N/A", "na", run.na_reason(group) or "not measured")
+    note = f"{lat['count']} requests, {lat['errors']} errors" if lat.get("count") else ""
+    return Cell(f"{fmt_ms(lat['p50_ms'])} / {fmt_ms(lat['p99_ms'])}", "score", note)
+
+
+def _qps_cell(run: RunResult, group: str) -> Cell:
+    if group in run.perf["skipped_groups"]:
+        return Cell("N/A", "na", run.na_reason(group) or "the engine does not support this mode")
+    t = run.perf["throughput"].get(group)
+    if t is None:
+        return Cell("—", "missing", "not measured")
+    if t["max_qps"] is None:
+        limits = run.perf["limits"]
+        return Cell(
+            "none",
+            "violated",
+            NO_VALID_STEP.format(p99=limits["p99_ms"], err=limits["max_error_rate"]),
+        )
+    return Cell(
+        f"{t['max_qps']:,.0f}", "score", f"at {t['max_qps_concurrency']} concurrent clients"
+    )
+
+
+def _series(run: RunResult, group: str, slots: dict[str, int]) -> Series:
+    points = [
+        Point(
+            st["concurrency"],
+            st["qps"],
+            st["valid"],
+            f"{st['concurrency']} clients: {st['qps']:,.0f} QPS, p99 {fmt_ms(st['p99_ms'])} ms, "
+            f"errors {st['error_rate']:.2%}" + ("" if st["valid"] else " (invalid step)"),
+        )
+        for st in run.perf["throughput"][group]["steps"]
+    ]
+    return Series(run.label, slots.get(run.engine, 0), run.track != "default", points)
+
+
+def perf_view(s: ScenarioResults, slots: dict[str, int]) -> dict[str, Any]:
+    measured = [r for r in s.runs if r.perf is not None and not r.failure]
+    latency_groups = sorted(
+        {g for r in measured for g in r.perf["latency"] if g != "all"}, key=group_key
+    )
+    throughput_groups = sorted(
+        {g for r in measured for g in (*r.perf["throughput"], *r.perf["skipped_groups"])},
+        key=group_key,
+    )
+    charts = []
+    for model in s.models:
+        runs = [r for r in measured if r.model == model]
+        for group in throughput_groups:
+            with_data = [r for r in runs if group in r.perf["throughput"]]
+            series = [_series(r, group, slots) for r in with_data]
+            steps = sorted({p.concurrency for se in series for p in se.points})
+            svg = qps_chart(
+                f"{fmt_group(group)}: queries per second by concurrency, {model}", series, steps
+            )
+            if svg is None:
+                continue
+            table = [
+                {
+                    "concurrency": c,
+                    "cells": [
+                        next(
+                            (
+                                f"{p.qps:,.0f}" + ("" if p.valid else " (invalid)")
+                                for p in se.points
+                                if p.concurrency == c
+                            ),
+                            "—",
+                        )
+                        for se in series
+                    ],
+                }
+                for c in steps
+            ]
+            charts.append(
+                {"group": group, "model": model, "svg": svg, "series": series, "table": table}
+            )
+    return {
+        "runs": measured,
+        "latency": [
+            {"group": g, "cells": [_latency_cell(r, g) for r in measured]} for g in latency_groups
+        ],
+        "max_qps": [
+            {"group": g, "cells": [_qps_cell(r, g) for r in measured]} for g in throughput_groups
+        ],
+        "charts": charts,
+        "indexing": [r for r in s.runs if r.index and not r.failure],
+        "unmeasured": [r.label for r in s.runs if r.perf is None and not r.failure],
+    }
+
+
 def scenario_view(s: ScenarioResults, slots: dict[str, int]) -> dict[str, Any]:
     return {
         "columns": s.groups,
@@ -166,6 +265,7 @@ def scenario_view(s: ScenarioResults, slots: dict[str, int]) -> dict[str, Any]:
         "perturbations": perturbation_rows(s),
         "models": model_comparison(s),
         "comparable": s.hardware not in UNPUBLISHED_PROFILES,
+        "perf": perf_view(s, slots),
     }
 
 
@@ -207,6 +307,13 @@ def run_view(run: RunResult) -> dict[str, Any]:
             for c in config.get("credits", [])
         ],
         "stages": run.manifest.get("stages", {}),
+        "perf": [
+            {"group": g, "latency": _latency_cell(run, g), "max_qps": _qps_cell(run, g)}
+            # "all" mixes modes and has no group_key; it stays out, as in summarize_perf.
+            for g in sorted((k for k in run.perf["latency"] if k != "all"), key=group_key)
+        ]
+        if run.perf and not run.failure
+        else [],
     }
 
 
