@@ -6,7 +6,7 @@ import httpx
 from irbench.embed.base import Embedder, render_doc_text
 from irbench.embed.cache import VectorCache, embed_with_cache
 from irbench.embed.models import get_embedder
-from irbench.embed.publish import download_published, find_published
+from irbench.embed.publish import download_published, find_published, local_vectors_match
 from irbench.embed.vectors import write_vectors
 from irbench.io import read_jsonl
 from irbench.paths import Workspace
@@ -23,7 +23,7 @@ class EmbedResult:
     n_docs: int
     n_queries: int
     n_computed: int
-    source: str = "computed"  # or "published": downloaded from embeddings/published.yaml
+    source: str = "computed"  # or "local" (already on disk) or "published" (just downloaded)
 
 
 def embed_scenario(
@@ -42,8 +42,16 @@ def embed_scenario(
             f"{variants_path} missing: run `irbench prepare --scenario {scenario_id}` first"
         )
 
-    # An injected embedder or --compute means "compute"; otherwise prefer published vectors.
+    # An injected embedder or --compute means "compute". Otherwise: reuse local vectors that
+    # already match the prepared data (never touching the network), else consult the
+    # registry and download, else compute. This keeps `irbench run` from dead-ending on a
+    # registry entry that doesn't match local data once local vectors already exist (e.g.
+    # after a previous `--compute`).
     if embedder is None and not compute:
+        local = local_vectors_match(root, scenario_id, model_id)
+        if local is not None:
+            docs_path, queries_path, n_docs, n_queries = local
+            return EmbedResult(docs_path, queries_path, n_docs, n_queries, 0, "local")
         entry = find_published(root, scenario_id, model_id)
         if entry is not None:
             docs_path, queries_path = download_published(root, entry, client)

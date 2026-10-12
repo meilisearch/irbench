@@ -49,7 +49,10 @@ def load_registry(root: Path) -> list[PublishedVectors]:
     path = root / REGISTRY
     if not path.exists():
         return []
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError as e:
+        raise ValueError(f"{path}: malformed YAML: {e}") from e
     return [PublishedVectors.model_validate(e) for e in data.get("vectors") or []]
 
 
@@ -123,14 +126,53 @@ def pack_vectors(
     return entry, files
 
 
+def _expected_vectors(
+    root: Path, scenario_id: str, model_id: str
+) -> dict[str, tuple[Path, list[str]]]:
+    """Where each kind's vectors should live, and the ids they must carry (doc ids from
+    docs.jsonl in order, query ids from queries.variants.jsonl in order)."""
+    ws, scenario = Workspace(root), load_scenario(root, scenario_id)
+    return {
+        "docs": (
+            ws.doc_vectors_path(scenario.dataset, model_id),
+            [
+                d[scenario.id_field]
+                for d in read_jsonl(ws.dataset_dir(scenario.dataset) / "docs.jsonl")
+            ],
+        ),
+        "queries": (
+            ws.query_vectors_path(scenario_id, model_id),
+            [v["qid"] for v in read_jsonl(ws.scenario_dir(scenario_id) / "queries.variants.jsonl")],
+        ),
+    }
+
+
+def _ids_match(dest: Path, ids: list[str]) -> bool:
+    """Whether `dest` already exists and carries exactly `ids`, in order."""
+    if not dest.exists():
+        return False
+    got_ids, _ = read_vectors(dest)
+    return got_ids == ids
+
+
+def local_vectors_match(
+    root: Path, scenario_id: str, model_id: str
+) -> tuple[Path, Path, int, int] | None:
+    """If the local doc and query vector files both already exist and their ids match the
+    prepared data, return (docs_path, queries_path, n_docs, n_queries); else None. Checked
+    first so a scenario with local vectors never needs the registry or the network."""
+    expected = _expected_vectors(root, scenario_id, model_id)
+    for dest, ids in expected.values():
+        if not _ids_match(dest, ids):
+            return None
+    (docs_path, doc_ids), (queries_path, query_ids) = expected["docs"], expected["queries"]
+    return docs_path, queries_path, len(doc_ids), len(query_ids)
+
+
 def download_published(
     root: Path, entry: PublishedVectors, client: httpx.Client | None = None
 ) -> tuple[Path, Path]:
-    ws, scenario, info = (
-        Workspace(root),
-        load_scenario(root, entry.scenario),
-        _prepared(root, entry.scenario),
-    )
+    info = _prepared(root, entry.scenario)
     local = (info["dataset"]["id"], info["dataset"]["version"], info["seed"])
     published = (entry.dataset, entry.dataset_version, entry.seed)
     if local != published:
@@ -139,22 +181,7 @@ def download_published(
             f"{published[0]}@{published[1]} with seed {published[2]}, but the prepared data is "
             f"{local[0]}@{local[1]} with seed {local[2]}; run `irbench embed --compute`"
         )
-    expected = {
-        "docs": (
-            ws.doc_vectors_path(scenario.dataset, entry.model),
-            [
-                d[scenario.id_field]
-                for d in read_jsonl(ws.dataset_dir(scenario.dataset) / "docs.jsonl")
-            ],
-        ),
-        "queries": (
-            ws.query_vectors_path(entry.scenario, entry.model),
-            [
-                v["qid"]
-                for v in read_jsonl(ws.scenario_dir(entry.scenario) / "queries.variants.jsonl")
-            ],
-        ),
-    }
+    expected = _expected_vectors(root, entry.scenario, entry.model)
     for kind, (dest, ids) in expected.items():
         asset: VectorAsset = getattr(entry, kind)
         try:

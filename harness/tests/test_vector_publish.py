@@ -1,3 +1,5 @@
+import re
+
 import httpx
 import pytest
 import yaml
@@ -95,12 +97,61 @@ def test_tampered_asset_is_refused(tmp_path, wands_raw):
     assert not docs.exists()
 
 
-def test_seed_mismatch_is_refused(tmp_path, wands_raw):
+def test_local_vectors_are_reused_despite_registry_mismatch(tmp_path, wands_raw):
+    # A registry entry that wouldn't download cleanly is never even consulted when the
+    # local vectors already match the prepared data.
     root = fake_root(tmp_path, wands_raw)
     entry, _ = pack_vectors(root, SCENARIO, "fake", tmp_path / "dist")
     _save_registry(root, [entry.model_copy(update={"seed": 1})])
+    seen = []
+    result = embed_scenario(root, SCENARIO, "fake", client=serve(tmp_path / "dist", seen))
+    assert result.source == "local" and result.n_computed == 0
+    assert seen == []
+
+
+def test_seed_mismatch_is_refused_once_local_vectors_are_gone(tmp_path, wands_raw):
+    root = fake_root(tmp_path, wands_raw)
+    entry, _ = pack_vectors(root, SCENARIO, "fake", tmp_path / "dist")
+    _save_registry(root, [entry.model_copy(update={"seed": 1})])
+    _, queries = vector_paths(root)
+    queries.unlink()
     with pytest.raises(ValueError, match="--compute"):
         embed_scenario(root, SCENARIO, "fake", client=serve(tmp_path / "dist"))
+
+    # Computing locally (as the error suggests) breaks the dead end: a later call
+    # without --compute reuses the freshly computed local vectors instead of looping
+    # back to the same mismatched registry entry.
+    embed_scenario(root, SCENARIO, "fake", embedder=FakeEmbedder())
+    seen = []
+    again = embed_scenario(root, SCENARIO, "fake", client=serve(tmp_path / "dist", seen))
+    assert again.source == "local" and seen == []
+
+
+def test_local_files_with_a_different_checksum_are_kept(tmp_path, wands_raw):
+    # The registry's checksum covers the published asset, not a local file that happens
+    # to carry the right ids; if it's already there, it's trusted and never overwritten.
+    root = fake_root(tmp_path, wands_raw)
+    entry, _ = pack_vectors(root, SCENARIO, "fake", tmp_path / "dist")
+    _, queries = vector_paths(root)
+    ids, vectors = read_vectors(queries)
+    vectors = vectors.copy()
+    vectors[:, 0] += 1.0  # same ids, different bytes than the registered asset
+    write_vectors(queries, ids, vectors)
+    before = sha256_file(queries)
+    assert before != entry.queries.sha256
+    seen = []
+    result = embed_scenario(root, SCENARIO, "fake", client=serve(tmp_path / "dist", seen))
+    assert result.source == "local" and seen == []
+    assert sha256_file(queries) == before
+
+
+def test_malformed_registry_raises_value_error_naming_the_file(tmp_path, wands_raw):
+    root = fake_root(tmp_path, wands_raw)
+    path = root / REGISTRY
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("vectors: [{scenario: foo, model: bar\n")  # unterminated flow mapping
+    with pytest.raises(ValueError, match=re.escape(str(path))):
+        load_registry(root)
 
 
 def test_id_mismatch_removes_the_file(tmp_path, wands_raw):

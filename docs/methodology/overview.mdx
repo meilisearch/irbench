@@ -112,12 +112,14 @@ own ground truth deterministically, on top of each structured base:
 Engines never embed documents or queries themselves: vectors are computed
 once by the harness, cached, and published as GitHub release assets listed in
 `embeddings/published.yaml`, so reproducing a run needs no model download or
-API key. `irbench embed` downloads the published vectors for a
-scenario/model pair when they exist, and only computes them locally when
-asked to (`--compute`) or when nothing is published yet. A maintainer packs
-newly computed vectors for publishing with `irbench vectors pack`, which
-copies them to release assets and records their checksums, counts and
-dimension in the registry.
+API key. `irbench embed` first reuses the local doc and query vector files
+for that scenario/model pair when they already exist and their ids match the
+prepared data — no network involved. Only when a file is missing or its ids
+don't match does it consult the registry and download the published
+vectors; with no registry entry, or when asked to (`--compute`), it computes
+them locally instead. A maintainer packs newly computed vectors for
+publishing with `irbench vectors pack`, which copies them to release assets
+and records their checksums, counts and dimension in the registry.
 
 ## Error handling
 

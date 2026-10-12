@@ -61,7 +61,8 @@ def embed(
     ),
     root: Path = ROOT_OPTION,
 ) -> None:
-    """Embed docs and query variants with one model, or download its published vectors."""
+    """Embed docs and query variants with one model: reuse local vectors that already
+    match the prepared data, otherwise download its published vectors, otherwise compute."""
     r = embed_scenario(root, scenario, model, compute=compute)
     typer.echo(
         f"{model}: {r.n_docs} docs, {r.n_queries} queries, {r.n_computed} newly embedded "
