@@ -12,11 +12,18 @@ use tokio_postgres::types::ToSql;
 use crate::requests::{Kind, PreparedRequest};
 use crate::stats::Recorder;
 
-/// One Postgres connection with the statements prepared on it.
+/// One Postgres connection with the statements prepared on it. `broken` is
+/// set when a reconnect failed; the next request retries it.
 pub struct PgConn {
     client: tokio_postgres::Client,
     stmts: HashMap<String, tokio_postgres::Statement>,
+    broken: bool,
 }
+
+/// How long to wait before retrying a failed reconnect.
+const RECONNECT_BACKOFF: Duration = Duration::from_millis(50);
+/// Client-side margin on top of the server-side `statement_timeout`.
+const CLIENT_MARGIN: Duration = Duration::from_secs(1);
 
 /// The engine under test: a pooled HTTP client, or one Postgres connection per
 /// concurrent client.
@@ -26,33 +33,54 @@ pub enum Target {
         base_url: String,
     },
     Postgres {
+        config: Box<tokio_postgres::Config>,
+        timeout: Duration,
         conns: Vec<Mutex<PgConn>>,
     },
+}
+
+/// `"http"` or `"postgres"`, from the URL scheme alone.
+pub fn protocol_for_url(url: &str) -> &'static str {
+    if url.starts_with("postgresql://") || url.starts_with("postgres://") {
+        "postgres"
+    } else {
+        "http"
+    }
+}
+
+async fn pg_connect(config: &tokio_postgres::Config) -> Result<tokio_postgres::Client> {
+    let (client, connection) = config
+        .connect(NoTls)
+        .await
+        .context("connecting to postgres")?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    Ok(client)
 }
 
 impl Target {
     /// `postgresql://` / `postgres://` opens `max_connections` Postgres
     /// connections; anything else is an HTTP base URL.
     pub async fn connect(url: &str, timeout: Duration, max_connections: usize) -> Result<Self> {
-        if url.starts_with("postgresql://") || url.starts_with("postgres://") {
+        if protocol_for_url(url) == "postgres" {
             let mut config = tokio_postgres::Config::from_str(url)
                 .with_context(|| "parsing the postgres URL")?;
             config.options(format!("-c statement_timeout={}", timeout.as_millis()));
+            config.application_name("irbench-loadgen");
             let mut conns = Vec::with_capacity(max_connections.max(1));
             for _ in 0..max_connections.max(1) {
-                let (client, connection) = config
-                    .connect(NoTls)
-                    .await
-                    .context("connecting to postgres")?;
-                tokio::spawn(async move {
-                    let _ = connection.await;
-                });
                 conns.push(Mutex::new(PgConn {
-                    client,
+                    client: pg_connect(&config).await?,
                     stmts: HashMap::new(),
+                    broken: false,
                 }));
             }
-            return Ok(Target::Postgres { conns });
+            return Ok(Target::Postgres {
+                config: Box::new(config),
+                timeout,
+                conns,
+            });
         }
         let client = reqwest::Client::builder()
             .timeout(timeout)
@@ -69,6 +97,48 @@ impl Target {
             Target::Http { .. } => "http",
             Target::Postgres { .. } => "postgres",
         }
+    }
+
+    /// Prepares every SQL text on every Postgres connection so measured
+    /// requests never pay a Parse round trip. No-op for HTTP.
+    pub async fn prime(&self, sqls: &[String]) -> Result<()> {
+        if let Target::Postgres { conns, .. } = self {
+            for conn in conns {
+                let mut conn = conn.lock().await;
+                for sql in sqls {
+                    if !conn.stmts.contains_key(sql) {
+                        let stmt = conn
+                            .client
+                            .prepare(sql)
+                            .await
+                            .with_context(|| format!("preparing {sql}"))?;
+                        conn.stmts.insert(sql.clone(), stmt);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Replaces a broken connection and re-prepares the statements it had.
+    /// On failure the slot stays `broken` and the next request retries.
+    async fn reconnect(config: &tokio_postgres::Config, conn: &mut PgConn) {
+        conn.broken = true;
+        let Ok(client) = pg_connect(config).await else {
+            return;
+        };
+        let mut stmts = HashMap::new();
+        for sql in conn.stmts.keys() {
+            match client.prepare(sql).await {
+                Ok(stmt) => {
+                    stmts.insert(sql.clone(), stmt);
+                }
+                Err(_) => return,
+            }
+        }
+        conn.client = client;
+        conn.stmts = stmts;
+        conn.broken = false;
     }
 
     /// True for a 2xx HTTP response whose body was read completely, or a
@@ -100,21 +170,49 @@ impl Target {
                     Err(_) => false,
                 }
             }
-            (Target::Postgres { conns }, Kind::Postgres { sql, params }) => {
+            (
+                Target::Postgres {
+                    config,
+                    timeout,
+                    conns,
+                },
+                Kind::Postgres { sql, params },
+            ) => {
                 let mut conn = conns[worker % conns.len()].lock().await;
-                let stmt = match conn.stmts.get(sql) {
-                    Some(stmt) => stmt.clone(),
-                    None => match conn.client.prepare(sql).await {
-                        Ok(stmt) => {
-                            conn.stmts.insert(sql.clone(), stmt.clone());
-                            stmt
-                        }
-                        Err(_) => return false,
-                    },
-                };
+                if conn.broken {
+                    // A previous reconnect failed: try again, but this request is lost.
+                    tokio::time::sleep(RECONNECT_BACKOFF).await;
+                    Self::reconnect(config, &mut conn).await;
+                    return false;
+                }
                 let refs: Vec<&(dyn ToSql + Sync)> =
                     params.iter().map(|p| p as &(dyn ToSql + Sync)).collect();
-                conn.client.query(&stmt, &refs).await.is_ok()
+                let attempt = tokio::time::timeout(*timeout + CLIENT_MARGIN, async {
+                    let stmt = match conn.stmts.get(sql) {
+                        Some(stmt) => stmt.clone(),
+                        None => conn.client.prepare(sql).await?,
+                    };
+                    let rows = conn.client.query(&stmt, &refs).await;
+                    rows.map(|_| stmt)
+                })
+                .await;
+                match attempt {
+                    Ok(Ok(stmt)) => {
+                        conn.stmts.entry(sql.clone()).or_insert(stmt);
+                        true
+                    }
+                    Ok(Err(err)) => {
+                        if err.is_closed() || conn.client.is_closed() {
+                            Self::reconnect(config, &mut conn).await;
+                        }
+                        false
+                    }
+                    Err(_elapsed) => {
+                        // An in-flight query on a stalled connection can't be trusted.
+                        Self::reconnect(config, &mut conn).await;
+                        false
+                    }
+                }
             }
             _ => false,
         }

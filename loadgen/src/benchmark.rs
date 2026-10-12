@@ -6,8 +6,8 @@ use std::time::Duration;
 use anyhow::{Result, bail};
 use serde::Serialize;
 
-use crate::requests::{PreparedRequest, load_requests};
-use crate::runner::{Stop, Target, run};
+use crate::requests::{Kind, PreparedRequest, load_requests};
+use crate::runner::{Stop, Target, protocol_for_url, run};
 use crate::stats::{LatencySummary, Limits, Recorder, StepResult, max_qps};
 
 pub struct Config {
@@ -79,15 +79,25 @@ pub async fn run_benchmark(cfg: &Config) -> Result<Report> {
         .max()
         .unwrap_or(1)
         .max(cfg.warmup_concurrency);
-    let target = Arc::new(Target::connect(&cfg.base_url, cfg.timeout, max_conn).await?);
-
-    if let Some(req) = all.iter().find(|r| r.kind.protocol() != target.protocol()) {
+    let url_protocol = protocol_for_url(&cfg.base_url);
+    if let Some(req) = all.iter().find(|r| r.kind.protocol() != url_protocol) {
         bail!(
-            "rendered requests use protocol {} but --base-url is a {} target",
+            "rendered requests use protocol {} but --base-url selects the {} protocol",
             req.kind.protocol(),
-            target.protocol()
+            url_protocol
         );
     }
+    let target = Arc::new(Target::connect(&cfg.base_url, cfg.timeout, max_conn).await?);
+    let mut sqls: Vec<String> = all
+        .iter()
+        .filter_map(|r| match &r.kind {
+            Kind::Postgres { sql, .. } => Some(sql.clone()),
+            Kind::Http { .. } => None,
+        })
+        .collect();
+    sqls.sort();
+    sqls.dedup();
+    target.prime(&sqls).await?;
 
     let mut by_group: BTreeMap<String, Vec<PreparedRequest>> = BTreeMap::new();
     for req in &all {

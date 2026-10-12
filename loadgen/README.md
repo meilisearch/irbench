@@ -18,11 +18,11 @@ A request is an error when the connection fails, it times out, the status is not
 
 ## Postgres target
 
-A `--base-url` of `postgresql://user:pass@host:port/db` selects the Postgres wire protocol; `http://` stays HTTP. The request files must match: a Postgres run replays `{"protocol": "postgres", "sql", "params"}` files, and the run fails up front with a protocol-mismatch error if any file uses the other protocol.
+A `--base-url` of `postgresql://user:pass@host:port/db` selects the Postgres wire protocol; `http://` stays HTTP. The request files must match: a Postgres run replays `{"protocol": "postgres", "sql", "params"}` files, and the run fails up front (before connecting, from the URL scheme) with a protocol-mismatch error if any file uses the other protocol.
 
 - **One connection per concurrent client.** The loadgen opens as many connections as the highest concurrency step; worker `w` always uses connection `w % connections`.
-- **Prepared per connection.** Each distinct SQL text is prepared once per connection and reused. Every param is bound as text (`$n::text` in the SQL, with an optional cast), by the same rule as the Python client: null is NULL, bools are `true`/`false`, numbers are decimal, strings are themselves, lists of numbers are pgvector literals `[a,b,...]`.
-- **Timeout.** `--timeout-s` becomes the session `statement_timeout`; a timed-out or failed statement counts as an error and the connection stays usable.
+- **Prepared per connection.** Before the warm-up, every distinct SQL text of the workload is prepared on every connection, so measured requests never pay a Parse. Every param is bound as text (`$n::text` in the SQL, with an optional cast), by the same rule as the Python client: null is NULL, bools are `true`/`false`, numbers are decimal, strings are themselves, lists of numbers are pgvector literals `[a,b,...]`.
+- **Timeout.** `--timeout-s` becomes the session `statement_timeout`; a timed-out or failed statement counts as an error. SQL errors and server-side timeouts leave the connection usable; if the connection itself is broken (backend killed, network drop) or a request exceeds `--timeout-s` plus 1 s client-side, that request is an error and the connection is replaced (statements re-prepared) before the next one. A failed reconnect is retried, after a 50 ms pause, on the next request.
 - **Measured time** is the statement execution plus fetching all rows, over an already-open connection.
 
 ## Tests

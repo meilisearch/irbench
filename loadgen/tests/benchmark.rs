@@ -250,3 +250,18 @@ async fn rejects_protocol_mismatch() {
 
     assert!(err.contains("postgres") && err.contains("http"), "{err}");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn rejects_protocol_mismatch_before_connecting() {
+    let dir = tmp_dir("mismatch-rev");
+    write_group(&dir, "keyword/keyword", &[(1, 200)]);
+
+    // Nothing listens here: a connection error would hide the real problem.
+    let err = run_benchmark(&config(dir, "postgresql://postgres@127.0.0.1:1/x"))
+        .await
+        .unwrap_err()
+        .to_string();
+
+    assert!(err.contains("http") && err.contains("postgres"), "{err}");
+    assert!(err.contains("protocol"), "{err}");
+}
