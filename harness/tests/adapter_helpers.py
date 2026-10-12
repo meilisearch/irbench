@@ -8,7 +8,7 @@ from irbench.terms import load_term_groups
 SCENARIO = "ecommerce/product-search"
 
 
-def make_adapter(engine, track=None, dim=3):
+def make_adapter(engine, track=None, dim=3, n_docs=None):
     cls = load_adapter_class(REPO_ROOT, engine)
     scenario = load_scenario(REPO_ROOT, SCENARIO)
     return cls(
@@ -18,6 +18,7 @@ def make_adapter(engine, track=None, dim=3):
             index="idx",
             dim=dim,
             synonyms=load_term_groups(scenario.synonyms_path),
+            n_docs=n_docs,
         )
     )
 

@@ -138,6 +138,16 @@ def test_run_page_says_when_synonyms_are_not_loaded(tmp_path):
     assert "Synonyms not loaded" not in read(out, f"runs/{loaded.name}.html")
 
 
+def test_perturbation_table_marks_runs_without_synonyms(tmp_path):
+    results, out = site(tmp_path)
+    write_bundle(results, "qdrant", synonyms="no synonym file support")
+    write_bundle(results, "meilisearch")
+    build_site(results, out)
+    page = read(out, PAGE)
+    assert page.count("&dagger;") == 2  # one marker on the cell, one on the footnote
+    assert 'title="synonyms.txt not loaded: no synonym file support"' in page
+
+
 def test_run_page_of_an_old_manifest_without_synonyms_key(tmp_path):
     results, out = site(tmp_path)
     d = write_bundle(results, "qdrant")

@@ -96,7 +96,10 @@ class EngineConfig:
         return config_diff(self.track("default").model_dump(), self.track(name).model_dump())
 
     def hash(self, name: str) -> str:
-        canonical = json.dumps(self.track(name).model_dump(), sort_keys=True)
+        data = self.track(name).model_dump()
+        if data["synonyms"] is None:  # keep hashes of configs that predate the key
+            del data["synonyms"]
+        canonical = json.dumps(data, sort_keys=True)
         return hashlib.sha256(canonical.encode()).hexdigest()
 
     @property

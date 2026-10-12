@@ -1,3 +1,6 @@
+import hashlib
+import json
+
 import pytest
 import yaml
 
@@ -145,15 +148,32 @@ def test_unsupported_reason_precedence(tmp_path):
 
 
 def test_synonyms_is_an_optional_reason(tmp_path):
-    path = _write(
+    _write(
         tmp_path, "e", {"default": {"synonyms": "the engine has no synonym support"}, "tuned": {}}
     )
     config = load_engine_config(tmp_path, "e", SCENARIO)
     assert config.track("default").synonyms == "the engine has no synonym support"
     assert config.track("tuned").synonyms == "the engine has no synonym support"
-    assert path.exists()
+    assert config.track("default").model_dump()["synonyms"] == config.track("tuned").synonyms
 
 
 def test_synonyms_defaults_to_loaded(tmp_path):
     _write(tmp_path, "e", {"default": {}})
     assert load_engine_config(tmp_path, "e", SCENARIO).track("default").synonyms is None
+
+
+def test_hash_ignores_an_unset_synonyms_key(tmp_path):
+    _write(tmp_path, "e", {"default": {"index": {"a": 1}}})
+    track = load_engine_config(tmp_path, "e", SCENARIO)
+    canonical = json.dumps(
+        {"index": {"a": 1}, "search": {}, "unsupported": {}, "justification": {}}, sort_keys=True
+    )
+    assert track.hash("default") == hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def test_hash_changes_when_synonyms_is_set(tmp_path):
+    _write(tmp_path, "e", {"default": {}})
+    plain = load_engine_config(tmp_path, "e", SCENARIO).hash("default")
+    _write(tmp_path / "other", "e", {"default": {"synonyms": "no support"}})
+    other = load_engine_config(tmp_path / "other", "e", SCENARIO).hash("default")
+    assert plain != other

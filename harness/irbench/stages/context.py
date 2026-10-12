@@ -105,6 +105,7 @@ class RunContext:
                 index=index_name(self.spec.scenario, self.spec.model),
                 dim=int(self.doc_vectors.shape[1]),
                 synonyms=load_term_groups(self.scenario.synonyms_path),
+                n_docs=len(self.docs),
             )
         )
 

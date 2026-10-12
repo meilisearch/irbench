@@ -65,6 +65,7 @@ def engine(request):
             index=INDEX,
             dim=vectors.shape[1],
             synonyms=load_term_groups(scenario.synonyms_path),
+            n_docs=len(docs),
         )
     )
     runtime = DockerRuntime(REPO_ROOT, name, load_hardware(REPO_ROOT, "local"))

@@ -52,11 +52,15 @@ typo, are cut short (search as you type) or use a synonym. Perturbation rules ar
     <tr>
       <th scope="row">{{ r.run.label }}</th><td>{{ r.run.model }}</td><td>{{ r.group|group }}</td>
       <td class="num">{{ r.original|score }}</td>
-      {% for p in ["typo", "prefix", "synonym"] %}<td class="num delta">{{ r.deltas[p]|delta }}</td>{% endfor %}
+      {% for p in ["typo", "prefix"] %}<td class="num delta">{{ r.deltas[p]|delta }}</td>{% endfor %}
+      <td class="num delta">{{ r.deltas["synonym"]|delta }}{% if r.synonyms_note %} <span title="synonyms.txt not loaded: {{ r.synonyms_note }}">&dagger;</span>{% endif %}</td>
     </tr>
   {% endfor %}
   </tbody>
 </table></div>
+{% if view.perturbations|selectattr("synonyms_note")|list %}
+<p class="note">&dagger; This engine does not load the shared <code>synonyms.txt</code>; its synonym column does not measure synonym support (reason on hover and on its run page).</p>
+{% endif %}
 </section>
 
 {% if view.models %}

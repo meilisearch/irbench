@@ -122,7 +122,7 @@ class Adapter(EngineAdapter):
             leaf: dict[str, Any] = {
                 "query": {"text": text, "model": BM25},
                 "using": name,
-                "limit": self.ctx.scenario.top_k,
+                "limit": max(limit, self.ctx.scenario.top_k),
             }
             if query_filter:
                 leaf["filter"] = query_filter
@@ -152,6 +152,15 @@ class Adapter(EngineAdapter):
         if sort.direction == "desc":
             return {"formula": sort.field, "defaults": {sort.field: -LOWEST}}
         return {"formula": {"neg": sort.field}, "defaults": {sort.field: LOWEST}}
+
+    def _sort_pool(self, task: QueryTask) -> int:
+        """How many candidates a sorted task orders. Keyword: every match (a sparse query only
+        returns points sharing a term), like Elasticsearch and Meilisearch, which sort all
+        matches. Semantic: the top_k nearest, like the other engines' knn with k=top_k."""
+        top_k = self.ctx.scenario.top_k
+        if task.base == "keyword" and self.ctx.n_docs:
+            return max(self.ctx.n_docs, top_k)
+        return top_k
 
     def _retrieve(
         self,
@@ -185,11 +194,10 @@ class Adapter(EngineAdapter):
                 f"{task.task_id} must be declared unsupported in the config"
             )
         query_filter = self._filter(task.filter) if task.filter is not None else None
-        top_k = self.ctx.scenario.top_k
         body: dict[str, Any]
         if task.sort is not None:
             body = {
-                "prefetch": self._retrieve(task, vector, top_k, query_filter),
+                "prefetch": self._retrieve(task, vector, self._sort_pool(task), query_filter),
                 "query": self._sort_formula(task.sort),
             }
         else:

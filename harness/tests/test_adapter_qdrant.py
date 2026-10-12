@@ -165,6 +165,26 @@ def test_keyword_request_weights_fields_by_priority():
     assert _body(make_task("keyword"), None) == {**_formula(), "with_payload": ["id"]}
 
 
+def test_sorted_keyword_sorts_every_match_not_just_the_top_k():
+    sort = Sort(field="review_count", direction="desc")
+    adapter = make_adapter("qdrant", n_docs=4321)
+    sorted_task = make_task("sorted", "keyword", sort=sort)
+    body = adapter.render(sorted_task, None, 100).body
+    keyword = body["prefetch"]
+    assert keyword["limit"] == 4321
+    assert [leaf["limit"] for leaf in keyword["prefetch"]] == [4321] * 5
+    assert body["limit"] == 100
+    plain = adapter.render(make_task("keyword"), None, 100).body
+    assert [leaf["limit"] for leaf in plain["prefetch"]] == [100] * 5
+
+
+def test_sorted_semantic_stays_top_k_then_sort():
+    adapter = make_adapter("qdrant", n_docs=4321)
+    sort = Sort(field="review_count", direction="desc")
+    body = adapter.render(make_task("sorted", "semantic", sort=sort), V, 100).body
+    assert body["prefetch"]["limit"] == 100
+
+
 def test_hybrid_request_fuses_keyword_and_dense_natively():
     body = _body(make_task("hybrid"))
     assert body == {

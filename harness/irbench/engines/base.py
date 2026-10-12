@@ -87,6 +87,8 @@ class IndexContext:
     index: str
     dim: int
     synonyms: list[list[str]]
+    # Documents in the collection; lets an adapter size "every match" limits. None if unknown.
+    n_docs: int | None = None
 
 
 class EngineAdapter(ABC):

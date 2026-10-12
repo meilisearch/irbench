@@ -2,7 +2,8 @@
 #
 # default: Qdrant as shipped. adapter.py generates only what the scenario
 #   schema requires (a Cosine dense vector, one BM25 sparse vector per searchable
-#   field, payload indexes for filterable, sortable and facet fields). HNSW and search parameters are Qdrant's defaults.
+#   field, payload indexes for filterable, sortable and facet fields). HNSW and
+#   search parameters are Qdrant's defaults.
 # tuned: changes within the parity rules; add a `tuned:` block (deep-merged).
 #
 # Keys: index (merged into the create-collection body),

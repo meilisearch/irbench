@@ -125,6 +125,7 @@ def perturbation_rows(s: ScenarioResults) -> list[dict[str, Any]]:
                     "run": run,
                     "group": group,
                     "original": original,
+                    "synonyms_note": run.manifest.get("config", {}).get("synonyms"),
                     "deltas": {p: _delta(run.ndcg(group, p), original) for p in PERTURBATIONS[1:]},
                 }
             )
