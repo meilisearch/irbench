@@ -16,9 +16,18 @@ loadgen/target/release/irbench-loadgen --requests .irbench/runs/<run-id>/rendere
 
 A request is an error when the connection fails, it times out, the status is not 2xx, or the body can't be read. The response body is always read before the clock stops. Facet verification fetches (`*.check.json`) are not replayed.
 
+## Postgres target
+
+A `--base-url` of `postgresql://user:pass@host:port/db` selects the Postgres wire protocol; `http://` stays HTTP. The request files must match: a Postgres run replays `{"protocol": "postgres", "sql", "params"}` files, and the run fails up front with a protocol-mismatch error if any file uses the other protocol.
+
+- **One connection per concurrent client.** The loadgen opens as many connections as the highest concurrency step; worker `w` always uses connection `w % connections`.
+- **Prepared per connection.** Each distinct SQL text is prepared once per connection and reused. Every param is bound as text (`$n::text` in the SQL, with an optional cast), by the same rule as the Python client: null is NULL, bools are `true`/`false`, numbers are decimal, strings are themselves, lists of numbers are pgvector literals `[a,b,...]`.
+- **Timeout.** `--timeout-s` becomes the session `statement_timeout`; a timed-out or failed statement counts as an error and the connection stays usable.
+- **Measured time** is the statement execution plus fetching all rows, over an already-open connection.
+
 ## Tests
 
-`cargo test --manifest-path loadgen/Cargo.toml` runs the unit tests and the integration tests against an in-process mock engine with injected latencies and errors.
+`cargo test --manifest-path loadgen/Cargo.toml` runs the unit tests and the integration tests against an in-process mock engine with injected latencies and errors. The live Postgres test is ignored by default: `IRBENCH_PG_URL=postgresql://postgres:irbench@localhost:15432/irbench cargo test -- --ignored` (start `engines/postgres/docker/compose.yaml` first).
 
 ## Limits of the measurement
 

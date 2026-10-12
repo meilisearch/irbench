@@ -230,3 +230,23 @@ async fn cli_writes_the_report() {
         1
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn rejects_protocol_mismatch() {
+    let mock = spawn_mock().await;
+    let dir = tmp_dir("mismatch");
+    let target = dir.join("keyword/keyword");
+    std::fs::create_dir_all(&target).unwrap();
+    std::fs::write(
+        target.join("0.json"),
+        r#"{"protocol":"postgres","sql":"SELECT 1","params":[]}"#,
+    )
+    .unwrap();
+
+    let err = run_benchmark(&config(dir, &mock.base_url))
+        .await
+        .unwrap_err()
+        .to_string();
+
+    assert!(err.contains("postgres") && err.contains("http"), "{err}");
+}

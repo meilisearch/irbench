@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use serde::Serialize;
 
 use crate::requests::{PreparedRequest, load_requests};
@@ -79,7 +79,15 @@ pub async fn run_benchmark(cfg: &Config) -> Result<Report> {
         .max()
         .unwrap_or(1)
         .max(cfg.warmup_concurrency);
-    let target = Arc::new(Target::new(&cfg.base_url, cfg.timeout, max_conn)?);
+    let target = Arc::new(Target::connect(&cfg.base_url, cfg.timeout, max_conn).await?);
+
+    if let Some(req) = all.iter().find(|r| r.kind.protocol() != target.protocol()) {
+        bail!(
+            "rendered requests use protocol {} but --base-url is a {} target",
+            req.kind.protocol(),
+            target.protocol()
+        );
+    }
 
     let mut by_group: BTreeMap<String, Vec<PreparedRequest>> = BTreeMap::new();
     for req in &all {

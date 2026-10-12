@@ -16,7 +16,11 @@ async fn setup(
     let dir = tmp_dir(name);
     write_group(&dir, "keyword/keyword", specs);
     let requests = Arc::new(load_requests(&dir).unwrap());
-    let target = Arc::new(Target::new(&mock.base_url, Duration::from_secs(5), 64).unwrap());
+    let target = Arc::new(
+        Target::connect(&mock.base_url, Duration::from_secs(5), 64)
+            .await
+            .unwrap(),
+    );
     (mock, target, requests)
 }
 
@@ -50,7 +54,11 @@ async fn timeouts_are_errors() {
     let dir = tmp_dir("timeout");
     write_group(&dir, "keyword/keyword", &[(300, 200), (1, 200)]);
     let requests = Arc::new(load_requests(&dir).unwrap());
-    let target = Arc::new(Target::new(&mock.base_url, Duration::from_millis(100), 4).unwrap());
+    let target = Arc::new(
+        Target::connect(&mock.base_url, Duration::from_millis(100), 4)
+            .await
+            .unwrap(),
+    );
     let (rec, _) = run(target, requests, 1, Stop::Pass).await;
     assert_eq!((rec.successes(), rec.errors()), (1, 1));
 }
@@ -80,7 +88,11 @@ async fn concurrency_above_request_count_cycles_without_panicking() {
     .await;
     assert!(step.successes() > 3 && seconds > 0.0);
     let (empty, _) = run(
-        Arc::new(Target::new("http://127.0.0.1:9", Duration::from_secs(1), 1).unwrap()),
+        Arc::new(
+            Target::connect("http://127.0.0.1:9", Duration::from_secs(1), 1)
+                .await
+                .unwrap(),
+        ),
         Arc::new(Vec::new()),
         8,
         Stop::Deadline(Duration::from_millis(50)),
