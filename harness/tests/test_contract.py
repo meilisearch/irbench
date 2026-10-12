@@ -141,9 +141,10 @@ def test_sorted_keyword_orders_and_puts_missing_values_last(engine):
 
 
 def test_sorted_keyword_orders_across_relevance_buckets(engine):
-    # "grey chair": doc 53 matches both words, other grey docs and chairs match one.
+    # "grey" matches the ten grey docs (50-59), whose relevance scores differ, so sorting
+    # by review_count must reorder across relevance levels (works for OR and AND engines).
     sort = Sort(field="review_count", direction="desc")
-    task = make_task("sorted", "keyword", text="grey chair", sort=sort)
+    task = make_task("sorted", "keyword", text="grey", sort=sort)
     result = engine.search(task)
     assert len(result.ids) > 1
     assert check_task(task, result, None, engine.docs_by_id, VERIFY_LIMIT).order_violations == 0
