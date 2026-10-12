@@ -42,6 +42,26 @@ It also sets the class attributes `name`, `host_port`, `health_path` and
 `search_params(task)` (both have working defaults backed by the engine
 config's `unsupported` and `search` maps).
 
+## SQL engines
+
+An engine queried with SQL over the Postgres wire protocol sets
+`protocol = "postgres"` on its adapter and returns `SqlRequest` objects
+(`harness/irbench/engines/base.py`) from `render`, instead of HTTP `Request`s.
+The simplest route is to subclass `irbench.engines.postgres.PostgresAdapter`,
+which already implements the schema, loading, and the semantic, hybrid,
+filtered, sorted and faceted statements, and supply only the keyword search.
+The two Postgres engines do exactly that.
+
+Rules for the SQL:
+
+- Write every placeholder as `$n::text`, optionally followed by a cast
+  (`$2::text::vector`, `$3::text::int`). Params are bound as text by
+  `irbench.engines.pg.bind_param`, the same rule as the load generator (see
+  [Rendered requests](/reference/results#rendered-requests)).
+- The adapter receives a `PostgresClient` where an HTTP adapter receives an
+  `httpx.Client`. The performance stage takes its connection string from
+  `engine_base_url`, which builds it from `host_port` for `postgres` adapters.
+
 ## Contract tests
 
 `harness/tests/test_contract.py` runs every listed engine's adapter against
@@ -51,7 +71,7 @@ config marks unsupported). To add a new engine, add its folder name to the
 `ENGINES` list at the top of that file:
 
 ```python
-ENGINES = ["meilisearch", "elasticsearch", "qdrant"]
+ENGINES = ["meilisearch", "elasticsearch", "qdrant", "postgres", "postgres-paradedb"]
 ```
 
 Run the suite for just the new engine with:

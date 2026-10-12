@@ -50,13 +50,14 @@ The first vertical slice covers:
 
 - **Scenario:** `ecommerce/product-search`, on the **WANDS** dataset (Wayfair;
   ~43k products, 480 queries, human judgments, MIT license).
-- **Engines:** Meilisearch, Elasticsearch, Qdrant.
+- **Engines:** Meilisearch, Elasticsearch, Qdrant, Postgres (built-in full-text
+  search plus pgvector) and ParadeDB (pg_search BM25 plus pgvector).
 - **Modes:** keyword, semantic, hybrid, filtered, sorted, faceted — unsupported
   modes are marked N/A rather than worked around.
 - **Models:** `bge-small-en-v1.5` (open) and `text-embedding-3-small` (API,
   cached and published so reproduction needs no API key).
 
-Later milestones add more engines (Typesense, OpenSearch, Lucene, Postgres,
+Later milestones add more engines (Typesense, OpenSearch, Lucene,
 Milvus, Pinecone relevance-only), more datasets and scenarios, more models,
 and an LLM-generated query track labelled separately from the human-judged
 one.

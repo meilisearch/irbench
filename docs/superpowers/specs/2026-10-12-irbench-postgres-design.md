@@ -34,7 +34,7 @@ Rendered request files gain a second protocol. The parent spec's `{protocol: htt
 
 ```json
 {"protocol": "http", "method": "POST", "path": "/indexes/i/search", "headers": {}, "body": {...}}
-{"protocol": "postgres", "sql": "SELECT id FROM docs WHERE ... LIMIT $3", "params": ["sofa", [0.01, ...], 100]}
+{"protocol": "postgres", "sql": "SELECT id FROM docs ORDER BY embedding <=> $2::text::vector LIMIT $3::text::int", "params": ["sofa", [0.01, ...], 100]}
 ```
 
 - `sql` uses positional placeholders `$1..$n`; `params` is a JSON array. Typed values: strings, numbers, booleans, null, and a vector as a JSON array of floats.

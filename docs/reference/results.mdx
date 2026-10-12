@@ -24,6 +24,32 @@ results --out site` builds the static report from this folder.
 The fields below are taken from a real local run,
 `.irbench/runs/ecommerce__product-search__meilisearch__bge-small-en-v1.5__default__local/`.
 
+## Rendered requests
+
+Each file under `rendered/` is one request, in one of two protocols selected by
+the `protocol` field (absent means `http`).
+
+```json
+{"protocol": "http", "method": "POST", "path": "/indexes/i/search", "headers": {}, "body": {}}
+{"protocol": "postgres", "sql": "SELECT id FROM docs ORDER BY embedding <=> $2::text::vector LIMIT $3::text::int", "params": ["sofa", [0.01, 0.02], 100]}
+```
+
+For `postgres` requests:
+
+- `sql` uses positional placeholders `$1..$n`; `params` is a JSON array.
+- Every placeholder is written `$n::text`, optionally followed by a further
+  cast (`$2::text::vector`, `$3::text::int`).
+- Params are bound as text by one rule, implemented identically in the Python
+  client and the Rust load generator: `null` is `NULL`; a boolean is
+  `true`/`false`; an integer is decimal; a float is its shortest
+  representation; a string is itself; a list of numbers is a pgvector literal
+  `[a,b,...]`.
+- Relevance and performance run exactly this SQL with these params. A SQL
+  error or a timeout (the scenario's `request_timeout_s`, applied as
+  `statement_timeout`) counts as a request error, as for HTTP.
+- Results are rows; the adapter reads the `id` column in rank order. A faceted
+  statement returns one row `{ids, facets}`.
+
 ## `manifest.json`
 
 | Field | Description |

@@ -19,8 +19,11 @@ automatically by `uv run irbench lint` in CI.
 - **Same vectors, cosine similarity, same top-k.** ANN parameters start at
   each engine's documented defaults; any change requires a `justification:`
   entry.
-- **Hybrid uses the engine's native fusion only.** No harness-side fusion is
-  applied. If an engine has no native fusion, hybrid is N/A for it.
+- **Hybrid uses the engine's native fusion. For SQL engines, a fusion query
+  written in SQL and executed entirely inside the database (e.g. Reciprocal
+  Rank Fusion over two CTEs) counts as native; the SQL is part of the
+  rendered request and documented in the engine README. Harness-side fusion
+  is never allowed.** If an engine has no native fusion, hybrid is N/A for it.
 - **Typo tolerance, prefix search, stemming: language defaults.** Settings
   that are required just to turn a feature on (e.g. `fuzziness: AUTO`) are
   allowed and stay visible in the config.
@@ -29,6 +32,23 @@ automatically by `uv run irbench lint` in CI.
   workarounds.
 - **No per-query or qrels-fitted tuning.** CI rejects any config containing
   query IDs or query strings from the query set.
+
+## SQL engines
+
+The two Postgres engines (`postgres`, `postgres-paradedb`) are queried over
+the Postgres wire protocol with SQL. The same rules apply:
+
+- Hybrid is Reciprocal Rank Fusion (k = 60, each side `top_k`) written as one
+  SQL statement that runs inside the database. The statement is visible in
+  every rendered request and described in the engine's README.
+- Field priority maps onto each engine's closest native mechanism:
+  `setweight` classes A to D for `postgres` (five fields onto four classes),
+  per-field BM25 boosts for `postgres-paradedb`.
+- pgvector settings above the shipped defaults (`hnsw.ef_search`,
+  `hnsw.iterative_scan`) carry a `justification:` in the config.
+- Synonyms: `postgres` loads `synonyms.txt` through a thesaurus dictionary
+  (groups containing digit tokens are dropped, see its README);
+  `postgres-paradedb` declares `synonyms:` as unsupported.
 
 ## Tracks
 

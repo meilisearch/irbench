@@ -37,4 +37,4 @@ Every mode is one SQL statement. Placeholders are `$n::text` plus a cast; the qu
 
 ## Changing this configuration
 
-Edit `configs/ecommerce/product-search.yaml` (`index.settings` are database-level GUCs). If `synonyms.txt` changes, regenerate `docker/tsearch/irbench_ecommerce_product_search.ths` from `adapter.thesaurus_file()`; `test_synonym_file_matches_scenario_synonyms` prints the expected content. Run `uv run pytest -m docker -k postgres` before opening a PR.
+Edit `configs/ecommerce/product-search.yaml` (`index.settings` are database-level GUCs). If `synonyms.txt` changes, regenerate `docker/tsearch/irbench_ecommerce_product_search.ths` from `adapter.thesaurus_file()`; `test_thesaurus_file_matches_scenario_synonyms` prints the expected content. Run `uv run pytest -m docker -k postgres` before opening a PR.

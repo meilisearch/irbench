@@ -10,6 +10,10 @@ and performance are always reported separately, broken down by query
 imperfection and by performance dimension — never blended into one score or
 a ranking.
 
+Engines: Meilisearch, Elasticsearch, Qdrant, Postgres (built-in full-text
+search plus pgvector) and ParadeDB (pg_search BM25 plus pgvector). The two
+Postgres engines are queried with SQL over the Postgres wire protocol.
+
 ## Quickstart
 
 Prerequisites: Python 3.12 with [`uv`](https://docs.astral.sh/uv/), Docker,
