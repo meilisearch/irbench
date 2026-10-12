@@ -22,7 +22,11 @@ embed-api = ["openai>=1.40"]
 irbench = "irbench.cli:app"
 
 [dependency-groups]
-dev = ["pytest>=8.2", "ruff>=0.6"]
+dev = [
+    "pytest>=8.2",
+ "pytrec-eval-terrier>=0.5.7",
+ "ruff>=0.6",
+]
 
 [build-system]
 requires = ["hatchling"]
