@@ -61,6 +61,44 @@ class Request:
         return client.request(self.method, self.path, **kwargs)
 
 
+@dataclass(frozen=True)
+class SqlRequest:
+    """One SQL statement, exactly as written to a rendered-request file (protocol `postgres`).
+
+    Placeholders are `$n::text` (optionally cast further, e.g. `$2::text::vector`); every
+    param is bound as text by `irbench.engines.pg.bind_param`, the same rule as the loadgen.
+    """
+
+    sql: str
+    params: list[Any] = field(default_factory=list)
+    protocol: Literal["postgres"] = "postgres"
+
+    def to_json(self) -> dict[str, Any]:
+        return {"protocol": self.protocol, "sql": self.sql, "params": list(self.params)}
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> "SqlRequest":
+        return cls(sql=data["sql"], params=list(data.get("params") or []))
+
+
+def load_request(data: dict[str, Any]) -> "Request | SqlRequest":
+    protocol = data.get("protocol", "http")
+    if protocol == "http":
+        return Request.from_json(data)
+    if protocol == "postgres":
+        return SqlRequest.from_json(data)
+    raise ValueError(f"unknown request protocol {protocol!r}")
+
+
+PG_DSN = "postgresql://postgres:irbench@{host}:{port}/irbench"
+
+
+def engine_base_url(adapter_cls: "type[EngineAdapter]", host: str) -> str:
+    if adapter_cls.protocol == "postgres":
+        return PG_DSN.format(host=host, port=adapter_cls.host_port)
+    return f"http://{host}:{adapter_cls.host_port}"
+
+
 class EngineError(RuntimeError):
     pass
 
@@ -95,6 +133,7 @@ class EngineAdapter(ABC):
     """Everything engine-specific: index setup, request rendering, response parsing."""
 
     name: ClassVar[str]
+    protocol: ClassVar[str] = "http"
     host_port: ClassVar[int]
     health_path: ClassVar[str]
     data_dir: ClassVar[str]
@@ -119,7 +158,7 @@ class EngineAdapter(ABC):
     @abstractmethod
     def render(
         self, task: QueryTask, vector: list[float] | None, limit: int, facets: bool = True
-    ) -> Request:
+    ) -> "Request | SqlRequest":
         """The search request for one task. `facets=False` renders the facet verification fetch."""
 
     @abstractmethod

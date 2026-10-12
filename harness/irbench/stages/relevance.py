@@ -1,10 +1,19 @@
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import httpx
 
-from irbench.engines.base import EngineAdapter, EngineError, Request, SearchResult, call
+from irbench.engines.base import (
+    EngineAdapter,
+    EngineError,
+    Request,
+    SearchResult,
+    SqlRequest,
+    call,
+    load_request,
+)
 from irbench.io import write_jsonl, write_run
 from irbench.models import QueryTask, RunResults
 from irbench.score.checks import TaskCheck, check_task
@@ -19,14 +28,24 @@ class RelevanceResult:
     n_errors: int
 
 
+def execute(client: Any, request: Request | SqlRequest, timeout: float) -> Any:
+    if isinstance(request, SqlRequest):
+        return client.execute(request.sql, request.params, timeout_s=timeout)
+    return call(client, request, timeout)
+
+
 def run_request(
-    client: httpx.Client, adapter: EngineAdapter, task: QueryTask, request: Request, timeout: float
+    client: Any,
+    adapter: EngineAdapter,
+    task: QueryTask,
+    request: Request | SqlRequest,
+    timeout: float,
 ) -> SearchResult:
-    return adapter.parse(task, call(client, request, timeout))
+    return adapter.parse(task, execute(client, request, timeout))
 
 
-def _load(path: Path) -> Request:
-    return Request.from_json(json.loads(path.read_text(encoding="utf-8")))
+def _load(path: Path) -> Request | SqlRequest:
+    return load_request(json.loads(path.read_text(encoding="utf-8")))
 
 
 def _error(e: Exception) -> str:

@@ -7,8 +7,14 @@ import httpx
 import numpy as np
 
 from irbench.embed.vectors import read_vectors
-from irbench.engines.base import EngineAdapter, IndexContext, index_name, load_adapter_class
+from irbench.engines.base import (
+    EngineAdapter,
+    IndexContext,
+    index_name,
+    load_adapter_class,
+)
 from irbench.engines.config import EngineConfig, TrackConfig, load_engine_config
+from irbench.engines.pg import PostgresClient
 from irbench.io import read_jsonl, read_qrels
 from irbench.models import Qrels, QueryTask
 from irbench.paths import Workspace
@@ -16,10 +22,12 @@ from irbench.runs import RunSpec
 from irbench.scenario import Scenario, load_scenario
 from irbench.terms import load_term_groups
 
-ClientFactory = Callable[[str], httpx.Client]
+ClientFactory = Callable[[str], Any]
 
 
-def default_client(base_url: str) -> httpx.Client:
+def default_client(base_url: str) -> Any:
+    if base_url.startswith("postgresql://"):
+        return PostgresClient(base_url)
     return httpx.Client(base_url=base_url, timeout=60.0)
 
 

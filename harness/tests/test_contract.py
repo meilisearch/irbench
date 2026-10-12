@@ -2,21 +2,22 @@
 queries for every mode it claims. Needs Docker: `uv run pytest -m docker`."""
 
 from dataclasses import dataclass
+from typing import Any
 
-import httpx
 import numpy as np
 import pytest
 
 from adapter_helpers import SCENARIO, make_task
 from conftest import REPO_ROOT
 from contract_fixture import COLORS, ITEMS, contract_docs, rating
-from irbench.engines.base import EngineAdapter, IndexContext, load_adapter_class
+from irbench.engines.base import EngineAdapter, IndexContext, engine_base_url, load_adapter_class
 from irbench.engines.config import load_engine_config
 from irbench.models import Filter, Sort
-from irbench.runtime.docker import DockerRuntime, wait_healthy
+from irbench.runtime.docker import DockerRuntime, wait_ready
 from irbench.runtime.hardware import load_hardware
 from irbench.scenario import load_scenario
 from irbench.score.checks import check_task
+from irbench.stages.context import default_client
 from irbench.stages.relevance import run_request
 from irbench.terms import load_term_groups
 
@@ -31,7 +32,7 @@ VERIFY_LIMIT = 1000
 @dataclass
 class Engine:
     adapter: EngineAdapter
-    client: httpx.Client
+    client: Any
     docs: list[dict]
     docs_by_id: dict[str, dict]
     vectors: np.ndarray
@@ -70,9 +71,9 @@ def engine(request):
     )
     runtime = DockerRuntime(REPO_ROOT, name, load_hardware(REPO_ROOT, "local"))
     runtime.up()
-    client = httpx.Client(base_url=f"http://localhost:{cls.host_port}", timeout=60)
+    client = default_client(engine_base_url(cls, "localhost"))
     try:
-        wait_healthy(client, cls.health_path, 180)
+        wait_ready(client, cls.health_path, 180)
         e = Engine(adapter, client, docs, {d["id"]: d for d in docs}, vectors)
         e.index()
         yield e
