@@ -70,8 +70,10 @@ def _save_registry(root: Path, entries: list[PublishedVectors]) -> None:
     path.write_text(HEADER + body, encoding="utf-8")
 
 
-def asset_name(scenario_id: str, model_id: str, kind: str) -> str:
-    return f"{slug(scenario_id)}__{slug(model_id)}__{kind}.parquet"
+def asset_name(scenario_id: str, model_id: str, kind: str, sha12: str) -> str:
+    # Content-addressed: re-packing a scenario/model never reuses an older commit's
+    # asset name, so its registry entry (and the asset itself) stays valid on the release.
+    return f"{slug(scenario_id)}__{slug(model_id)}__{kind}-{sha12}.parquet"
 
 
 def _prepared(root: Path, scenario_id: str) -> dict[str, Any]:
@@ -102,13 +104,16 @@ def pack_vectors(
                 f"{src} missing: run `irbench embed --scenario {scenario_id} --model {model_id} "
                 "--compute` first"
             )
-        name = asset_name(scenario_id, model_id, kind)
+        tmp_dest = out_dir / f"{slug(scenario_id)}__{slug(model_id)}__{kind}.tmp.parquet"
+        shutil.copyfile(src, tmp_dest)
+        sha256 = sha256_file(tmp_dest)
+        name = asset_name(scenario_id, model_id, kind, sha256[:12])
         dest = out_dir / name
-        shutil.copyfile(src, dest)
+        tmp_dest.replace(dest)
         ids, vectors = read_vectors(dest)
         assets[kind] = VectorAsset(
             url=f"https://github.com/{RELEASE_REPO}/releases/download/{release}/{name}",
-            sha256=sha256_file(dest),
+            sha256=sha256,
             count=len(ids),
             dim=int(vectors.shape[1]),
         )

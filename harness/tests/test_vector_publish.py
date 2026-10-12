@@ -43,13 +43,14 @@ def test_pack_writes_assets_and_registry(tmp_path, wands_raw):
     root = fake_root(tmp_path, wands_raw)
     entry, files = pack_vectors(root, SCENARIO, "fake", tmp_path / "dist")
     docs, queries = vector_paths(root)
+    docs_sha12, queries_sha12 = entry.docs.sha256[:12], entry.queries.sha256[:12]
     assert [f.name for f in files] == [
-        "ecommerce__product-search__fake__docs.parquet",
-        "ecommerce__product-search__fake__queries.parquet",
+        f"ecommerce__product-search__fake__docs-{docs_sha12}.parquet",
+        f"ecommerce__product-search__fake__queries-{queries_sha12}.parquet",
     ]
     assert entry.docs.url == (
         "https://github.com/meilisearch/irbench/releases/download/vectors/"
-        "ecommerce__product-search__fake__docs.parquet"
+        f"ecommerce__product-search__fake__docs-{docs_sha12}.parquet"
     )
     assert entry.docs.sha256 == sha256_file(docs) and entry.queries.sha256 == sha256_file(queries)
     assert entry.docs.count == len(read_vectors(docs)[0]) and entry.docs.dim == 4
@@ -209,4 +210,5 @@ def test_cli_pack_prints_the_upload_command(tmp_path, wands_raw):
         ],
     )
     assert result.exit_code == 0, result.output
-    assert "gh release upload vectors" in result.output and "--clobber" in result.output
+    assert "gh release upload vectors" in result.output
+    assert "--clobber" not in result.output  # content-addressed names are never reused

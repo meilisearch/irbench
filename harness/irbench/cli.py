@@ -92,10 +92,7 @@ def vectors_pack(
         f"gh release create {release} -R {RELEASE_REPO} --title 'Published vectors' "
         "--notes 'Embedding vectors used by IRBench runs.'"
     )
-    typer.echo(
-        f"  gh release upload {release} {' '.join(str(f) for f in files)} "
-        f"-R {RELEASE_REPO} --clobber"
-    )
+    typer.echo(f"  gh release upload {release} {' '.join(str(f) for f in files)} -R {RELEASE_REPO}")
 
 
 @app.command()
