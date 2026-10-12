@@ -198,6 +198,9 @@ def _validate_manifest(d: Path, manifest: dict[str, Any]) -> None:
         config = manifest["config"]
         if not isinstance(config, dict):
             raise ValueError(f"{p}: config must be a dict")
+        synonyms = config.get("synonyms")
+        if synonyms is not None and not isinstance(synonyms, str):
+            raise ValueError(f"{p}: config.synonyms must be a string or null")
         credits = config.get("credits", [])
         if not isinstance(credits, list):
             raise ValueError(f"{p}: config.credits must be a list")

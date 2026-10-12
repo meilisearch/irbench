@@ -233,3 +233,16 @@ def test_cli_run_prints_perf(tmp_path, wands_raw, monkeypatch):
     result = CliRunner().invoke(app, args)
     assert result.exit_code == 0, result.output
     assert "perf keyword/keyword: p50=1.50ms p99=4.00ms max_qps=812 (c=16)" in result.stdout
+
+
+def test_manifest_records_the_synonyms_reason(tmp_path, wands_raw):
+    config = {**FAKE_CONFIG, "default": {**FAKE_CONFIG["default"], "synonyms": "no synonyms.txt"}}
+    root = fake_root(tmp_path, wands_raw, config=config)
+    manifest = run_pipeline(
+        root,
+        FAKE_SPEC,
+        ["prepare"],
+        runtime_factory=lambda *a: FakeRuntime(),
+        prepare_client=fixture_client(wands_raw),
+    )
+    assert manifest["config"]["synonyms"] == "no synonyms.txt"

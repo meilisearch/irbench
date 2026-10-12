@@ -116,6 +116,7 @@ def write_bundle(
     failed_stage=None,
     config_diff=None,
     credits=None,
+    synonyms=None,
     checks=None,
 ) -> Path:
     run_id = "__".join([scenario.replace("/", "__"), engine, model, track, hardware])
@@ -141,6 +142,7 @@ def write_bundle(
             "hash": "f" * 64,
             "diff_vs_default": config_diff or {},
             "credits": credits or [],
+            "synonyms": synonyms,
         },
         "dataset": {"id": "wands", "version": "3b74dcf4"},
         "seed": 20261009,

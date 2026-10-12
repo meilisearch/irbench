@@ -211,3 +211,8 @@ def test_cli_exit_codes(tmp_path):
     )
     good = CliRunner().invoke(app, ["lint", "--root", str(root)])
     assert good.exit_code == 0 and "1 configs, 0 findings" in good.output
+
+
+def test_synonyms_reason_is_prose_not_a_setting(tmp_path):
+    config = {"default": {"synonyms": "the engine cannot load synonyms.txt"}}
+    assert lint(make_repo(tmp_path, config))[1] == []

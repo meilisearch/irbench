@@ -142,3 +142,18 @@ def test_unsupported_reason_precedence(tmp_path):
     assert track.unsupported_reason(_task("hybrid", "hybrid")) == "whole mode"
     assert track.unsupported_reason(_task("sorted", "keyword")) == "whole base"
     assert track.unsupported_reason(_task("sorted", "semantic")) is None
+
+
+def test_synonyms_is_an_optional_reason(tmp_path):
+    path = _write(
+        tmp_path, "e", {"default": {"synonyms": "the engine has no synonym support"}, "tuned": {}}
+    )
+    config = load_engine_config(tmp_path, "e", SCENARIO)
+    assert config.track("default").synonyms == "the engine has no synonym support"
+    assert config.track("tuned").synonyms == "the engine has no synonym support"
+    assert path.exists()
+
+
+def test_synonyms_defaults_to_loaded(tmp_path):
+    _write(tmp_path, "e", {"default": {}})
+    assert load_engine_config(tmp_path, "e", SCENARIO).track("default").synonyms is None

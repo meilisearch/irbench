@@ -96,6 +96,9 @@ def test_keyword_known_answer(engine):
 
 
 def test_keyword_loads_shared_synonyms(engine):
+    reason = engine.adapter.ctx.config.synonyms
+    if reason:
+        pytest.skip(f"{engine.adapter.name}: synonyms.txt is not loaded — {reason}")
     ids = engine.search(make_task("keyword", text="gray")).ids
     assert ids and set(ids) <= _ids_where(lambda i: COLORS[i // 10] == "grey")
 

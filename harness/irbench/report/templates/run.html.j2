@@ -16,6 +16,9 @@
 <dl class="facts">
   <dt>Config file</dt><dd><code>{{ run.manifest.config.path|default("—") }}</code></dd>
   <dt>Config hash</dt><dd><code>{{ run.manifest.config.hash|default("—") }}</code></dd>
+{% if view.synonyms %}
+  <dt>Synonyms</dt><dd>Synonyms not loaded: {{ view.synonyms }}</dd>
+{% endif %}
 </dl>
 {% if view.diff %}
 <h3>Changes from the default track</h3>

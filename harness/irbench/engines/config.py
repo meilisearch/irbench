@@ -43,6 +43,8 @@ class TrackConfig(BaseModel):
     search: dict[str, dict[str, Any]] = {}
     unsupported: dict[str, str] = {}
     justification: dict[str, str] = {}
+    # Prose, not a setting: why the engine cannot load the shared synonyms.txt.
+    synonyms: str | None = None
 
     @field_validator("search")
     @classmethod

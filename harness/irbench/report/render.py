@@ -311,6 +311,7 @@ def run_view(run: RunResult) -> dict[str, Any]:
             key=lambda c: group_key(f"{c['mode']}/{c['base']}"),
         ),
         "diff": config.get("diff_vs_default", {}),
+        "synonyms": config.get("synonyms"),
         "credits": [
             {"name": c["name"], "safe_url": _safe_url(c.get("url"))}
             for c in config.get("credits", [])

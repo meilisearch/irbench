@@ -182,6 +182,10 @@ def test_malformed_files_are_unreadable(tmp_path, corrupt_fn, healthy_count):
             },
         ),
         lambda d: _edit_json(
+            d / "manifest.json",
+            lambda m: {**m, "config": {**m["config"], "synonyms": ["not a string"]}},
+        ),
+        lambda d: _edit_json(
             d / "scores.json",
             lambda s: {
                 **s,
@@ -205,6 +209,7 @@ def test_malformed_files_are_unreadable(tmp_path, corrupt_fn, healthy_count):
         "manifest_config_is_null",
         "credit_without_name",
         "credit_url_not_a_string",
+        "synonyms_not_a_string",
         "relevance_item_missing_mode",
         "index_seconds_is_a_string",
         "not_applicable_key_has_unknown_mode",

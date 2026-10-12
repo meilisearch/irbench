@@ -129,6 +129,25 @@ def test_run_page_has_config_environment_and_credits(tmp_path):
     assert "needs keyword retrieval" in page
 
 
+def test_run_page_says_when_synonyms_are_not_loaded(tmp_path):
+    results, out = site(tmp_path)
+    d = write_bundle(results, "qdrant", synonyms="no synonym file support")
+    loaded = write_bundle(results, "meilisearch")
+    build_site(results, out)
+    assert "Synonyms not loaded: no synonym file support" in read(out, f"runs/{d.name}.html")
+    assert "Synonyms not loaded" not in read(out, f"runs/{loaded.name}.html")
+
+
+def test_run_page_of_an_old_manifest_without_synonyms_key(tmp_path):
+    results, out = site(tmp_path)
+    d = write_bundle(results, "qdrant")
+    manifest = json.loads((d / "manifest.json").read_text())
+    del manifest["config"]["synonyms"]
+    (d / "manifest.json").write_text(json.dumps(manifest))
+    build_site(results, out)
+    assert "Synonyms not loaded" not in read(out, f"runs/{d.name}.html")
+
+
 def test_local_profile_is_labelled_not_comparable(tmp_path):
     results, out = site(tmp_path)
     write_bundle(results, "meilisearch", hardware="local")
