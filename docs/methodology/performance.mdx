@@ -19,7 +19,10 @@ From the scenario's `perf:` block (`scenario.yaml`):
    steps at concurrency 1, 2, 4, 8, 16, 32, 64, each for `step_seconds`
    (20s). A step is valid when p99 latency is ≤ `p99_limit_ms` (100ms) and
    the error rate is ≤ `max_error_rate` (0.1%). Stepping stops at the first
-   invalid step; max QPS is the QPS of the last valid step.
+   invalid step; max QPS is the highest-QPS step among the leading run of
+   valid steps, which is not necessarily the last one — a dip at one
+   concurrency level followed by a higher QPS at the next must not hide the
+   earlier peak.
 
 A request counts as an error when the connection fails, it times out, the
 status isn't 2xx, or the body can't be read; the response body is always

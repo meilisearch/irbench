@@ -15,7 +15,7 @@ later stage's.
 | 2 | `embed` | the doc and query vector cache (Parquet), downloaded from the published registry or computed locally |
 | 3 | `up` | starts the engine container with the pinned image and the hardware profile's resource limits; waits for its healthcheck |
 | 4 | `index` | `index.json` — indexing wall-clock time, peak memory, on-disk size |
-| 5 | `render` | `rendered/<engine>/<scenario>/<model>/<mode>/<qid>.json` (one file per query variant × mode) and `na.json` for tasks the engine doesn't support |
+| 5 | `render` | `rendered/<mode>/<base>/<qid>.json` (one file per query variant × mode, plus `<qid>.check.json` for facet-verification fetches), inside the run directory `.irbench/runs/<run-id>/`, which already encodes scenario, engine, model, track and hardware profile; `na.json` for tasks the engine doesn't support |
 | 6 | `relevance` | `run.trec` (top 100 results per task), `checks.jsonl`, `errors.jsonl` |
 | 7 | `perf` | `perf.json` — latency and throughput, replayed by the Rust load generator |
 | 8 | `score` | `scores.json` — relevance metrics, constraint checks, and N/A reasons |
@@ -27,9 +27,11 @@ The Python harness and each engine's adapter only *render* requests; they
 never embed any benchmark-specific fusion or ranking logic into how a request
 is built beyond what the adapter needs to speak that engine's API. Every
 request sent during the `relevance` stage, and replayed during `perf`, exists
-first as a file under `rendered/`: `{protocol, method, url|path, headers,
-body | content}`. You can open any one of these files and see exactly what
-was sent to the engine for that query variant and mode.
+first as a file under `rendered/<mode>/<base>/<qid>.json`:
+`{protocol, method, path, headers, body | content}` — only the `http`
+protocol exists today, so `path` is always present (no `url` variant yet).
+You can open any one of these files and see exactly what was sent to the
+engine for that query variant and mode.
 
 ## Dataset and qrels grades
 
@@ -66,7 +68,8 @@ Perturbations are generated once per original query, seeded with
   deletion, duplication, or transposition. Words under 4 characters are left
   untouched, and at most one word per query is perturbed.
 - **prefix** — truncates the last word to 40–70% of its length (minimum 2
-  characters kept), simulating search-as-you-type.
+  characters kept), simulating search-as-you-type. The last word must be at
+  least 3 characters long, or the query gets no prefix variant.
 - **synonym** — replaces one term with an entry from a reviewed,
   per-scenario vocabulary-mismatch list (e.g. sofa ↔ couch). This list is
   distinct from `synonyms.txt`: the perturbation list tests whether an engine
