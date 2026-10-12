@@ -20,7 +20,7 @@ Every mode is one SQL statement. Placeholders are `$n::text` plus a cast; the qu
 
 - keyword: `tsv @@ websearch_to_tsquery(<config>, $1::text)`, ranked by `ts_rank`, ties by `id`. AND semantics (Postgres as shipped); no typo or prefix tolerance.
 - semantic: `ORDER BY embedding <=> $1::text::vector` (cosine distance) with the HNSW index.
-- hybrid: reciprocal rank fusion, k = 60, in one statement: the keyword top `top_k` and the vector top `top_k` (each with the filter) are numbered with `row_number()`, combined by `FULL OUTER JOIN`, scored `1/(60 + r)` per side, and joined back to the table.
+- hybrid: reciprocal rank fusion, k = 60, in one statement: the keyword top `top_k` and the vector top `top_k` (each with the filter) are numbered with `row_number()`, combined by `FULL OUTER JOIN`, scored `1/(60 + r)` per side. Plain hybrid returns ids straight from the fused CTEs; only the sorted and faceted shapes join back to the table for the sort column or `__terms`.
 - filtered: `<field>__terms @> ARRAY[$n::text]` for `eq`, `<field> >= / <= $n::text::float8` for ranges; applied inside both sides of hybrid.
 - sorted: the keyword base sorts every match, the semantic base sorts the `top_k` nearest; `ORDER BY <field> <dir> NULLS LAST, id`.
 - faceted: one statement returns one row `{ids, facets}`. Counts are `unnest(<field>__terms)` grouped over the query's own match set (keyword: every match; semantic: every document passing the filter, counted with no ordering or limit so an HNSW scan can never truncate them; hybrid: the fused set); `ids` is the top `limit` of that set, taken from a separate ranked subquery on the semantic base. Intermediate sets project only `id`, `score`, and the sort or `__terms` columns, never the embedding or text columns.

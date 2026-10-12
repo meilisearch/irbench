@@ -51,9 +51,13 @@ The simplest route is to subclass `irbench.engines.postgres.PostgresAdapter`,
 which already implements the schema, loading, and the semantic, hybrid,
 filtered, sorted and faceted statements. A subclass implements two abstract
 hooks, `keyword_match(q, text)` and `text_index_ddl()`, and may override
-`setup_ddl()` and `extra_columns()`. The `postgres` adapter overrides all
-four; `postgres-paradedb` overrides `setup_ddl`, `text_index_ddl` and
-`keyword_match`.
+`setup_ddl()`, `extra_columns()` and `keyword_tiebreak()`. The latter is the
+suffix after `score DESC` wherever the keyword base is ranked by score; it
+defaults to `, id` (a total order), and an engine whose BM25 scan can only
+push a bare score order down to its index returns `""`. The `postgres`
+adapter overrides `keyword_match`, `text_index_ddl`, `setup_ddl` and
+`extra_columns`; `postgres-paradedb` overrides `setup_ddl`, `text_index_ddl`,
+`keyword_match` and `keyword_tiebreak`.
 
 Rules for the SQL:
 

@@ -46,6 +46,11 @@ the Postgres wire protocol with SQL. The same rules apply:
   per-field BM25 boosts for `postgres-paradedb`.
 - pgvector settings above the shipped defaults (`hnsw.ef_search`,
   `hnsw.iterative_scan`) carry a `justification:` in the config.
+- `postgres-paradedb` also sets `plan_cache_mode = force_custom_plan`
+  (justified in its config): pg_search's boost cast on a bound parameter only
+  works in a custom plan. The cost is that every ParadeDB execution, the
+  semantic ones included, is planned each time; vanilla `postgres` runs with
+  the default `auto`.
 - Synonyms: `postgres` loads `synonyms.txt` through a thesaurus dictionary
   (groups containing digit tokens are dropped, see its README);
   `postgres-paradedb` declares `synonyms:` as unsupported.

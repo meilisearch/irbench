@@ -87,7 +87,7 @@ a smaller per-group summary derived from it (`summarize_perf` in
 | `base_url`, `requests` | The engine URL and total request count replayed. |
 | `limits` | `p99_ms` and `max_error_rate` — the thresholds a throughput step must meet to be valid. |
 | `warmup` | `requests`, `errors`, `seconds` for the discarded warm-up pass. |
-| `latency` | Per `<mode>/<base>` group (plus `all`): `count`, `errors`, `mean_ms`, `p50_ms`, `p95_ms`, `p99_ms`, `max_ms` at concurrency 1. |
+| `latency` | Per `<mode>/<base>` group (plus `all`): `count`, `errors`, `mean_ms`, `p50_ms`, `p95_ms`, `p99_ms`, `max_ms` at concurrency 1. Not every group is comparable across engines: see [Reading latencies across engines](/methodology/performance#reading-latencies-across-engines). |
 | `throughput` | Per throughput group: `max_qps`, `max_qps_concurrency`, and `steps` — each step has `concurrency`, `seconds`, `requests`, `errors`, `qps`, `error_rate`, `p50_ms`, `p95_ms`, `p99_ms`, `valid`. |
 | `skipped_groups` | Throughput groups that were not run. |
 | `failures` (`loadgen/README.md`) | Phases (warm-up, a latency pass, or the lowest throughput step) where the engine answered nothing or exceeded the error-rate limit; non-empty means the measurement isn't valid and the loadgen exits with status 2. |

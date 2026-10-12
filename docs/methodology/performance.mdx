@@ -52,6 +52,21 @@ response before sending the next request. From `loadgen/README.md`:
   status 2. Latencies computed with no successful request are `null`, never
   0.
 
+## Reading latencies across engines
+
+Latency groups measure what each engine does for the same request, and the
+work isn't always the same size. Two known differences:
+
+- **Keyword match sets differ.** Vanilla `postgres` matches keyword queries
+  with AND semantics (`websearch_to_tsquery`), so its keyword, faceted and
+  sorted latencies come from much smaller match sets than the OR-matching
+  engines (Meilisearch, Elasticsearch, Qdrant, `postgres-paradedb`). They
+  aren't directly comparable.
+- **Faceted on the semantic base counts different sets.** Meilisearch and
+  both Postgres engines count facets over every document that passes the
+  filter; Elasticsearch counts over the kNN top-k. That latency group
+  compares different definitions of the match set.
+
 ## Indexing time, peak memory, and disk
 
 During the `index` stage the harness records:

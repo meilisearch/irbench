@@ -1,13 +1,13 @@
 # ParadeDB (Postgres + pg_search + pgvector)
 
-Image: `paradedb/paradedb:0.26.1-pg17` (Postgres 17, pg_search 0.26.1 BM25, pgvector 0.8, host port 15433, database `irbench`). Adapter: `adapter.py`, built on the shared `irbench.engines.postgres.PostgresAdapter`; only keyword search and the extension setup differ from the `postgres` engine.
+Image: `paradedb/paradedb:0.26.1-pg17` (Postgres 17, pg_search 0.26.1 BM25, pgvector 0.8, host port 15433, database `irbench`). Adapter: `adapter.py`, built on the shared `irbench.engines.postgres.PostgresAdapter`; only keyword search, the extension setup, `plan_cache_mode = force_custom_plan` and the keyword ordering (by score alone, with no `id` tie-break) differ from the `postgres` engine.
 
 ## What the default track sends
 
 | Scenario requirement | ParadeDB setting |
 |---|---|
 | Searchable fields | `text` columns plus one `bm25` index: `CREATE INDEX ... USING bm25 (id, name, product_class, category, features, description)`. No `key_field` (a deprecated no-op in pg_search 0.26; the primary key `id` is used) |
-| Field priority | Per-field boost `n - i` in scenario order: `name` 5, `product_class` 4, `category` 3, `features` 2, `description` 1. Same precedent as Elasticsearch and Qdrant: one clause per field, the scores of the matching clauses are summed by `OR` |
+| Field priority | Per-field boost `n - i` in scenario order: `name` 5, `product_class` 4, `category` 3, `features` 2, `description` 1. One clause per field, and the scores of the matching clauses are summed by `OR`, like Qdrant (sum of boosted fields); Elasticsearch's `multi_match` `best_fields` takes the best field instead |
 | Analysis | pg_search's default tokenizer: no stemming (like Elasticsearch's standard analyzer); fuzzy matching is opt-in in pg_search and left off |
 | Synonyms | Not loaded: pg_search 0.26.1 has no synonym feature, and expanding queries in the harness would break the parity rules. Declared as `synonyms:` in the config and shown on the run page |
 | Filterable / facet text fields | `<field>__terms text[]` with a GIN index |
