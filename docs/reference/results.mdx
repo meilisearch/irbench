@@ -31,7 +31,7 @@ the `protocol` field (absent means `http`).
 
 ```json
 {"protocol": "http", "method": "POST", "path": "/indexes/i/search", "headers": {}, "body": {}}
-{"protocol": "postgres", "sql": "SELECT id FROM docs ORDER BY embedding <=> $2::text::vector LIMIT $3::text::int", "params": ["sofa", [0.01, 0.02], 100]}
+{"protocol": "postgres", "sql": "SELECT id FROM docs WHERE name = $1::text ORDER BY embedding <=> $2::text::vector LIMIT $3::text::int", "params": ["sofa", [0.01, 0.02], 100]}
 ```
 
 For `postgres` requests:

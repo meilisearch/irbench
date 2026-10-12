@@ -1,4 +1,4 @@
-"""Shared Postgres adapter (spec 2026-10-12 §4-§5). Subclasses provide keyword search only."""
+"""Shared Postgres adapter (spec 2026-10-12 §4-§5). Subclasses implement `keyword_match` and `text_index_ddl` and may override `setup_ddl` and `extra_columns`."""
 
 import re
 from abc import abstractmethod

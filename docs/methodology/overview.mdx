@@ -30,8 +30,9 @@ never embed any benchmark-specific fusion or ranking logic into how a request
 is built beyond what the adapter needs to speak that engine's API. Every
 request sent during the `relevance` stage, and replayed during `perf`, exists
 first as a file under `rendered/<mode>/<base>/<qid>.json`:
-`{protocol, method, path, headers, body | content}` — only the `http`
-protocol exists today, so `path` is always present (no `url` variant yet).
+either an `http` request (`{protocol, method, path, headers, body | content}`)
+or a `postgres` request (`{protocol, sql, params}`); see
+[Rendered requests](/reference/results#rendered-requests).
 You can open any one of these files and see exactly what was sent to the
 engine for that query variant and mode.
 

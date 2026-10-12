@@ -49,8 +49,11 @@ An engine queried with SQL over the Postgres wire protocol sets
 (`harness/irbench/engines/base.py`) from `render`, instead of HTTP `Request`s.
 The simplest route is to subclass `irbench.engines.postgres.PostgresAdapter`,
 which already implements the schema, loading, and the semantic, hybrid,
-filtered, sorted and faceted statements, and supply only the keyword search.
-The two Postgres engines do exactly that.
+filtered, sorted and faceted statements. A subclass implements two abstract
+hooks, `keyword_match(q, text)` and `text_index_ddl()`, and may override
+`setup_ddl()` and `extra_columns()`. The `postgres` adapter overrides all
+four; `postgres-paradedb` overrides `setup_ddl`, `text_index_ddl` and
+`keyword_match`.
 
 Rules for the SQL:
 
