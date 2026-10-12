@@ -2,6 +2,7 @@
 
 import re
 from abc import abstractmethod
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -76,12 +77,20 @@ class PostgresAdapter(EngineAdapter):
 
     def apply_settings(self, client: Any) -> None:
         """index.settings from the config (e.g. hnsw.ef_search): per database and this session."""
-        for name, value in (self.ctx.config.index.get("settings") or {}).items():
+        settings = self.ctx.config.index.get("settings") or {}
+        stmts = ["ALTER DATABASE {db} RESET ALL"]
+        session = []
+        for name, value in settings.items():
             if not re.fullmatch(r"[a-z_]+\.[a-z_]+", name) or not re.fullmatch(
                 r"[A-Za-z0-9_.]+", str(value)
             ):
                 raise ValueError(f"unsafe setting {name}={value!r}")
-            client.script(f"ALTER DATABASE irbench SET {name} = {value}; SET {name} = {value};")
+            stmts.append(f"ALTER DATABASE {{db}} SET {name} = {value}")
+            session.append(f"SET {name} = {value}")
+        body = "; ".join(
+            f"EXECUTE format('{st}', current_database())".replace("{db}", "%I") for st in stmts
+        )
+        client.script(f"DO $$ BEGIN {body}; END $$;" + "".join(f"\n{st};" for st in session))
 
     def load_documents(self, client: Any, docs: list[dict[str, Any]], vectors: np.ndarray) -> None:
         id_field = self.ctx.scenario.id_field
@@ -137,35 +146,65 @@ class PostgresAdapter(EngineAdapter):
         op = {"gte": ">=", "lte": "<="}[f.op]
         return f"{field} {op} {q.p(float(f.value), 'float8')}"
 
-    def _ranked(self, q: Sql, task: QueryTask, vector: list[float] | None, k_limit: int) -> str:
-        """SELECT *, score over the retrieval base, best first, at most k_limit rows.
+    def _parts(self, q: Sql, task: QueryTask, vector: list[float] | None) -> "_Parts":
+        """Placeholders for the task's values, allocated once in order: text, vector, filter."""
+        pred = score = vec = None
+        if task.base in ("keyword", "hybrid"):
+            pred, score = self.keyword_match(q, task.text)
+        if task.base in ("semantic", "hybrid"):
+            vec = q.p(require_vector(task, vector), "vector")
+        return _Parts(pred, score, vec, self._filter(q, task.filter))
 
-        Params are added in statement order: query text, then vector, then filter, then limits.
+    def _ranked(
+        self,
+        q: Sql,
+        task: QueryTask,
+        p: "_Parts",
+        k_limit: int | None,
+        extras: list[str] = (),
+        scored: bool = True,
+    ) -> str:
+        """SELECT id [, score] [, extras] over the retrieval base, best first, at most k_limit rows.
+
+        k_limit None means every match: keyword base only, unordered. Only the columns callers
+        need are projected, so no wide column (embedding, text, tsv) travels through a sort.
+        Params are added in statement order: query text, vector, filter, then limits.
         """
         t = self.table
+        ext = "".join(f", {e}" for e in extras)
         if task.base == "keyword":
-            pred, score = self.keyword_match(q, task.text)
-            where = self._filter(q, task.filter)
-            lim = q.p(k_limit, "int")
-            return f"SELECT *, {score} AS score FROM {t} WHERE {pred} AND {where} ORDER BY score DESC, id LIMIT {lim}"
+            sc = f", {p.score} AS score" if scored else ""
+            head = f"SELECT id{sc}{ext} FROM {t} WHERE {p.pred} AND {p.where}"
+            if k_limit is None:
+                return head
+            order = "score" if scored else p.score
+            return f"{head} ORDER BY {order} DESC, id LIMIT {q.p(k_limit, 'int')}"
+        if k_limit is None:
+            raise ValueError("an unbounded pool is only defined for the keyword base")
         if task.base == "semantic":
-            vec = q.p(require_vector(task, vector), "vector")
-            where = self._filter(q, task.filter)
-            lim = q.p(k_limit, "int")
-            return f"SELECT *, -(embedding <=> {vec}) AS score FROM {t} WHERE {where} ORDER BY embedding <=> {vec}, id LIMIT {lim}"
+            sc = f", -(embedding <=> {p.vec}) AS score" if scored else ""
+            return (
+                f"SELECT id{sc}{ext} FROM {t} WHERE {p.where} "
+                f"ORDER BY embedding <=> {p.vec}, id LIMIT {q.p(k_limit, 'int')}"
+            )
         # hybrid: RRF over the keyword and vector top_k (spec §7 amendment)
-        pred, score = self.keyword_match(q, task.text)
-        vec = q.p(require_vector(task, vector), "vector")
-        where = self._filter(q, task.filter)
         top_k = q.p(self.ctx.scenario.top_k, "int")
+        fused = (
+            f"SELECT coalesce(kw.id, vec.id) AS id, coalesce(1.0 / ({RRF_K} + kw.r), 0) "
+            f"+ coalesce(1.0 / ({RRF_K} + vec.r), 0) AS score "
+            f"FROM (SELECT id, row_number() OVER (ORDER BY {p.score} DESC, id) AS r FROM {t} "
+            f"WHERE {p.pred} AND {p.where} ORDER BY {p.score} DESC, id LIMIT {top_k}) kw "
+            f"FULL OUTER JOIN (SELECT id, row_number() OVER (ORDER BY embedding <=> {p.vec}, id) AS r "
+            f"FROM {t} WHERE {p.where} ORDER BY embedding <=> {p.vec}, id LIMIT {top_k}) vec "
+            f"ON kw.id = vec.id"
+        )
         lim = q.p(k_limit, "int")
+        if not extras:
+            return f"SELECT id, score FROM ({fused}) f ORDER BY score DESC, id LIMIT {lim}"
+        cols = "".join(f", d.{e}" for e in extras)
         return (
-            f"SELECT d.*, coalesce(1.0 / ({RRF_K} + kw.r), 0) + coalesce(1.0 / ({RRF_K} + vec.r), 0) AS score "
-            f"FROM (SELECT id, row_number() OVER (ORDER BY {score} DESC, id) AS r FROM {t} "
-            f"WHERE {pred} AND {where} ORDER BY {score} DESC, id LIMIT {top_k}) kw "
-            f"FULL OUTER JOIN (SELECT id, row_number() OVER (ORDER BY embedding <=> {vec}, id) AS r FROM {t} "
-            f"WHERE {where} ORDER BY embedding <=> {vec}, id LIMIT {top_k}) vec ON kw.id = vec.id "
-            f"JOIN {t} d ON d.id = coalesce(kw.id, vec.id) ORDER BY score DESC, d.id LIMIT {lim}"
+            f"SELECT f.id, f.score{cols} FROM ({fused}) f JOIN {t} d ON d.id = f.id "
+            f"ORDER BY f.score DESC, f.id LIMIT {lim}"
         )
 
     def render(
@@ -173,44 +212,66 @@ class PostgresAdapter(EngineAdapter):
     ) -> SqlRequest:
         q = Sql()
         top_k = self.ctx.scenario.top_k
+        t = self.table
+        p = self._parts(q, task, vector)
         if task.sort is not None:
             field, direction = ident(task.sort.field), task.sort.direction.upper()
-            # keyword base: every match; semantic base: the top_k nearest (same rules as other engines)
-            pool = (self.ctx.n_docs or 1_000_000_000) if task.base == "keyword" else top_k
-            inner = self._ranked(q, task, vector, pool)
-            sql = f"SELECT id FROM ({inner}) m ORDER BY {field} {direction} NULLS LAST, id LIMIT {q.p(limit, 'int')}"
+            # keyword base: every match; other bases: the top_k (same rules as other engines)
+            pool = None if task.base == "keyword" else top_k
+            inner = self._ranked(q, task, p, pool, [field], scored=False)
+            sql = (
+                f"SELECT id FROM ({inner}) m ORDER BY {field} {direction} NULLS LAST, id "
+                f"LIMIT {q.p(limit, 'int')}"
+            )
         elif facets and task.facets:
-            names = [ident(f) for f in task.facets]
-            inner = self._ranked(q, task, vector, self.ctx.n_docs or 1_000_000_000)
+            terms = [f"{ident(f)}__terms" for f in task.facets]
+            every = self.ctx.n_docs or 1_000_000_000
+            if task.base == "keyword":
+                # counts over every match, hits ranked from the same match set
+                m = self._ranked(q, task, p, None, terms)
+                hits_src, order = "m", "score DESC"
+            elif task.base == "semantic":
+                # counts over every filtered document with no ordering or limit (an HNSW scan
+                # would be capped by hnsw.max_scan_tuples); hits from a separate nearest query
+                m = f"SELECT {', '.join(terms)} FROM {t} WHERE {p.where}"
+                hits_src, order = f"{t} WHERE {p.where}", f"embedding <=> {p.vec}"
+            else:
+                m = self._ranked(q, task, p, every, terms)
+                hits_src, order = "m", "score DESC"
             lim = q.p(limit, "int")
             facet_sql = ", ".join(
                 f"'{n}', (SELECT coalesce(json_object_agg(v, c), '{{}}') FROM "
                 f"(SELECT unnest({n}__terms) AS v, count(*) AS c FROM m GROUP BY 1) x)"
-                for n in names
+                for n in (ident(f) for f in task.facets)
             )
             sql = (
-                f"WITH m AS ({inner}), hits AS (SELECT id, row_number() OVER (ORDER BY score DESC, id) AS o "
-                f"FROM m ORDER BY score DESC, id LIMIT {lim}) "
+                f"WITH m AS ({m}), hits AS (SELECT id, row_number() OVER (ORDER BY {order}, id) AS o "
+                f"FROM {hits_src} ORDER BY {order}, id LIMIT {lim}) "
                 f"SELECT (SELECT coalesce(json_agg(id ORDER BY o), '[]') FROM hits) AS ids, "
                 f"json_build_object({facet_sql}) AS facets"
             )
         else:
-            sql = (
-                f"SELECT id FROM ({self._ranked(q, task, vector, limit)}) m ORDER BY score DESC, id"
-            )
-        params = q.params
+            sql = f"SELECT id FROM ({self._ranked(q, task, p, limit)}) m ORDER BY score DESC, id"
         extra = self.search_params(task)
         if extra:
             raise ValueError(
                 f"{self.name}: search.{task.base} settings are not supported: {sorted(extra)}"
             )
-        return SqlRequest(sql=sql, params=params)
+        return SqlRequest(sql=sql, params=q.params)
 
     def parse(self, task: QueryTask, payload: Any) -> SearchResult:
         rows = payload or []
         if rows and "ids" in rows[0]:
             return SearchResult(ids=[str(i) for i in rows[0]["ids"]], facets=rows[0]["facets"])
         return SearchResult(ids=[str(r["id"]) for r in rows])
+
+
+@dataclass(frozen=True)
+class _Parts:
+    pred: str | None
+    score: str | None
+    vec: str | None
+    where: str
 
 
 def _text(value: Any) -> str | None:

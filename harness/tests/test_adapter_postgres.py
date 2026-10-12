@@ -125,15 +125,68 @@ def test_facet_check_fetch_is_a_plain_query(adapter):
     assert adapter.parse(task, [{"id": "1"}, {"id": "2"}]).ids == ["1", "2"]
 
 
-def test_synonym_file_matches_scenario_synonyms(adapter):
-    path = REPO_ROOT / "engines/postgres/docker/tsearch/irbench_ecommerce_product_search.syn"
-    expected = adapter.synonym_file()
+def test_thesaurus_file_matches_scenario_synonyms(adapter):
+    path = REPO_ROOT / "engines/postgres/docker/tsearch/irbench_ecommerce_product_search.ths"
+    expected = adapter.thesaurus_file()
     assert path.read_text(encoding="utf-8") == expected, (
         f"{path} is out of date; replace its content with:\n{expected}"
     )
 
 
-def test_synonym_file_skips_multiword_groups(adapter):
-    text = adapter.synonym_file()
-    assert "gray grey" in text.splitlines()
-    assert not any(" seater" in line for line in text.splitlines())
+def test_thesaurus_maps_every_member_to_the_first(adapter):
+    lines = adapter.thesaurus_file().splitlines()
+    assert "gray : grey" in lines and "children : kids" in lines
+    assert not any("seater" in line or "drawer" in line for line in lines)  # digit groups dropped
+
+
+def test_ddl_maps_hyphenated_tokens_through_the_thesaurus(adapter):
+    ddl = adapter.setup_ddl()
+    assert "TEMPLATE = thesaurus" in ddl and "Dictionary = english_stem" in ddl
+    for token in ("asciihword", "hword_asciipart", "hword_part", "hword"):
+        assert token in ddl
+
+
+def test_settings_reset_then_apply_on_current_database(adapter):
+    class Recorder:
+        sql = ""
+
+        def script(self, sql):
+            self.sql = sql
+
+    rec = Recorder()
+    adapter.apply_settings(rec)
+    assert "RESET ALL" in rec.sql and "current_database()" in rec.sql
+    assert "irbench" not in rec.sql.replace("current_database", "")
+    assert "SET hnsw.ef_search = 100;" in rec.sql
+
+
+def test_faceted_and_sorted_never_carry_wide_columns(adapter):
+    v = [0.1, 0.2, 0.3]
+    asc = Sort(field="average_rating", direction="asc")
+    cases = [
+        (make_task("faceted", "keyword", text="sofa", facets=["product_class"]), None),
+        (make_task("faceted", "semantic", facets=["product_class"]), v),
+        (make_task("faceted", "hybrid", text="sofa", facets=["product_class"]), v),
+        (make_task("sorted", "keyword", text="sofa", sort=asc), None),
+        (make_task("sorted", "semantic", sort=asc), v),
+        (make_task("sorted", "hybrid", text="sofa", sort=asc), v),
+    ]
+    for task, vec in cases:
+        sql = adapter.render(task, vec, 100).sql
+        assert "SELECT *" not in sql and "d.*" not in sql and ", tsv" not in sql, sql
+        assert "SELECT embedding" not in sql, sql
+
+
+def test_sorted_keyword_has_no_inner_sort(adapter):
+    sort = Sort(field="average_rating", direction="desc")
+    r = adapter.render(make_task("sorted", "keyword", text="sofa", sort=sort), None, 100)
+    assert r.sql.count("ORDER BY") == 1 and r.params == ["sofa", 100]
+
+
+def test_faceted_semantic_counts_without_order_or_limit(adapter):
+    task = make_task("faceted", "semantic", facets=["product_class"])
+    r = adapter.render(task, [0.1, 0.2, 0.3], 100)
+    m = r.sql.split(", hits AS")[0]
+    assert "ORDER BY" not in m and "LIMIT" not in m
+    assert "ORDER BY embedding <=> $1::text::vector" in r.sql
+    assert r.params == [[0.1, 0.2, 0.3], 100]

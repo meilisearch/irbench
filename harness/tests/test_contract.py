@@ -171,3 +171,27 @@ def test_facet_counts_match_the_result_set(engine, base):
 def test_hostile_query_text_is_harmless(engine):
     engine.search(make_task("keyword", text='sofa\'; DROP TABLE x; -- "grey" | !velvet'))
     assert engine.search(make_task("keyword", text="sofa")).ids  # still answers afterwards
+
+
+def test_postgres_synonym_groups_unify(engine):
+    """Every member of every synonyms.txt group yields the same tsvector, and one member's
+    query matches a document that contains another (needs the engine's text search config)."""
+    if engine.adapter.name != "postgres":
+        pytest.skip("Postgres text search configuration only")
+    cfg = engine.adapter.ts_config
+    for group in engine.adapter.thesaurus_groups():
+        vectors = {
+            member: engine.client.execute(
+                f"SELECT to_tsvector('{cfg}', $1::text)::text AS v", [member]
+            )[0]["v"]
+            for member in group
+        }
+        assert len(set(vectors.values())) == 1, vectors
+        for query in group:
+            for doc in group:
+                hit = engine.client.execute(
+                    f"SELECT to_tsvector('{cfg}', 'a ' || $1::text || ' b') @@ "
+                    f"websearch_to_tsquery('{cfg}', $2::text) AS hit",
+                    [doc, query],
+                )[0]["hit"]
+                assert hit, (query, doc)
