@@ -1,0 +1,33 @@
+# ParadeDB (Postgres 17 + pg_search BM25 + pgvector) on ecommerce/product-search.
+#
+# default: pg_search as shipped: one bm25 index over the searchable fields, a
+#   disjunction (|||) of per-field matches with boosts n - i in scenario order
+#   (name 5 ... description 1), default tokenizer; pgvector HNSW at its defaults,
+#   B-tree/GIN indexes on filter and sort fields.
+# tuned: changes within the parity rules (docs/methodology/parity); add a `tuned:`
+#   block here, deep-merged over `default`.
+#
+# Keys: index.settings (database-level GUCs), unsupported (key -> reason),
+# synonyms (why synonyms.txt is not loaded), justification (key -> why a
+# non-default setting is set).
+default:
+  index:
+    settings:
+      hnsw.ef_search: 100
+      hnsw.iterative_scan: relaxed_order
+  search: {}
+  synonyms: >-
+    pg_search 0.26.1 has no synonym feature; expanding queries in the harness
+    would break the parity rules.
+  unsupported: {}
+  justification:
+    settings.hnsw.ef_search: >-
+      pgvector's HNSW candidate pool is ef_search (default 40). 100 aligns it
+      with the scenario's top_k = 100, as Elasticsearch's num_candidates and
+      Qdrant's ef are aligned with top_k; with iterative scans on, the default
+      would still eventually return top_k rows, but at higher cost.
+    settings.hnsw.iterative_scan: >-
+      Without iterative scans (off by default in pgvector 0.8), a filtered
+      vector query keeps only the ef_search nearest rows before filtering and
+      can return fewer than top_k results. relaxed_order is pgvector's
+      documented setting for filtered queries.
