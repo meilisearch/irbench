@@ -118,3 +118,41 @@ def test_non_run_entries_are_ignored(tmp_path):
 def test_missing_results_dir(tmp_path):
     with pytest.raises(FileNotFoundError):
         load_results(tmp_path / "nope")
+
+
+@pytest.mark.parametrize(
+    "corrupt_fn,healthy_count",
+    [
+        (lambda d: (d / "scores.json").write_text("{}"), 1),
+        (lambda d: (d / "scores.json").write_text("[]"), 1),
+        (
+            lambda d: (d / "scores.json").write_text('{"relevance": [], "not_applicable": {}}'),
+            1,
+        ),
+        (
+            lambda d: (d / "perf.json").write_text('{"limits": {}, "latency": {}}'),
+            1,
+        ),
+        (lambda d: (d / "index.json").write_text("[]"), 1),
+    ],
+    ids=[
+        "scores_empty_dict",
+        "scores_empty_list",
+        "scores_missing_constraint_violations",
+        "perf_missing_throughput",
+        "index_wrong_type",
+    ],
+)
+def test_malformed_files_are_unreadable(tmp_path, corrupt_fn, healthy_count):
+    write_bundle(tmp_path, "meilisearch")
+    corrupt = write_bundle(tmp_path, "qdrant")
+    corrupt_fn(corrupt)
+    scenarios, unreadable = load_results(tmp_path)
+    assert sum(len(s.runs) for s in scenarios) == healthy_count
+    assert len(unreadable) == 1
+    assert unreadable[0].path == corrupt.name
+    assert (
+        "scores.json" in unreadable[0].error
+        or "perf.json" in unreadable[0].error
+        or "index.json" in unreadable[0].error
+    )

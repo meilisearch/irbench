@@ -121,6 +121,7 @@ def _load_run(d: Path) -> RunResult:
         name: read_json(d / f"{name}.json") if (d / f"{name}.json").exists() else None
         for name in ("scores", "perf", "index")
     }
+    _validate_files(d, files)
     status, failure = manifest["status"], _failure(manifest)
     if status == "succeeded" and files["scores"] is None:
         status, failure = "incomplete", "the run succeeded but the bundle has no scores.json"
@@ -145,3 +146,38 @@ def _failure(manifest: dict[str, Any]) -> str | None:
         if info.get("status") == "failed":
             return f"{stage}: {info.get('error', 'no error recorded')}"
     return f"run status {manifest['status']!r}"
+
+
+def _validate_files(d: Path, files: dict[str, Any]) -> None:
+    """Validate structure of loaded JSON files; raise ValueError if malformed."""
+    if files["scores"] is not None:
+        if not isinstance(files["scores"], dict):
+            raise ValueError("scores.json must be a dict")
+        if "relevance" not in files["scores"]:
+            raise ValueError("scores.json lacks relevance")
+        if not isinstance(files["scores"]["relevance"], list):
+            raise ValueError("scores.json relevance must be a list")
+        if "not_applicable" not in files["scores"]:
+            raise ValueError("scores.json lacks not_applicable")
+        if not isinstance(files["scores"]["not_applicable"], dict):
+            raise ValueError("scores.json not_applicable must be a dict")
+        if "constraint_violations" not in files["scores"]:
+            raise ValueError("scores.json lacks constraint_violations")
+        if not isinstance(files["scores"]["constraint_violations"], dict):
+            raise ValueError("scores.json constraint_violations must be a dict")
+
+    if files["perf"] is not None:
+        if not isinstance(files["perf"], dict):
+            raise ValueError("perf.json must be a dict")
+        required_perf = ("limits", "latency", "throughput", "skipped_groups")
+        missing_perf = [k for k in required_perf if k not in files["perf"]]
+        if missing_perf:
+            raise ValueError(f"perf.json lacks {', '.join(missing_perf)}")
+
+    if files["index"] is not None:
+        if not isinstance(files["index"], dict):
+            raise ValueError("index.json must be a dict")
+        if "seconds" not in files["index"]:
+            raise ValueError("index.json lacks seconds")
+        if "n_docs" not in files["index"]:
+            raise ValueError("index.json lacks n_docs")
