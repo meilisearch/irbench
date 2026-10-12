@@ -18,10 +18,14 @@ default:
   unsupported: {}
   justification:
     settings.hnsw.ef_search: >-
-      pgvector's HNSW candidate pool is ef_search (default 40). 100 aligns it
-      with the scenario's top_k = 100, as Elasticsearch's num_candidates and
-      Qdrant's ef are aligned with top_k; with iterative scans on, the default
-      would still eventually return top_k rows, but at higher cost.
+      pgvector's HNSW candidate pool is ef_search (default 40), and one scan
+      cannot return more rows than that. 100 is the smallest value that returns
+      the scenario's top_k = 100 without relying on iterative scans. The other
+      engines' pools differ: the Elasticsearch adapter sets only k = top_k, so
+      num_candidates defaults to 1.5 * k = 150; the Qdrant adapter sets no ef,
+      so search ef defaults to the collection's ef_construct (100). Build
+      parameters also differ: HNSW m is 16 everywhere, ef_construction is 64
+      in pgvector's defaults against 100 in Elasticsearch and Qdrant.
     settings.hnsw.iterative_scan: >-
       Without iterative scans (off by default in pgvector 0.8), a filtered
       vector query keeps only the ef_search nearest rows before filtering and
