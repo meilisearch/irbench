@@ -55,5 +55,5 @@ ignore = ["E501"]
 # Test helpers are imported as top-level modules (pytest rootdir import mode).
 known-first-party = [
   "irbench", "conftest", "test_prepare", "test_embed_cache",
-  "fake_engine", "adapter_helpers", "contract_fixture",
+  "fake_engine", "adapter_helpers", "contract_fixture", "report_fixtures",
 ]
