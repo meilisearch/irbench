@@ -16,7 +16,15 @@ def publish_run(root: Path, run_id: str, results_dir: Path | None = None) -> Pat
     src = Workspace(root).run_dir(run_id)
     if not (src / "manifest.json").exists():
         raise FileNotFoundError(f"{src} has no manifest.json: not a run directory")
-    profile = read_json(src / "manifest.json")["hardware"]["id"]
+    manifest = read_json(src / "manifest.json")
+    try:
+        profile = manifest["hardware"]["id"]
+        if not isinstance(profile, str):
+            raise ValueError(f"{src}/manifest.json has no hardware.id: not a complete run manifest")
+    except (KeyError, TypeError) as e:
+        raise ValueError(
+            f"{src}/manifest.json has no hardware.id: not a complete run manifest"
+        ) from e
     if profile in UNPUBLISHABLE_PROFILES:
         raise ValueError(
             f"{run_id} ran on the {profile!r} profile; only reference-machine results are "
@@ -29,6 +37,11 @@ def publish_run(root: Path, run_id: str, results_dir: Path | None = None) -> Pat
     for name in BUNDLE_FILES:
         if (src / name).exists():
             shutil.copy2(src / name, tmp / name)
-    shutil.rmtree(dest, ignore_errors=True)
+    # Atomic replacement: keep old bundle safe until new one is in place.
+    old = dest.with_name(dest.name + ".old")
+    if dest.exists():
+        shutil.rmtree(old, ignore_errors=True)
+        dest.rename(old)
     tmp.replace(dest)
+    shutil.rmtree(old, ignore_errors=True)
     return dest

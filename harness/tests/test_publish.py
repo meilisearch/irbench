@@ -71,3 +71,50 @@ def test_cli_publishes_several_runs_and_fails_on_local(tmp_path):
     assert ok.exit_code == 0 and f"results/{RUN_ID}" in ok.output
     bad = CliRunner().invoke(app, ["publish", RUN_ID, local_id, "--root", str(tmp_path)])
     assert bad.exit_code == 1 and "local" in bad.output
+
+
+def test_malformed_manifest_missing_hardware_raises_valueerror(tmp_path):
+    d = tmp_path / ".irbench" / "runs" / RUN_ID
+    d.mkdir(parents=True)
+    (d / "manifest.json").write_text(json.dumps({"run_id": RUN_ID, "status": "succeeded"}))
+    with pytest.raises(ValueError, match="hardware.id"):
+        publish_run(tmp_path, RUN_ID)
+    assert not (tmp_path / "results").exists()
+
+
+def test_malformed_manifest_missing_hardware_id_raises_valueerror(tmp_path):
+    d = tmp_path / ".irbench" / "runs" / RUN_ID
+    d.mkdir(parents=True)
+    (d / "manifest.json").write_text(
+        json.dumps({"run_id": RUN_ID, "status": "succeeded", "hardware": {}})
+    )
+    with pytest.raises(ValueError, match="hardware.id"):
+        publish_run(tmp_path, RUN_ID)
+    assert not (tmp_path / "results").exists()
+
+
+def test_cli_continues_after_malformed_manifest(tmp_path):
+    bad_id = RUN_ID.replace("aws-c7i-4xlarge", "bad")
+    d = tmp_path / ".irbench" / "runs" / bad_id
+    d.mkdir(parents=True)
+    (d / "manifest.json").write_text(json.dumps({"run_id": bad_id, "status": "succeeded"}))
+    make_run(tmp_path)
+    result = CliRunner().invoke(app, ["publish", bad_id, RUN_ID, "--root", str(tmp_path)])
+    assert result.exit_code == 1
+    assert "hardware.id" in result.output
+    assert f"results/{RUN_ID}" in result.output
+
+
+def test_republishing_cleans_up_tmp_and_old_files(tmp_path):
+    make_run(tmp_path)
+    publish_run(tmp_path, RUN_ID)
+    make_run(tmp_path, files=("scores.json",))
+    (tmp_path / ".irbench/runs" / RUN_ID / "perf.json").unlink()
+    (tmp_path / ".irbench/runs" / RUN_ID / "index.json").unlink()
+    dest = publish_run(tmp_path, RUN_ID)
+    # Verify no .tmp or .old sibling directories remain
+    results_dir = tmp_path / "results"
+    siblings = [p.name for p in results_dir.iterdir()]
+    assert RUN_ID in siblings
+    assert not any(p.endswith(".tmp") or p.endswith(".old") for p in siblings)
+    assert sorted(p.name for p in dest.iterdir()) == ["manifest.json", "scores.json"]
