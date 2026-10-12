@@ -190,3 +190,37 @@ def test_faceted_semantic_counts_without_order_or_limit(adapter):
     assert "ORDER BY" not in m and "LIMIT" not in m
     assert "ORDER BY embedding <=> $1::text::vector" in r.sql
     assert r.params == [[0.1, 0.2, 0.3], 100]
+
+
+def _settings_script(adapter, settings):
+    class Recorder:
+        sql = ""
+
+        def script(self, sql):
+            self.sql = sql
+
+    adapter.ctx.config.index["settings"] = settings
+    rec = Recorder()
+    adapter.apply_settings(rec)
+    return rec.sql
+
+
+def test_settings_accept_core_names(adapter):
+    sql = _settings_script(adapter, {"plan_cache_mode": "force_custom_plan"})
+    assert "SET plan_cache_mode = force_custom_plan;" in sql
+
+
+@pytest.mark.parametrize(
+    "name,value",
+    [
+        ("plan_cache_mode; DROP TABLE x", "on"),
+        ("Plan_Cache", "on"),
+        ("a.b.c", "1"),
+        ("plan_cache_mode", "x; DROP TABLE y"),
+        ("plan_cache_mode", "a b"),
+        ("hnsw.ef_search", "1'; --"),
+    ],
+)
+def test_settings_reject_unsafe_names_and_values(adapter, name, value):
+    with pytest.raises(ValueError, match="unsafe setting"):
+        _settings_script(adapter, {name: value})

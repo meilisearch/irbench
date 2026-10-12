@@ -76,12 +76,13 @@ class PostgresAdapter(EngineAdapter):
         self.apply_settings(client)
 
     def apply_settings(self, client: Any) -> None:
-        """index.settings from the config (e.g. hnsw.ef_search): per database and this session."""
+        """index.settings from the config (dotted extension GUCs like hnsw.ef_search, or core GUCs like
+        plan_cache_mode): per database and this session."""
         settings = self.ctx.config.index.get("settings") or {}
         stmts = ["ALTER DATABASE {db} RESET ALL"]
         session = []
         for name, value in settings.items():
-            if not re.fullmatch(r"[a-z_]+\.[a-z_]+", name) or not re.fullmatch(
+            if not re.fullmatch(r"[a-z_]+(\.[a-z_]+)?", name) or not re.fullmatch(
                 r"[A-Za-z0-9_.]+", str(value)
             ):
                 raise ValueError(f"unsafe setting {name}={value!r}")

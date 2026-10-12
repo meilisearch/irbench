@@ -15,6 +15,7 @@ default:
     settings:
       hnsw.ef_search: 100
       hnsw.iterative_scan: relaxed_order
+      plan_cache_mode: force_custom_plan
   search: {}
   synonyms: >-
     pg_search 0.26.1 has no synonym feature; expanding queries in the harness
@@ -31,3 +32,10 @@ default:
       vector query keeps only the ef_search nearest rows before filtering and
       can return fewer than top_k results. relaxed_order is pgvector's
       documented setting for filtered queries.
+    settings.plan_cache_mode: >-
+      pg_search's boost cast on a bound parameter (`$1::text::pdb.boost(n)`)
+      needs custom plans: once Postgres switches a prepared statement to a
+      generic plan (psycopg auto-prepares after 5 executions, the loadgen
+      always prepares) the `|||` right-hand side is no longer a constant and
+      pg_search fails with "must be a text or text array value".
+      force_custom_plan keeps every execution on a custom plan.

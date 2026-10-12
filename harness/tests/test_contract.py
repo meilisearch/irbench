@@ -195,3 +195,22 @@ def test_postgres_synonym_groups_unify(engine):
                     [doc, query],
                 )[0]["hit"]
                 assert hit, (query, doc)
+
+
+def test_repeated_statement_survives_the_generic_plan_switch(engine):
+    """psycopg auto-prepares after 5 executions, then Postgres runs 5 custom plans before it may pick a generic one (execution 11 on): the loadgen always prepares. The same
+    rendered statement must keep working past Postgres' switch to a generic plan. A fresh
+    client proves the database-level settings reach every new connection."""
+    if engine.adapter.protocol != "postgres":
+        pytest.skip("Postgres prepared statements only")
+    from irbench.engines.pg import PostgresClient
+
+    task = make_task("keyword", text="white table")
+    request = engine.adapter.render(task, None, TOP_K)
+    client = PostgresClient(engine.client.dsn)
+    try:
+        for i in range(30):
+            rows = client.execute(request.sql, request.params, 30)
+            assert rows and rows[0]["id"] == "42", f"execution {i + 1}"
+    finally:
+        client.close()
