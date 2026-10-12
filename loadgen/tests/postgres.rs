@@ -157,3 +157,18 @@ async fn paradedb_keyword_statement_survives_generic_plan_switch() {
     }
     admin.batch_execute("DROP TABLE pdb_plan_t").await.unwrap();
 }
+
+/// A black-holed address must fail within the connect timeout, not hang for the OS default.
+/// Needs no server: 10.255.255.1 is unroutable, so the SYN is dropped or rejected at once.
+#[tokio::test]
+async fn connect_to_a_black_hole_fails_within_the_timeout() {
+    let t0 = std::time::Instant::now();
+    let result = irbench_loadgen::runner::Target::connect(
+        "postgresql://postgres:x@10.255.255.1:5432/x",
+        Duration::from_millis(200),
+        1,
+    )
+    .await;
+    assert!(result.is_err());
+    assert!(t0.elapsed() < Duration::from_secs(2), "{:?}", t0.elapsed());
+}

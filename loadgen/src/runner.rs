@@ -68,6 +68,8 @@ impl Target {
                 .with_context(|| "parsing the postgres URL")?;
             config.options(format!("-c statement_timeout={}", timeout.as_millis()));
             config.application_name("irbench-loadgen");
+            // Also bounds every reconnect: a black-holed address must not stall a worker.
+            config.connect_timeout(timeout);
             let mut conns = Vec::with_capacity(max_connections.max(1));
             for _ in 0..max_connections.max(1) {
                 conns.push(Mutex::new(PgConn {
