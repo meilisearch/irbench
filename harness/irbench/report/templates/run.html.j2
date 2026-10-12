@@ -8,7 +8,7 @@
 
 {% if view.credits %}
 <section><h2>Credits</h2><p>Tuned configuration contributed by
-{% for c in view.credits %}{% if c.url %}<a href="{{ c.url }}">{{ c.name }}</a>{% else %}{{ c.name }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}.</p></section>
+{% for c in view.credits %}{% if c.safe_url %}<a href="{{ c.safe_url }}">{{ c.name }}</a>{% else %}{{ c.name }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}.</p></section>
 {% endif %}
 
 <section>
@@ -88,7 +88,8 @@
       <td class="num">{{ c.filter_violations if c.filter_violations is not none else "—" }}</td>
       <td class="num">{{ c.order_violations if c.order_violations is not none else "—" }}</td>
       <td class="num">{{ c.facet_accuracy|score }}</td>
-      <td class="num">{{ c.facet_verified }}</td><td class="num">{{ c.facet_unverifiable }}</td>
+      <td class="num">{{ c.facet_verified if c.facet_verified is not none else "—" }}</td>
+      <td class="num">{{ c.facet_unverifiable if c.facet_unverifiable is not none else "—" }}</td>
     </tr>
   {% endfor %}
   </tbody>

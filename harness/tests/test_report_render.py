@@ -196,6 +196,65 @@ def test_cli_builds_the_site(tmp_path):
     assert "3 pages" in ok.output  # index, scenario page, one run page
 
 
+def test_credit_with_unsafe_scheme_is_not_a_link(tmp_path):
+    results, out = site(tmp_path)
+    d = write_bundle(
+        results,
+        "qdrant",
+        credits=[
+            {"name": "Eve", "url": "javascript:alert(1)"},
+            {"name": "Jane Doe", "url": "https://github.com/jane"},
+        ],
+    )
+    build_site(results, out)
+    page = read(out, f"runs/{d.name}.html")
+    assert "javascript:" not in page.lower()
+    assert "Eve" in page
+    assert '<a href="https://github.com/jane">Jane Doe</a>' in page
+
+
+def test_out_pointing_at_a_file_fails_cleanly(tmp_path):
+    results, out = site(tmp_path)
+    write_bundle(results, "meilisearch")
+    out.write_text("keep me")
+    with pytest.raises(FileExistsError, match="not a directory"):
+        build_site(results, out)
+    assert out.read_text() == "keep me"
+
+
+def test_cli_exits_1_when_out_is_a_file(tmp_path):
+    results, out = site(tmp_path)
+    write_bundle(results, "meilisearch")
+    out.write_text("keep me")
+    result = CliRunner().invoke(app, ["report", "--results", str(results), "--out", str(out)])
+    assert result.exit_code == 1
+    assert "not a directory" in result.output
+    assert out.read_text() == "keep me"
+
+
+def test_checks_facet_fields_render_dash_for_none(tmp_path):
+    results, out = site(tmp_path)
+    d = write_bundle(
+        results,
+        "meilisearch",
+        checks=[
+            {
+                "mode": "filtered",
+                "base": "keyword",
+                "n": 10,
+                "filter_violations": 0,
+                "order_violations": None,
+                "facet_accuracy": None,
+                "facet_verified": None,
+                "facet_unverifiable": None,
+            }
+        ],
+    )
+    build_site(results, out)
+    page = read(out, f"runs/{d.name}.html")
+    assert ">None<" not in page
+
+
 def test_cli_exits_1_on_unreadable_bundles(tmp_path):
     results, out = site(tmp_path)
     write_bundle(results, "meilisearch")

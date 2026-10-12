@@ -70,6 +70,14 @@ def fmt_group(group: str) -> str:
     return mode if mode == base else f"{mode} ({base})"
 
 
+def _safe_url(url: str | None) -> str | None:
+    """Only http(s) URLs are safe to render as a live link; config files come from
+    contributor PRs and could set e.g. a `javascript:` URL otherwise."""
+    if url and url.lower().startswith(("http://", "https://")):
+        return url
+    return None
+
+
 def engine_slots(scenarios: list[ScenarioResults]) -> dict[str, int]:
     """Color slot per engine, the same on every page (color follows the entity)."""
     engines = sorted({r.engine for s in scenarios for r in s.runs})
@@ -194,7 +202,10 @@ def run_view(run: RunResult) -> dict[str, Any]:
             key=lambda c: group_key(f"{c['mode']}/{c['base']}"),
         ),
         "diff": config.get("diff_vs_default", {}),
-        "credits": config.get("credits", []),
+        "credits": [
+            {"name": c["name"], "safe_url": _safe_url(c.get("url"))}
+            for c in config.get("credits", [])
+        ],
         "stages": run.manifest.get("stages", {}),
     }
 
@@ -215,6 +226,8 @@ def _env() -> jinja2.Environment:
 
 def _prepare_out(out: Path) -> None:
     if out.exists():
+        if not out.is_dir():
+            raise FileExistsError(f"{out} exists and is not a directory; choose another --out")
         if not (out / MARKER).exists() and any(out.iterdir()):
             raise FileExistsError(
                 f"{out} is not empty and was not written by `irbench report`; choose another --out"

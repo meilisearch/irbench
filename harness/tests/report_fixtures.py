@@ -116,6 +116,7 @@ def write_bundle(
     failed_stage=None,
     config_diff=None,
     credits=None,
+    checks=None,
 ) -> Path:
     run_id = "__".join([scenario.replace("/", "__"), engine, model, track, hardware])
     d = results / run_id
@@ -153,7 +154,7 @@ def write_bundle(
             "model": model,
             "track": track,
             "relevance": relevance(groups or {"keyword/keyword": 0.5}),
-            "checks": [],
+            "checks": checks or [],
             "constraint_violations": violations or {},
             "not_applicable": na or {},
             "errors": 0,
