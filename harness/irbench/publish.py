@@ -34,9 +34,10 @@ def publish_run(root: Path, run_id: str, results_dir: Path | None = None) -> Pat
     tmp = dest.with_name(dest.name + ".tmp")
     shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir(parents=True)
-    for name in BUNDLE_FILES:
-        if (src / name).exists():
-            shutil.copy2(src / name, tmp / name)
+    names = [n for n in BUNDLE_FILES if (src / n).exists()]
+    names += sorted(p.name for p in src.glob("perf-p*.json"))
+    for name in names:
+        shutil.copy2(src / name, tmp / name)
     # Atomic replacement: keep old bundle safe until new one is in place.
     old = dest.with_name(dest.name + ".old")
     if dest.exists():

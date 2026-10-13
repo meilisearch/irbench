@@ -9,6 +9,7 @@ from irbench.io import read_json, read_jsonl, read_qrels, read_run
 from irbench.lint import lint_repo
 from irbench.models import QueryTask
 from irbench.paths import Workspace
+from irbench.perf_files import LEGACY_PAGE_SIZE
 from irbench.publish import publish_run
 from irbench.report.render import DEFAULT_DOCS_URL, build_site
 from irbench.runs import STAGES, RunSpec
@@ -177,15 +178,20 @@ def run(
             typer.echo(f"{key.replace(':', '/')}: N/A ({reason})")
         for key, what in scores["constraint_violations"].items():
             typer.echo(f"{key.replace(':', '/')}: CONSTRAINT VIOLATED ({what})")
-        for group, p in (scores.get("perf") or {}).items():
-            qps = (
-                "n/a"
-                if p["max_qps"] is None
-                else f"{p['max_qps']:.0f} (c={p['max_qps_concurrency']})"
-            )
-            typer.echo(
-                f"perf {group}: p50={p['p50_ms']:.2f}ms p99={p['p99_ms']:.2f}ms max_qps={qps}"
-            )
+        perf = scores.get("perf") or {}
+        if perf and all("p50_ms" in v for v in perf.values()):  # legacy flat summary
+            perf = {str(LEGACY_PAGE_SIZE): perf}
+        for size, groups in perf.items():
+            for group, p in groups.items():
+                qps = (
+                    "n/a"
+                    if p["max_qps"] is None
+                    else f"{p['max_qps']:.0f} (c={p['max_qps_concurrency']})"
+                )
+                typer.echo(
+                    f"perf p{size} {group}: p50={p['p50_ms']:.2f}ms "
+                    f"p99={p['p99_ms']:.2f}ms max_qps={qps}"
+                )
     typer.echo(f"run dir: {run_dir}")
     if manifest["status"] != "succeeded":
         raise typer.Exit(code=1)

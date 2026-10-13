@@ -14,7 +14,7 @@ def make_run(
     run_id=RUN_ID,
     profile="aws-c7i-4xlarge",
     status="succeeded",
-    files=("scores.json", "perf.json", "index.json"),
+    files=("scores.json", "perf.json", "perf-p20.json", "index.json"),
 ):
     d = root / ".irbench" / "runs" / run_id
     (d / "rendered" / "keyword").mkdir(parents=True, exist_ok=True)
@@ -31,8 +31,9 @@ def test_publish_copies_only_the_bundle(tmp_path):
     make_run(tmp_path)
     dest = publish_run(tmp_path, RUN_ID)
     assert dest == tmp_path / "results" / RUN_ID
-    assert sorted(p.name for p in dest.iterdir()) == sorted(BUNDLE_FILES)
+    assert sorted(p.name for p in dest.iterdir()) == sorted([*BUNDLE_FILES, "perf-p20.json"])
     assert json.loads((dest / "perf.json").read_text()) == {"file": "perf.json"}
+    assert json.loads((dest / "perf-p20.json").read_text()) == {"file": "perf-p20.json"}
 
 
 def test_local_profile_is_never_published(tmp_path):
@@ -53,6 +54,7 @@ def test_republishing_replaces_stale_files(tmp_path):
     publish_run(tmp_path, RUN_ID)
     make_run(tmp_path, files=("scores.json",))  # rerun without perf/index
     (tmp_path / ".irbench/runs" / RUN_ID / "perf.json").unlink()
+    (tmp_path / ".irbench/runs" / RUN_ID / "perf-p20.json").unlink()
     (tmp_path / ".irbench/runs" / RUN_ID / "index.json").unlink()
     dest = publish_run(tmp_path, RUN_ID)
     assert sorted(p.name for p in dest.iterdir()) == ["manifest.json", "scores.json"]
@@ -110,6 +112,7 @@ def test_republishing_cleans_up_tmp_and_old_files(tmp_path):
     publish_run(tmp_path, RUN_ID)
     make_run(tmp_path, files=("scores.json",))
     (tmp_path / ".irbench/runs" / RUN_ID / "perf.json").unlink()
+    (tmp_path / ".irbench/runs" / RUN_ID / "perf-p20.json").unlink()
     (tmp_path / ".irbench/runs" / RUN_ID / "index.json").unlink()
     dest = publish_run(tmp_path, RUN_ID)
     # Verify no .tmp or .old sibling directories remain
