@@ -38,7 +38,7 @@ automatically by `uv run irbench lint` in CI.
 The two Postgres engines (`postgres`, `postgres-paradedb`) are queried over
 the Postgres wire protocol with SQL. The same rules apply:
 
-- Hybrid is Reciprocal Rank Fusion (k = 60, each side `top_k`) written as one
+- Hybrid is Reciprocal Rank Fusion (k = 60, each side the request's depth: `top_k` for relevance, the page size for speed) written as one
   SQL statement that runs inside the database. The statement is visible in
   every rendered request and described in the engine's README.
 - Field priority maps onto each engine's closest native mechanism:

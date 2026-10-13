@@ -20,9 +20,9 @@ Every mode is one SQL statement. Placeholders are `$n::text` plus a cast; the qu
 
 - keyword: `tsv @@ websearch_to_tsquery(<config>, $1::text)`, ranked by `ts_rank`, ties by `id`. AND semantics (Postgres as shipped); no typo or prefix tolerance.
 - semantic: `ORDER BY embedding <=> $1::text::vector` (cosine distance) with the HNSW index.
-- hybrid: reciprocal rank fusion, k = 60, in one statement: the keyword top `top_k` and the vector top `top_k` (each with the filter) are numbered with `row_number()`, combined by `FULL OUTER JOIN`, scored `1/(60 + r)` per side. Plain hybrid returns ids straight from the fused CTEs; only the sorted and faceted shapes join back to the table for the sort column or `__terms`.
+- hybrid: reciprocal rank fusion, k = 60, in one statement: the keyword top `depth` and the vector top `depth` (`depth` is the request depth: `top_k` = 100 for relevance, the page size for speed) (each with the filter) are numbered with `row_number()`, combined by `FULL OUTER JOIN`, scored `1/(60 + r)` per side. Plain hybrid returns ids straight from the fused CTEs; only the sorted and faceted shapes join back to the table for the sort column or `__terms`.
 - filtered: `<field>__terms @> ARRAY[$n::text]` for `eq`, `<field> >= / <= $n::text::float8` for ranges; applied inside both sides of hybrid.
-- sorted: the keyword base sorts every match, the semantic base sorts the `top_k` nearest; `ORDER BY <field> <dir> NULLS LAST, id`.
+- sorted: the keyword base sorts every match, the semantic base sorts the `depth` nearest (`top_k` for relevance, the page size for speed); `ORDER BY <field> <dir> NULLS LAST, id`.
 - faceted: one statement returns one row `{ids, facets}`. Counts are `unnest(<field>__terms)` grouped over the query's own match set, at most `max_facet_values` buckets per facet, most frequent first with ties by value (keyword: every match; semantic: every document passing the filter, counted with no ordering or limit so an HNSW scan can never truncate them; hybrid: the fused set); `ids` is the top `limit` of that set, taken from a separate ranked subquery on the semantic base. Intermediate sets project only `id`, `score`, and the sort or `__terms` columns, never the embedding or text columns.
 - The facet verification fetch (`facets=False`) is the plain query with a larger limit.
 
@@ -33,7 +33,7 @@ Every mode is one SQL statement. Placeholders are `$n::text` plus a cast; the qu
 - `ts_rank` is not BM25 (no IDF); it uses term frequency and the weights.
 - Faceted on the semantic base scans every filtered document (the spec's definition of the match set); the performance numbers show its cost.
 - Digit synonym groups are not loaded (see Synonyms).
-- Hybrid fusion over `top_k` per side can return fewer than `limit` documents if the sides overlap heavily.
+- Hybrid fusion over `depth` per side can return fewer than `limit` documents if the sides overlap heavily.
 
 ## Changing this configuration
 

@@ -28,6 +28,19 @@ A request counts as an error when the connection fails, it times out, the
 status isn't 2xx, or the body can't be read; the response body is always
 read before the clock stops.
 
+## Page sizes
+
+Speed is measured at each `perf.page_sizes` entry with the same protocol. For
+product search these are 20 (the headline, a results page) and 100 (deep
+retrieval, as used for reranking and RAG). Each request returns that many hits.
+
+Retrieval pools that the adapter sets per request follow the page size:
+Elasticsearch kNN `k`, Qdrant prefetch limits and Postgres RRF sides. Engine-level
+settings do not, for example pgvector `hnsw.ef_search`. Relevance always uses
+`top_k = 100`.
+
+Both sizes exist because some engines' cost grows with the result count.
+
 ## Closed-loop measurement and its limits
 
 The load generator is closed-loop: each simulated client waits for its

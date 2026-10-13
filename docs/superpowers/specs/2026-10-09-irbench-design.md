@@ -74,9 +74,9 @@ Each stage reads and writes files; any stage is re-runnable and cacheable.
 2. **embed** — for each model, embed docs and all query variants. Cache as Parquet keyed by (dataset version, model id, text sha256). Publish as release assets / Hugging Face dataset; `embed` downloads published vectors when available instead of recomputing.
 3. **up** — start a single engine container with pinned image digest and resource limits from the hardware profile; wait for healthcheck.
 4. **index** — adapter creates index and loads documents. Record wall-clock indexing time (until engine reports all tasks done), peak RSS, on-disk size.
-5. **render** — adapter renders every (variant × mode) into the run directory, one file per query, containing the request format of the Postgres spec §3 (`2026-10-12-irbench-postgres-design.md`): `{protocol: http, method, path, headers, body}` or `{protocol: postgres, sql, params}`. HTTP requests carry a `path` instead of a `url`; the base URL comes from the run config. Path: `rendered/<mode>/<base>/<qid>.json` in the run dir.
+5. **render** — adapter renders every (variant × mode) into the run directory, one file per query, containing the request format of the Postgres spec §3 (`2026-10-12-irbench-postgres-design.md`): `{protocol: http, method, path, headers, body}` or `{protocol: postgres, sql, params}`. HTTP requests carry a `path` instead of a `url`; the base URL comes from the run config. Path: `rendered/<mode>/<base>/<qid>.json` in the run dir. Speed requests per page size: see `2026-10-14-irbench-page-sizes-design.md`.
 6. **relevance** — execute each rendered request once, sequentially; parse result IDs via adapter; write TREC run file (top 100).
-7. **perf** — Rust loadgen replays the same rendered files:
+7. **perf** — Rust loadgen replays the rendered files, once per page size (`perf-p<N>.json`):
    - warm-up: one full pass, discarded;
    - latency: concurrency 1, report p50/p95/p99/mean;
    - throughput: step concurrency (1, 2, 4, 8, 16, 32, 64); max QPS is the highest step with p99 ≤ 100 ms and error rate ≤ 0.1%.
@@ -150,7 +150,7 @@ Documented in `docs/methodology/parity.mdx`; machine-checkable rules enforced in
 
 Static HTML generated from `results/`:
 - Per scenario: engines × modes matrix (nDCG@10), perturbation breakdown (original vs typo/prefix/synonym deltas).
-- Performance: latency percentiles, QPS curve, indexing time / RAM / disk.
+- Performance: latency percentiles, QPS curve, indexing time / RAM / disk; one section per page size (see the page-sizes design).
 - Model comparison per engine.
 - Per run: config diff vs default, manifest, N/A reasons, credits for tuned configs.
 - Links to Mintlify methodology docs.

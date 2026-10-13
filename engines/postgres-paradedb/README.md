@@ -23,7 +23,7 @@ Every mode is one SQL statement. Placeholders are `$n::text` plus a cast; the qu
 
 - keyword: `name ||| $1::text::pdb.boost(5) OR product_class ||| $1::text::pdb.boost(4) OR ...`, ranked by `pdb.score(id) DESC` alone, with no `id` tie-break (see Known limits). `|||` is a match-disjunction: a document matches if any query term appears in the field (OR semantics, unlike the `postgres` engine's AND). The EXPLAIN plan shows `Custom Scan (ParadeDB Base Scan)`.
 - semantic, filtered, sorted, faceted: as in the `postgres` engine (pgvector and the shared SQL).
-- hybrid: reciprocal rank fusion, k = 60, in one statement: the BM25 top `top_k` and the vector top `top_k` (each with the filter) are numbered with `row_number()`, combined by `FULL OUTER JOIN`, scored `1/(60 + r)` per side.
+- hybrid: reciprocal rank fusion, k = 60, in one statement: the BM25 top `depth` and the vector top `depth` (`depth` is the request depth: `top_k` = 100 for relevance, the page size for speed) (each with the filter) are numbered with `row_number()`, combined by `FULL OUTER JOIN`, scored `1/(60 + r)` per side.
 
 ### Boost cast on a bound parameter
 
@@ -36,7 +36,7 @@ Every mode is one SQL statement. Placeholders are `$n::text` plus a cast; the qu
 - No stemming with the default tokenizer.
 - Disjunctive keyword matching with per-field boosts is not identical to BM25F: scores are per-field BM25 sums.
 - Faceted on the semantic base scans every filtered document (the spec's definition of the match set).
-- Hybrid fusion over `top_k` per side can return fewer than `limit` documents if the sides overlap heavily.
+- Hybrid fusion over `depth` per side can return fewer than `limit` documents if the sides overlap heavily.
 
 ## Changing this configuration
 
