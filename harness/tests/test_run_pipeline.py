@@ -155,6 +155,26 @@ def test_failed_rerun_clears_stale_results(tmp_path, wands_raw):
         assert not (run_dir / stale).exists(), stale
 
 
+def test_rerunning_render_invalidates_page_size_outputs(tmp_path, wands_raw):
+    root = fake_root(tmp_path, wands_raw)
+    run_dir = RunContext(root, FAKE_SPEC).run_dir
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "rendered-p50").mkdir()
+    (run_dir / "rendered-p50" / "stale.json").write_text("{}")
+    (run_dir / "perf-p50.json").write_text("{}")
+    manifest = run_pipeline(
+        root,
+        FAKE_SPEC,
+        ["up", "render", "down"],
+        runtime_factory=lambda *a: FakeRuntime(),
+        client_factory=_server(root).client_factory,
+    )
+    assert manifest["status"] == "succeeded"
+    assert not (run_dir / "rendered-p50").exists()
+    assert not (run_dir / "perf-p50.json").exists()
+    assert (run_dir / "rendered-p20").is_dir()
+
+
 def test_failure_inside_up_still_tears_down(tmp_path, wands_raw):
     runtime = FakeRuntime(fail_up=True)
     manifest = run_pipeline(

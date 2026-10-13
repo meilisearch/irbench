@@ -132,6 +132,15 @@ class RunContext:
             raise ValueError(f"no query vector for {task.qid!r}: {self._embed_hint()}")
         return self.query_vectors[task.qid].tolist()
 
-    def rendered_path(self, task: QueryTask, check: bool = False) -> Path:
+    def rendered_dir_for(self, page_size: int) -> Path:
+        """Requests for one page size: rendered/ at top_k (shared with relevance)."""
+        if page_size == self.scenario.top_k:
+            return self.rendered_dir
+        return self.run_dir / f"rendered-p{page_size}"
+
+    def rendered_path(
+        self, task: QueryTask, check: bool = False, page_size: int | None = None
+    ) -> Path:
         name = f"{task.qid}.check.json" if check else f"{task.qid}.json"
-        return self.rendered_dir / task.mode / task.base / name
+        base = self.rendered_dir if page_size is None else self.rendered_dir_for(page_size)
+        return base / task.mode / task.base / name

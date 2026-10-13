@@ -29,9 +29,9 @@ GENERATED_KEYS = ("irbench_version", "git_sha", "created_at")
 # outputs and those of every later stage.
 STAGE_OUTPUTS = {
     "index": ("index.json",),
-    "render": ("rendered", "na.json"),
+    "render": ("rendered", "rendered-p*", "na.json"),
     "relevance": ("run.trec", "checks.jsonl", "errors.jsonl"),
-    "perf": ("perf.json",),
+    "perf": ("perf.json", "perf-p*.json"),
     "score": ("scores.json",),
 }
 
@@ -150,12 +150,12 @@ def _invalidate_from(run_dir: Path, log: dict[str, Any], first: str | None) -> N
         return
     for stage in STAGES[STAGES.index(first) :]:
         log.pop(stage, None)
-        for name in STAGE_OUTPUTS.get(stage, ()):
-            path = run_dir / name
-            if path.is_dir():
-                shutil.rmtree(path)
-            else:
-                path.unlink(missing_ok=True)
+        for pattern in STAGE_OUTPUTS.get(stage, ()):
+            for path in run_dir.glob(pattern):
+                if path.is_dir():
+                    shutil.rmtree(path)
+                else:
+                    path.unlink(missing_ok=True)
 
 
 def _describe_inputs(ctx: RunContext, manifest: dict[str, Any]) -> None:
