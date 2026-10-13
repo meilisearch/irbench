@@ -10,6 +10,8 @@ from typing import Any
 
 from irbench.io import read_json
 
+# Legacy bundles were measured at the scenario's top_k, which is 100 for every scenario that
+# produced one.
 LEGACY_PAGE_SIZE = 100
 LEGACY_NAME = "perf.json"
 _NAME = re.compile(r"perf-p(\d+)\.json")

@@ -82,6 +82,9 @@ def test_a_failing_page_size_fails_the_stage(tmp_path, wands_raw):
 
     with pytest.raises(RuntimeError, match="loadgen crashed"):
         perf_stage(ctx, LOCAL, runner=runner)
+    # No partial result may survive for a later score run to publish.
+    assert not (ctx.run_dir / "perf-p20.json").exists()
+    assert not list(ctx.run_dir.glob("perf-p*.json"))
 
 
 def test_perf_needs_rendered_requests_and_the_binary(tmp_path, wands_raw):

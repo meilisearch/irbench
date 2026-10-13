@@ -100,8 +100,8 @@ def render(self, task, vector, limit, *, depth, facets=True) -> Request
 ## 5. Report (amends parent §11)
 
 - **Scenario page:** speed tables and the max-QPS chart show the headline size (20). A per-section switch shows 100. The section titles say what each size represents:
-  - "Page of 20 results (search page)"
-  - "Top 100 (deep retrieval: reranking, RAG)"
+  - "Page of 20 results (search results page)"
+  - "Page of 100 results (deep retrieval: reranking, RAG)"
 - **Run page:** latency and throughput tables for each page size, headline first.
 - **Performance methodology page:** explains both sizes, why both exist, and that pools follow the page size while engine-level settings do not.
 - **Legacy bundles** show only a 100 column, with "not measured" at 20.

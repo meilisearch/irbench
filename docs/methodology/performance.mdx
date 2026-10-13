@@ -3,9 +3,11 @@ title: Performance methodology
 description: How latency, throughput, indexing cost and memory are measured, and why
 ---
 
-Performance is measured by `irbench-loadgen`, a Rust binary that replays the
-exact same rendered request files the relevance stage executed — same
-requests, same order — against one running engine.
+Performance is measured by `irbench-loadgen`, a Rust binary that replays
+rendered request files against one running engine. The page-100 requests
+(`top_k`) are exactly the ones the relevance stage executed, same requests and
+same order; other page sizes replay the same queries rendered with
+`limit = depth = N`, and their relevance is not measured.
 
 ## Warm-up, latency, and stepped throughput
 
@@ -36,8 +38,10 @@ retrieval, as used for reranking and RAG). Each request returns that many hits.
 
 Retrieval pools that the adapter sets per request follow the page size:
 Elasticsearch kNN `k`, Qdrant prefetch limits and Postgres RRF sides. Engine-level
-settings do not, for example pgvector `hnsw.ef_search`. Relevance always uses
-`top_k = 100`.
+settings do not. Elasticsearch's `num_candidates` is left at its default of
+1.5 × `k`, so it is 150 at page size 100 and 30 at 20, while pgvector
+`hnsw.ef_search` and Qdrant's `ef` stay the same at both sizes. Relevance always
+uses `top_k = 100`.
 
 Both sizes exist because some engines' cost grows with the result count.
 
@@ -77,7 +81,7 @@ work isn't always the same size. Two known differences:
   aren't directly comparable.
 - **Faceted on the semantic base counts different sets.** Meilisearch and
   both Postgres engines count facets over every document that passes the
-  filter; Elasticsearch counts over the kNN top-k. That latency group
+  filter; Elasticsearch counts over the kNN top-k, where k is the page size at speed. That latency group
   compares different definitions of the match set.
 
 ## Indexing time, peak memory, and disk

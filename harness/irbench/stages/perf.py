@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any
 
 from irbench.io import read_json
-from irbench.perf_files import LEGACY_NAME, perf_path
+from irbench.perf_files import LEGACY_NAME, perf_path, perf_report_paths
 from irbench.runtime.docker import Runner, run_command
 from irbench.runtime.hardware import HardwareProfile
 from irbench.stages.context import RunContext
@@ -92,7 +92,13 @@ def perf_stage(
     (ctx.run_dir / LEGACY_NAME).unlink(missing_ok=True)
     taskset = shutil.which("taskset")
     summary = {}
-    for n in sizes:
-        runner(loadgen_command(ctx, profile, taskset, n))
-        summary[str(n)] = summarize_perf(read_json(perf_path(ctx.run_dir, n)))
+    try:
+        for n in sizes:
+            runner(loadgen_command(ctx, profile, taskset, n))
+            summary[str(n)] = summarize_perf(read_json(perf_path(ctx.run_dir, n)))
+    except BaseException:
+        # All or nothing: a run is never scored or published with one size missing.
+        for path in perf_report_paths(ctx.run_dir).values():
+            path.unlink(missing_ok=True)
+        raise
     return summary
