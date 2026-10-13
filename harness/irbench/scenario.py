@@ -36,6 +36,9 @@ class PerfSpec(BaseModel):
     max_error_rate: float = 0.001
     throughput_groups: list[str] = ["keyword/keyword", "semantic/semantic", "hybrid/hybrid"]
     warmup_concurrency: int = 4
+    # Result counts the perf stage measures, headline first (spec 2026-10-14 §3.1).
+    # None means [top_k]; read it through Scenario.page_sizes.
+    page_sizes: list[int] | None = None
 
 
 class Scenario(BaseModel):
@@ -84,11 +87,26 @@ class Scenario(BaseModel):
                 raise ValueError(f"sort template field {s.field!r} is not sortable")
         if "faceted" in self.modes and not f.facets:
             raise ValueError("faceted mode needs at least one facet field")
+        sizes = self.perf.page_sizes
+        if sizes is not None:
+            if not sizes:
+                raise ValueError("perf.page_sizes must be non-empty")
+            if any(b <= a for a, b in zip(sizes, sizes[1:])):
+                raise ValueError(f"perf.page_sizes must be strictly ascending, got {sizes}")
+            if any(not 1 <= n <= self.top_k for n in sizes):
+                raise ValueError(
+                    f"perf.page_sizes must each be between 1 and top_k ({self.top_k}), got {sizes}"
+                )
         return self
 
     @property
     def directory(self) -> Path:
         return self._directory
+
+    @property
+    def page_sizes(self) -> list[int]:
+        """Page sizes the perf stage measures, headline (smallest) first."""
+        return list(self.perf.page_sizes or [self.top_k])
 
     @property
     def vocabulary_path(self) -> Path:

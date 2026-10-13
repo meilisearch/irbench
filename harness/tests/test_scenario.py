@@ -80,3 +80,34 @@ def test_sortable_field_must_be_numeric(tmp_path):
 
     with pytest.raises(ValueError, match="product_class"):
         _scenario_with(tmp_path, mutate)()
+
+
+def test_product_search_measures_speed_at_20_and_100():
+    s = load_scenario(REPO_ROOT, SCENARIO)
+    assert s.page_sizes == [20, 100]
+    assert s.top_k == 100
+
+
+def test_page_sizes_default_to_top_k(tmp_path):
+    def drop(raw):
+        raw["perf"].pop("page_sizes", None)
+
+    assert _scenario_with(tmp_path, drop)().page_sizes == [100]
+
+
+@pytest.mark.parametrize(
+    "sizes, message",
+    [
+        ([], "non-empty"),
+        ([20, 20], "strictly ascending"),
+        ([100, 20], "strictly ascending"),
+        ([0, 20], "between 1 and top_k"),
+        ([20, 101], "between 1 and top_k"),
+    ],
+)
+def test_page_sizes_are_validated(tmp_path, sizes, message):
+    def set_sizes(raw):
+        raw["perf"]["page_sizes"] = sizes
+
+    with pytest.raises(ValueError, match=message):
+        _scenario_with(tmp_path, set_sizes)()
