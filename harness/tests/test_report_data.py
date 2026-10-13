@@ -4,11 +4,30 @@ import shutil
 import pytest
 
 from irbench.report.data import group_key, load_results
-from report_fixtures import write_bundle
+from report_fixtures import perf, write_bundle
 
 
 def _edit_json(path, fn):
     path.write_text(json.dumps(fn(json.loads(path.read_text()))))
+
+
+def test_runs_load_perf_per_page_size(tmp_path):
+    write_bundle(
+        tmp_path,
+        "meilisearch",
+        perf_reports={
+            20: perf({"keyword/keyword": (90.0, 4)}),
+            100: perf({"keyword/keyword": (50.0, 4)}),
+        },
+    )
+    run = load_results(tmp_path)[0][0].runs[0]
+    assert list(run.perf) == [20, 100]
+
+
+def test_legacy_perf_json_loads_as_page_size_100(tmp_path):
+    write_bundle(tmp_path, "meilisearch", perf_report=perf({"keyword/keyword": (50.0, 4)}))
+    run = load_results(tmp_path)[0][0].runs[0]
+    assert list(run.perf) == [100]
 
 
 def test_runs_are_grouped_by_scenario_and_profile(tmp_path):
@@ -140,6 +159,10 @@ def test_missing_results_dir(tmp_path):
             lambda d: (d / "perf.json").write_text('{"limits": {}, "latency": {}}'),
             1,
         ),
+        (
+            lambda d: (d / "perf-p20.json").write_text('{"limits": {}, "latency": {}}'),
+            1,
+        ),
         (lambda d: (d / "index.json").write_text("[]"), 1),
     ],
     ids=[
@@ -147,6 +170,7 @@ def test_missing_results_dir(tmp_path):
         "scores_empty_list",
         "scores_missing_constraint_violations",
         "perf_missing_throughput",
+        "perf_p20_missing_throughput",
         "index_wrong_type",
     ],
 )
@@ -161,6 +185,7 @@ def test_malformed_files_are_unreadable(tmp_path, corrupt_fn, healthy_count):
     assert (
         "scores.json" in unreadable[0].error
         or "perf.json" in unreadable[0].error
+        or "perf-p20.json" in unreadable[0].error
         or "index.json" in unreadable[0].error
     )
 

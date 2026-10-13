@@ -168,22 +168,35 @@ def na_notes(s: ScenarioResults) -> list[dict[str, Any]]:
 NO_VALID_STEP = "no concurrency step met p99 ≤ {p99:g} ms and ≤ {err:.1%} errors"
 
 
-def _latency_cell(run: RunResult, group: str) -> Cell:
-    lat = run.perf["latency"].get(group)
+PAGE_SIZE_TITLES = {20: "search results page", 100: "deep retrieval: reranking, RAG"}
+
+
+def _perf(run: RunResult, size: int) -> dict[str, Any] | None:
+    return (run.perf or {}).get(size)
+
+
+def _latency_cell(run: RunResult, size: int, group: str) -> Cell:
+    perf = _perf(run, size)
+    if perf is None:
+        return Cell("—", "missing", "not measured at this page size")
+    lat = perf["latency"].get(group)
     if lat is None:
         return Cell("N/A", "na", run.na_reason(group) or "not measured")
     note = f"{lat['count']} requests, {lat['errors']} errors" if lat.get("count") else ""
     return Cell(f"{fmt_ms(lat['p50_ms'])} / {fmt_ms(lat['p99_ms'])}", "score", note)
 
 
-def _qps_cell(run: RunResult, group: str) -> Cell:
-    if group in run.perf["skipped_groups"]:
+def _qps_cell(run: RunResult, size: int, group: str) -> Cell:
+    perf = _perf(run, size)
+    if perf is None:
+        return Cell("—", "missing", "not measured at this page size")
+    if group in perf["skipped_groups"]:
         return Cell("N/A", "na", run.na_reason(group) or "the engine does not support this mode")
-    t = run.perf["throughput"].get(group)
+    t = perf["throughput"].get(group)
     if t is None:
         return Cell("—", "missing", "not measured")
     if t["max_qps"] is None:
-        limits = run.perf["limits"]
+        limits = perf["limits"]
         return Cell(
             "none",
             "violated",
@@ -194,7 +207,9 @@ def _qps_cell(run: RunResult, group: str) -> Cell:
     )
 
 
-def _series(run: RunResult, group: str, slots: dict[str, int]) -> Series:
+def _series(run: RunResult, size: int, group: str, slots: dict[str, int]) -> Series:
+    perf = _perf(run, size)
+    assert perf is not None
     points = [
         Point(
             st["concurrency"],
@@ -203,29 +218,30 @@ def _series(run: RunResult, group: str, slots: dict[str, int]) -> Series:
             f"{st['concurrency']} clients: {st['qps']:,.0f} QPS, p99 {fmt_ms(st['p99_ms'])} ms, "
             f"errors {st['error_rate']:.2%}" + ("" if st["valid"] else " (invalid step)"),
         )
-        for st in run.perf["throughput"][group]["steps"]
+        for st in perf["throughput"][group]["steps"]
     ]
     return Series(run.label, slots.get(run.engine, 0), run.track != "default", points)
 
 
-def perf_view(s: ScenarioResults, slots: dict[str, int]) -> dict[str, Any]:
-    measured = [r for r in s.runs if r.perf is not None and not r.failure]
-    latency_groups = sorted(
-        {g for r in measured for g in r.perf["latency"] if g != "all"}, key=group_key
-    )
+def _perf_size_view(
+    measured: list[RunResult], models: list[str], slots: dict[str, int], n: int
+) -> dict[str, Any]:
+    reports = [p for r in measured if (p := _perf(r, n)) is not None]
+    latency_groups = sorted({g for p in reports for g in p["latency"] if g != "all"}, key=group_key)
     throughput_groups = sorted(
-        {g for r in measured for g in (*r.perf["throughput"], *r.perf["skipped_groups"])},
-        key=group_key,
+        {g for p in reports for g in (*p["throughput"], *p["skipped_groups"])}, key=group_key
     )
     charts = []
-    for model in s.models:
-        runs = [r for r in measured if r.model == model]
+    for model in models:
+        runs = [r for r in measured if r.model == model and _perf(r, n) is not None]
         for group in throughput_groups:
-            with_data = [r for r in runs if group in r.perf["throughput"]]
-            series = [_series(r, group, slots) for r in with_data]
+            with_data = [r for r in runs if group in _perf(r, n)["throughput"]]  # type: ignore[index]
+            series = [_series(r, n, group, slots) for r in with_data]
             steps = sorted({p.concurrency for se in series for p in se.points})
             svg = qps_chart(
-                f"{fmt_group(group)}: queries per second by concurrency, {model}", series, steps
+                f"{fmt_group(group)} at {n} results: queries per second by concurrency, {model}",
+                series,
+                steps,
             )
             if svg is None:
                 continue
@@ -250,18 +266,32 @@ def perf_view(s: ScenarioResults, slots: dict[str, int]) -> dict[str, Any]:
                 {"group": group, "model": model, "svg": svg, "series": series, "table": table}
             )
     return {
+        "size": n,
+        "title": PAGE_SIZE_TITLES.get(n, ""),
         "runs": measured,
         # Limits are the same for every run of a scenario; take them from the first
-        # measured run (the leading run referred to in the note below is per-run steps,
-        # not this list).
-        "limits": measured[0].perf["limits"] if measured else None,
+        # run measured at this size.
+        "limits": reports[0]["limits"] if reports else None,
         "latency": [
-            {"group": g, "cells": [_latency_cell(r, g) for r in measured]} for g in latency_groups
+            {"group": g, "cells": [_latency_cell(r, n, g) for r in measured]}
+            for g in latency_groups
         ],
         "max_qps": [
-            {"group": g, "cells": [_qps_cell(r, g) for r in measured]} for g in throughput_groups
+            {"group": g, "cells": [_qps_cell(r, n, g) for r in measured]} for g in throughput_groups
         ],
         "charts": charts,
+    }
+
+
+def perf_view(s: ScenarioResults, slots: dict[str, int]) -> dict[str, Any]:
+    measured = [r for r in s.runs if r.perf is not None and not r.failure]
+    sizes = sorted({n for r in measured for n in (r.perf or {})})
+    views = [
+        {**_perf_size_view(measured, s.models, slots, n), "headline": i == 0}
+        for i, n in enumerate(sizes)
+    ]
+    return {
+        "sizes": views,
         "indexing": [r for r in s.runs if r.index and not r.failure],
         "unmeasured": [r.label for r in s.runs if r.perf is None and not r.failure],
     }
@@ -319,9 +349,20 @@ def run_view(run: RunResult) -> dict[str, Any]:
         ],
         "stages": run.manifest.get("stages", {}),
         "perf": [
-            {"group": g, "latency": _latency_cell(run, g), "max_qps": _qps_cell(run, g)}
-            # "all" mixes modes and has no group_key; it stays out, as in summarize_perf.
-            for g in sorted((k for k in run.perf["latency"] if k != "all"), key=group_key)
+            {
+                "size": n,
+                "title": PAGE_SIZE_TITLES.get(n, ""),
+                "rows": [
+                    {
+                        "group": g,
+                        "latency": _latency_cell(run, n, g),
+                        "max_qps": _qps_cell(run, n, g),
+                    }
+                    # "all" mixes modes and has no group_key; it stays out, as in summarize_perf.
+                    for g in sorted((k for k in report["latency"] if k != "all"), key=group_key)
+                ],
+            }
+            for n, report in sorted((run.perf or {}).items())
         ]
         if run.perf and not run.failure
         else [],

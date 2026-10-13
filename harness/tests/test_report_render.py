@@ -315,6 +315,33 @@ def test_performance_section(tmp_path):
     assert "727.3 MB" in page and "1.6 GB" in page and "42.5" in page  # indexing cost
 
 
+def test_perf_sections_per_page_size(tmp_path):
+    results, out = site(tmp_path)
+    new = write_bundle(
+        results,
+        "meilisearch",
+        perf_reports={
+            20: perf_report({"keyword/keyword": (90.0, 4)}),
+            100: perf_report({"keyword/keyword": (50.0, 4)}),
+        },
+    )
+    write_bundle(results, "qdrant", perf_report=perf_report({"keyword/keyword": (10.0, 2)}))
+    build_site(results, out)
+    page = read(out, PAGE)
+    i20 = page.index("Page of 20 results")
+    i100 = page.index("Page of 100 results")
+    assert i20 < i100
+    assert "search results page" in page[i20:i100]
+    assert "deep retrieval" in page[i100 : i100 + 200]
+    assert "not measured at this page size" in page[i20:i100]
+    assert "not measured at this page size" not in page[i100:]
+    assert "at 20 results: queries per second" in page
+
+    run_page = read(out, f"runs/{new.name}.html")
+    assert run_page.index("Page of 20 results") < run_page.index("Page of 100 results")
+    assert run_page.count("Latency p50 / p99 (ms)") == 2
+
+
 def test_perf_limits_are_rendered_from_the_fixture(tmp_path):
     results, out = site(tmp_path)
     pr = perf_report({"keyword/keyword": (85.0, 4)})

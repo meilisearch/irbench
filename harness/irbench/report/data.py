@@ -9,6 +9,7 @@ from typing import Any, get_args
 from irbench.io import read_json
 from irbench.models import BASE_MODES, Mode
 from irbench.paths import slug
+from irbench.perf_files import perf_report_paths, read_perf_reports
 
 MODES: tuple[str, ...] = get_args(Mode)
 PERTURBATIONS = ("original", "typo", "prefix", "synonym")
@@ -36,7 +37,7 @@ class RunResult:
     failure: str | None
     manifest: dict[str, Any]
     scores: dict[str, Any] | None = None
-    perf: dict[str, Any] | None = None
+    perf: dict[int, dict[str, Any]] | None = None
     index: dict[str, Any] | None = None
 
     @property
@@ -132,8 +133,9 @@ def _load_run(d: Path) -> RunResult:
     _validate_manifest(d, manifest)
     files = {
         name: read_json(d / f"{name}.json") if (d / f"{name}.json").exists() else None
-        for name in ("scores", "perf", "index")
+        for name in ("scores", "index")
     }
+    files["perf"] = read_perf_reports(d) or None
     _validate_files(d, files)
     status, failure = manifest["status"], _failure(manifest)
     if status == "succeeded" and files["scores"] is None:
@@ -264,13 +266,15 @@ def _validate_files(d: Path, files: dict[str, Any]) -> None:
             _validate_group_key(p, "constraint_violations", key)
 
     if files["perf"] is not None:
-        p = f"{d}/perf.json"
-        if not isinstance(files["perf"], dict):
-            raise ValueError(f"{p} must be a dict")
-        required_perf = ("limits", "latency", "throughput", "skipped_groups")
-        missing_perf = [k for k in required_perf if k not in files["perf"]]
-        if missing_perf:
-            raise ValueError(f"{p} lacks {', '.join(missing_perf)}")
+        paths = perf_report_paths(d)
+        for size, report in files["perf"].items():
+            p = str(paths[size])
+            if not isinstance(report, dict):
+                raise ValueError(f"{p} must be a dict")
+            required_perf = ("limits", "latency", "throughput", "skipped_groups")
+            missing_perf = [k for k in required_perf if k not in report]
+            if missing_perf:
+                raise ValueError(f"{p} lacks {', '.join(missing_perf)}")
 
     if files["index"] is not None:
         p = f"{d}/index.json"

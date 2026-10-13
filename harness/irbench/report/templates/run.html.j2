@@ -103,16 +103,19 @@
 {% if view.perf %}
 <section>
 <h2>Performance</h2>
+{% for sz in view.perf %}
+<h3>Page of {{ sz.size }} results{% if sz.title %} ({{ sz.title }}){% endif %}</h3>
 <div class="scroll"><table>
   <thead><tr><th>Mode</th><th>Latency p50 / p99 (ms)</th><th>Max QPS</th></tr></thead>
   <tbody>
-  {% for row in view.perf %}
+  {% for row in sz.rows %}
     <tr><th scope="row">{{ row.group|group }}</th>
       <td class="num {{ row.latency.kind }}">{{ row.latency.text }}</td>
       <td class="num {{ row.max_qps.kind }}"{% if row.max_qps.note %} title="{{ row.max_qps.note }}"{% endif %}>{{ row.max_qps.text }}</td></tr>
   {% endfor %}
   </tbody>
 </table></div>
+{% endfor %}
 </section>
 {% endif %}
 {% endblock %}

@@ -112,6 +112,7 @@ def write_bundle(
     na=None,
     violations=None,
     perf_report=None,
+    perf_reports: dict[int, dict] | None = None,
     index=True,
     failed_stage=None,
     config_diff=None,
@@ -165,6 +166,8 @@ def write_bundle(
         (d / "scores.json").write_text(json.dumps(scores))
         if perf_report is not None:
             (d / "perf.json").write_text(json.dumps(perf_report))
+        for size, report in (perf_reports or {}).items():
+            (d / f"perf-p{size}.json").write_text(json.dumps(report))
         if index:
             (d / "index.json").write_text(
                 json.dumps(
