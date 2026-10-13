@@ -108,7 +108,7 @@ class Adapter(EngineAdapter):
         return {"must": [{"key": f.field, "range": {f.op: float(f.value)}}]}
 
     def _keyword(
-        self, text: str, limit: int, query_filter: dict[str, Any] | None
+        self, text: str, limit: int, depth: int, query_filter: dict[str, Any] | None
     ) -> dict[str, Any]:
         """BM25 per searchable field, combined by a weighted sum: weight n - i for field i of n.
 
@@ -122,7 +122,7 @@ class Adapter(EngineAdapter):
             leaf: dict[str, Any] = {
                 "query": {"text": text, "model": BM25},
                 "using": name,
-                "limit": max(limit, self.ctx.scenario.top_k),
+                "limit": max(limit, depth),
             }
             if query_filter:
                 leaf["filter"] = query_filter
@@ -153,41 +153,50 @@ class Adapter(EngineAdapter):
             return {"formula": sort.field, "defaults": {sort.field: -LOWEST}}
         return {"formula": {"neg": sort.field}, "defaults": {sort.field: LOWEST}}
 
-    def _sort_pool(self, task: QueryTask) -> int:
+    def _sort_pool(self, task: QueryTask, depth: int) -> int:
         """How many candidates a sorted task orders. Keyword: every match (a sparse query only
         returns points sharing a term), like Elasticsearch and Meilisearch, which sort all
-        matches. Semantic: the top_k nearest, like the other engines' knn with k=top_k."""
-        top_k = self.ctx.scenario.top_k
+        matches. Semantic: the `depth` nearest (top_k by default), like the other engines' knn."""
         if task.base == "keyword" and self.ctx.n_docs:
-            return max(self.ctx.n_docs, top_k)
-        return top_k
+            return max(self.ctx.n_docs, depth)
+        return depth
 
     def _retrieve(
         self,
         task: QueryTask,
         vector: list[float] | None,
         limit: int,
+        depth: int,
         query_filter: dict[str, Any] | None,
     ) -> dict[str, Any]:
-        """The query for the task's retrieval base; the filter is applied inside every branch."""
-        top_k = self.ctx.scenario.top_k
+        """The query for the task's retrieval base; the filter is applied inside every branch.
+
+        Hybrid prefetches `depth` candidates per side (top_k by default).
+        """
         if task.base == "keyword":
-            return self._keyword(task.text, limit, query_filter)
+            return self._keyword(task.text, limit, depth, query_filter)
         vector = require_vector(task, vector)
         if task.base == "semantic":
             return self._dense(vector, limit, query_filter)
         return {  # hybrid: native reciprocal rank fusion of the keyword and dense rankings
             "prefetch": [
-                self._keyword(task.text, top_k, query_filter),
-                self._dense(vector, top_k, query_filter),
+                self._keyword(task.text, depth, depth, query_filter),
+                self._dense(vector, depth, query_filter),
             ],
             "query": {"fusion": "rrf"},
             "limit": limit,
         }
 
     def render(
-        self, task: QueryTask, vector: list[float] | None, limit: int, facets: bool = True
+        self,
+        task: QueryTask,
+        vector: list[float] | None,
+        limit: int,
+        facets: bool = True,
+        *,
+        depth: int | None = None,
     ) -> Request:
+        depth = self.pool_depth(depth)
         if facets and task.facets:
             raise ValueError(
                 "qdrant adapter does not render faceted tasks; "
@@ -197,11 +206,13 @@ class Adapter(EngineAdapter):
         body: dict[str, Any]
         if task.sort is not None:
             body = {
-                "prefetch": self._retrieve(task, vector, self._sort_pool(task), query_filter),
+                "prefetch": self._retrieve(
+                    task, vector, self._sort_pool(task, depth), depth, query_filter
+                ),
                 "query": self._sort_formula(task.sort),
             }
         else:
-            body = self._retrieve(task, vector, limit, query_filter)
+            body = self._retrieve(task, vector, limit, depth, query_filter)
         if query_filter:
             body["filter"] = query_filter
         body["limit"] = limit

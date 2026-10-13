@@ -44,13 +44,14 @@ class FakeAdapter(EngineAdapter):
 
         poll(ready, timeout_s, "fake indexing", interval_s=0)
 
-    def render(self, task, vector, limit, facets=True):
+    def render(self, task, vector, limit, facets=True, *, depth=None):
         body = {
             "task_id": task.task_id,
             "limit": limit,
             "facets": facets and bool(task.facets),
             "check": bool(task.facets) and not facets,
             "has_vector": vector is not None,
+            "depth": self.pool_depth(depth),
             **self.search_params(task),
         }
         return Request("POST", f"/indexes/{self.ctx.index}/search", body=body)

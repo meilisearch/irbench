@@ -157,9 +157,22 @@ class EngineAdapter(ABC):
 
     @abstractmethod
     def render(
-        self, task: QueryTask, vector: list[float] | None, limit: int, facets: bool = True
+        self,
+        task: QueryTask,
+        vector: list[float] | None,
+        limit: int,
+        facets: bool = True,
+        *,
+        depth: int | None = None,
     ) -> "Request | SqlRequest":
-        """The search request for one task. `facets=False` renders the facet verification fetch."""
+        """The search request for one task, returning at most `limit` hits.
+
+        `depth` is the retrieval pool size (how many candidates each retrieval side considers;
+        None means the scenario's top_k). `facets=False` renders the facet verification fetch.
+        """
+
+    def pool_depth(self, depth: int | None) -> int:
+        return self.ctx.scenario.top_k if depth is None else depth
 
     @abstractmethod
     def parse(self, task: QueryTask, payload: Any) -> SearchResult:

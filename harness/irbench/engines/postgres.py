@@ -168,12 +168,14 @@ class PostgresAdapter(EngineAdapter):
         task: QueryTask,
         p: "_Parts",
         k_limit: int | None,
+        depth: int,
         extras: list[str] = (),
         scored: bool = True,
     ) -> str:
         """SELECT id [, score] [, extras] over the retrieval base, best first, at most k_limit rows.
 
-        k_limit None means every match: keyword base only, unordered. Only the columns callers
+        k_limit None means every match: keyword base only, unordered. `depth` is the per-side
+        pool of the hybrid RRF. Only the columns callers
         need are projected, so no wide column (embedding, text, tsv) travels through a sort.
         Params are added in statement order: query text, vector, filter, then limits.
         """
@@ -195,16 +197,16 @@ class PostgresAdapter(EngineAdapter):
                 f"SELECT id{sc}{ext} FROM {t} WHERE {p.where} "
                 f"ORDER BY embedding <=> {p.vec}, id LIMIT {q.p(k_limit, 'int')}"
             )
-        # hybrid: RRF over the keyword and vector top_k (spec §7 amendment)
-        top_k = q.p(self.ctx.scenario.top_k, "int")
+        # hybrid: RRF over the keyword and vector top `depth` (spec §7 amendment)
+        side = q.p(depth, "int")
         tb = self.keyword_tiebreak()
         fused = (
             f"SELECT coalesce(kw.id, vec.id) AS id, coalesce(1.0 / ({RRF_K} + kw.r), 0) "
             f"+ coalesce(1.0 / ({RRF_K} + vec.r), 0) AS score "
             f"FROM (SELECT id, row_number() OVER (ORDER BY {p.score} DESC{tb}) AS r FROM {t} "
-            f"WHERE {p.pred} AND {p.where} ORDER BY {p.score} DESC{tb} LIMIT {top_k}) kw "
+            f"WHERE {p.pred} AND {p.where} ORDER BY {p.score} DESC{tb} LIMIT {side}) kw "
             f"FULL OUTER JOIN (SELECT id, row_number() OVER (ORDER BY embedding <=> {p.vec}, id) AS r "
-            f"FROM {t} WHERE {p.where} ORDER BY embedding <=> {p.vec}, id LIMIT {top_k}) vec "
+            f"FROM {t} WHERE {p.where} ORDER BY embedding <=> {p.vec}, id LIMIT {side}) vec "
             f"ON kw.id = vec.id"
         )
         lim = q.p(k_limit, "int")
@@ -217,17 +219,23 @@ class PostgresAdapter(EngineAdapter):
         )
 
     def render(
-        self, task: QueryTask, vector: list[float] | None, limit: int, facets: bool = True
+        self,
+        task: QueryTask,
+        vector: list[float] | None,
+        limit: int,
+        facets: bool = True,
+        *,
+        depth: int | None = None,
     ) -> SqlRequest:
         q = Sql()
-        top_k = self.ctx.scenario.top_k
+        depth = self.pool_depth(depth)
         t = self.table
         p = self._parts(q, task, vector)
         if task.sort is not None:
             field, direction = ident(task.sort.field), task.sort.direction.upper()
-            # keyword base: every match; other bases: the top_k (same rules as other engines)
-            pool = None if task.base == "keyword" else top_k
-            inner = self._ranked(q, task, p, pool, [field], scored=False)
+            # keyword base: every match; other bases: the depth (same rules as other engines)
+            pool = None if task.base == "keyword" else depth
+            inner = self._ranked(q, task, p, pool, depth, [field], scored=False)
             sql = (
                 f"SELECT id FROM ({inner}) m ORDER BY {field} {direction} NULLS LAST, id "
                 f"LIMIT {q.p(limit, 'int')}"
@@ -237,7 +245,7 @@ class PostgresAdapter(EngineAdapter):
             every = self.ctx.n_docs or 1_000_000_000
             if task.base == "keyword":
                 # counts over every match, hits ranked from the same match set
-                m = self._ranked(q, task, p, None, terms)
+                m = self._ranked(q, task, p, None, depth, terms)
                 hits_src, order = "m", f"score DESC{self.keyword_tiebreak()}"
             elif task.base == "semantic":
                 # counts over every filtered document with no ordering or limit (an HNSW scan
@@ -245,7 +253,7 @@ class PostgresAdapter(EngineAdapter):
                 m = f"SELECT {', '.join(terms)} FROM {t} WHERE {p.where}"
                 hits_src, order = f"{t} WHERE {p.where}", f"embedding <=> {p.vec}, id"
             else:
-                m = self._ranked(q, task, p, every, terms)
+                m = self._ranked(q, task, p, every, depth, terms)
                 hits_src, order = "m", "score DESC, id"
             lim = q.p(limit, "int")
             # at most max_facet_values buckets per facet, most frequent first (as ES/Meilisearch)
@@ -264,7 +272,7 @@ class PostgresAdapter(EngineAdapter):
             )
         else:
             tb = self.keyword_tiebreak() if task.base == "keyword" else ", id"
-            sql = f"SELECT id FROM ({self._ranked(q, task, p, limit)}) m ORDER BY score DESC{tb}"
+            sql = f"SELECT id FROM ({self._ranked(q, task, p, limit, depth)}) m ORDER BY score DESC{tb}"
         extra = self.search_params(task)
         if extra:
             raise ValueError(

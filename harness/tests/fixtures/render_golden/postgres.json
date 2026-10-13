@@ -1,0 +1,121 @@
+{
+ "faceted-keyword/check": {
+  "params": [
+   "grey sofa",
+   1000
+  ],
+  "protocol": "postgres",
+  "sql": "SELECT id FROM (SELECT id, ts_rank(tsv, websearch_to_tsquery('irbench_ecommerce_product_search', $1::text)) AS score FROM idx WHERE tsv @@ websearch_to_tsquery('irbench_ecommerce_product_search', $1::text) AND TRUE ORDER BY score DESC, id LIMIT $2::text::int) m ORDER BY score DESC, id"
+ },
+ "faceted-keyword/main": {
+  "params": [
+   "grey sofa",
+   100,
+   1000
+  ],
+  "protocol": "postgres",
+  "sql": "WITH m AS (SELECT id, ts_rank(tsv, websearch_to_tsquery('irbench_ecommerce_product_search', $1::text)) AS score, product_class__terms FROM idx WHERE tsv @@ websearch_to_tsquery('irbench_ecommerce_product_search', $1::text) AND TRUE), hits AS (SELECT id, row_number() OVER (ORDER BY score DESC, id) AS o FROM m ORDER BY score DESC, id LIMIT $2::text::int) SELECT (SELECT coalesce(json_agg(id ORDER BY o), '[]') FROM hits) AS ids, json_build_object('product_class', (SELECT coalesce(json_object_agg(v, c), '{}') FROM (SELECT unnest(product_class__terms) AS v, count(*) AS c FROM m GROUP BY 1 ORDER BY c DESC, v LIMIT $3::text::int) x)) AS facets"
+ },
+ "faceted-semantic/check": {
+  "params": [
+   [
+    0.1,
+    0.2,
+    0.3
+   ],
+   1000
+  ],
+  "protocol": "postgres",
+  "sql": "SELECT id FROM (SELECT id, -(embedding <=> $1::text::vector) AS score FROM idx WHERE TRUE ORDER BY embedding <=> $1::text::vector, id LIMIT $2::text::int) m ORDER BY score DESC, id"
+ },
+ "faceted-semantic/main": {
+  "params": [
+   [
+    0.1,
+    0.2,
+    0.3
+   ],
+   100,
+   1000
+  ],
+  "protocol": "postgres",
+  "sql": "WITH m AS (SELECT product_class__terms FROM idx WHERE TRUE), hits AS (SELECT id, row_number() OVER (ORDER BY embedding <=> $1::text::vector, id) AS o FROM idx WHERE TRUE ORDER BY embedding <=> $1::text::vector, id LIMIT $2::text::int) SELECT (SELECT coalesce(json_agg(id ORDER BY o), '[]') FROM hits) AS ids, json_build_object('product_class', (SELECT coalesce(json_object_agg(v, c), '{}') FROM (SELECT unnest(product_class__terms) AS v, count(*) AS c FROM m GROUP BY 1 ORDER BY c DESC, v LIMIT $3::text::int) x)) AS facets"
+ },
+ "filtered-keyword/main": {
+  "params": [
+   "grey sofa",
+   "Beds",
+   100
+  ],
+  "protocol": "postgres",
+  "sql": "SELECT id FROM (SELECT id, ts_rank(tsv, websearch_to_tsquery('irbench_ecommerce_product_search', $1::text)) AS score FROM idx WHERE tsv @@ websearch_to_tsquery('irbench_ecommerce_product_search', $1::text) AND product_class__terms @> ARRAY[$2::text] ORDER BY score DESC, id LIMIT $3::text::int) m ORDER BY score DESC, id"
+ },
+ "filtered-semantic/main": {
+  "params": [
+   [
+    0.1,
+    0.2,
+    0.3
+   ],
+   "Beds",
+   100
+  ],
+  "protocol": "postgres",
+  "sql": "SELECT id FROM (SELECT id, -(embedding <=> $1::text::vector) AS score FROM idx WHERE product_class__terms @> ARRAY[$2::text] ORDER BY embedding <=> $1::text::vector, id LIMIT $3::text::int) m ORDER BY score DESC, id"
+ },
+ "hybrid/main": {
+  "params": [
+   "grey sofa",
+   [
+    0.1,
+    0.2,
+    0.3
+   ],
+   100,
+   100
+  ],
+  "protocol": "postgres",
+  "sql": "SELECT id FROM (SELECT id, score FROM (SELECT coalesce(kw.id, vec.id) AS id, coalesce(1.0 / (60 + kw.r), 0) + coalesce(1.0 / (60 + vec.r), 0) AS score FROM (SELECT id, row_number() OVER (ORDER BY ts_rank(tsv, websearch_to_tsquery('irbench_ecommerce_product_search', $1::text)) DESC, id) AS r FROM idx WHERE tsv @@ websearch_to_tsquery('irbench_ecommerce_product_search', $1::text) AND TRUE ORDER BY ts_rank(tsv, websearch_to_tsquery('irbench_ecommerce_product_search', $1::text)) DESC, id LIMIT $3::text::int) kw FULL OUTER JOIN (SELECT id, row_number() OVER (ORDER BY embedding <=> $2::text::vector, id) AS r FROM idx WHERE TRUE ORDER BY embedding <=> $2::text::vector, id LIMIT $3::text::int) vec ON kw.id = vec.id) f ORDER BY score DESC, id LIMIT $4::text::int) m ORDER BY score DESC, id"
+ },
+ "keyword/main": {
+  "params": [
+   "grey sofa",
+   100
+  ],
+  "protocol": "postgres",
+  "sql": "SELECT id FROM (SELECT id, ts_rank(tsv, websearch_to_tsquery('irbench_ecommerce_product_search', $1::text)) AS score FROM idx WHERE tsv @@ websearch_to_tsquery('irbench_ecommerce_product_search', $1::text) AND TRUE ORDER BY score DESC, id LIMIT $2::text::int) m ORDER BY score DESC, id"
+ },
+ "semantic/main": {
+  "params": [
+   [
+    0.1,
+    0.2,
+    0.3
+   ],
+   100
+  ],
+  "protocol": "postgres",
+  "sql": "SELECT id FROM (SELECT id, -(embedding <=> $1::text::vector) AS score FROM idx WHERE TRUE ORDER BY embedding <=> $1::text::vector, id LIMIT $2::text::int) m ORDER BY score DESC, id"
+ },
+ "sorted-keyword/main": {
+  "params": [
+   "grey sofa",
+   100
+  ],
+  "protocol": "postgres",
+  "sql": "SELECT id FROM (SELECT id, average_rating FROM idx WHERE tsv @@ websearch_to_tsquery('irbench_ecommerce_product_search', $1::text) AND TRUE) m ORDER BY average_rating DESC NULLS LAST, id LIMIT $2::text::int"
+ },
+ "sorted-semantic/main": {
+  "params": [
+   [
+    0.1,
+    0.2,
+    0.3
+   ],
+   100,
+   100
+  ],
+  "protocol": "postgres",
+  "sql": "SELECT id FROM (SELECT id, average_rating FROM idx WHERE TRUE ORDER BY embedding <=> $1::text::vector, id LIMIT $2::text::int) m ORDER BY average_rating DESC NULLS LAST, id LIMIT $3::text::int"
+ }
+}
