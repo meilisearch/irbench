@@ -1,6 +1,8 @@
 """Published vectors (spec §2, §5.2): computed once, uploaded as GitHub release assets and
 downloaded by `irbench embed`, so reproducing a run needs no model download or API key."""
 
+import hashlib
+import json
 import shutil
 from pathlib import Path
 from typing import Any
@@ -10,6 +12,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict
 
 from irbench.datasets.fetch import ChecksumError, fetch_file, sha256_file
+from irbench.embed.base import render_doc_text
 from irbench.embed.vectors import read_vectors
 from irbench.io import read_json, read_jsonl
 from irbench.paths import Workspace, slug
@@ -131,6 +134,61 @@ def pack_vectors(
     return entry, files
 
 
+def embedding_texts(root: Path, scenario_id: str) -> dict[str, list[str]]:
+    """The exact, ordered texts that get embedded for each kind: docs rendered from the
+    scenario's embedding_fields, and query variant texts. Single source of truth for the
+    embed stage and for the fingerprints that guard vector reuse."""
+    ws, scenario = Workspace(root), load_scenario(root, scenario_id)
+    return {
+        "docs": [
+            render_doc_text(d, scenario.embedding_fields)
+            for d in read_jsonl(ws.dataset_dir(scenario.dataset) / "docs.jsonl")
+        ],
+        "queries": [
+            v["text"] for v in read_jsonl(ws.scenario_dir(scenario_id) / "queries.variants.jsonl")
+        ],
+    }
+
+
+def texts_fingerprint(kind: str, texts: list[str]) -> str:
+    """sha256 over the kind and the ordered texts (JSON-encoded, so boundaries are unambiguous)."""
+    payload = json.dumps([kind, texts], ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def sidecar_path(vectors_path: Path) -> Path:
+    return vectors_path.with_name(vectors_path.name + ".meta.json")
+
+
+def write_sidecar(vectors_path: Path, model_id: str, kind: str, texts: list[str]) -> None:
+    """Record what `vectors_path` was embedded from. Written after the parquet, atomically."""
+    meta = {
+        "model": model_id,
+        "kind": kind,
+        "count": len(texts),
+        "texts_sha256": texts_fingerprint(kind, texts),
+    }
+    path = sidecar_path(vectors_path)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+
+
+def _sidecar_matches(vectors_path: Path, model_id: str, kind: str, texts: list[str]) -> bool:
+    """Whether the sidecar exists, parses, and fingerprints exactly these texts for this
+    model. Anything missing or malformed counts as a mismatch."""
+    try:
+        meta = json.loads(sidecar_path(vectors_path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return (
+        isinstance(meta, dict)
+        and meta.get("model") == model_id
+        and meta.get("kind") == kind
+        and meta.get("texts_sha256") == texts_fingerprint(kind, texts)
+    )
+
+
 def _expected_vectors(
     root: Path, scenario_id: str, model_id: str
 ) -> dict[str, tuple[Path, list[str]]]:
@@ -163,12 +221,15 @@ def _ids_match(dest: Path, ids: list[str]) -> bool:
 def local_vectors_match(
     root: Path, scenario_id: str, model_id: str
 ) -> tuple[Path, Path, int, int] | None:
-    """If the local doc and query vector files both already exist and their ids match the
-    prepared data, return (docs_path, queries_path, n_docs, n_queries); else None. Checked
+    """If the local doc and query vector files both already exist, their ids match the
+    prepared data, and their fingerprint sidecars match the texts that would be embedded
+    now, return (docs_path, queries_path, n_docs, n_queries); else None. Ids alone are not
+    enough: they survive changes to the dataset version, seed and embedding_fields. Checked
     first so a scenario with local vectors never needs the registry or the network."""
     expected = _expected_vectors(root, scenario_id, model_id)
-    for dest, ids in expected.values():
-        if not _ids_match(dest, ids):
+    texts = embedding_texts(root, scenario_id)
+    for kind, (dest, ids) in expected.items():
+        if not _ids_match(dest, ids) or not _sidecar_matches(dest, model_id, kind, texts[kind]):
             return None
     (docs_path, doc_ids), (queries_path, query_ids) = expected["docs"], expected["queries"]
     return docs_path, queries_path, len(doc_ids), len(query_ids)
@@ -187,6 +248,7 @@ def download_published(
             f"{local[0]}@{local[1]} with seed {local[2]}; run `irbench embed --compute`"
         )
     expected = _expected_vectors(root, entry.scenario, entry.model)
+    texts = embedding_texts(root, entry.scenario)
     for kind, (dest, ids) in expected.items():
         asset: VectorAsset = getattr(entry, kind)
         try:
@@ -204,4 +266,5 @@ def download_published(
                 f"({len(got_ids)} vs {len(ids)} ids, dim {vectors.shape[1]} vs {asset.dim}); "
                 "run `irbench embed --compute`"
             )
+        write_sidecar(dest, entry.model, kind, texts[kind])
     return expected["docs"][0], expected["queries"][0]

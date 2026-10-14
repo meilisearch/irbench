@@ -1,3 +1,4 @@
+import json
 import re
 
 import httpx
@@ -5,7 +6,7 @@ import pytest
 import yaml
 from typer.testing import CliRunner
 
-from fake_engine import SCENARIO, fake_root
+from fake_engine import SCENARIO, fake_root, set_scenario
 from irbench.cli import app
 from irbench.datasets.fetch import ChecksumError, sha256_file
 from irbench.embed.publish import (
@@ -13,9 +14,11 @@ from irbench.embed.publish import (
     _save_registry,
     find_published,
     load_registry,
+    local_vectors_match,
     pack_vectors,
 )
 from irbench.embed.vectors import read_vectors, write_vectors
+from irbench.io import read_jsonl
 from irbench.paths import Workspace
 from irbench.scenario import load_scenario
 from irbench.stages.embed import embed_scenario
@@ -212,3 +215,77 @@ def test_cli_pack_prints_the_upload_command(tmp_path, wands_raw):
     assert result.exit_code == 0, result.output
     assert "gh release upload vectors" in result.output
     assert "--clobber" not in result.output  # content-addressed names are never reused
+
+
+def sidecar(path):
+    return path.with_name(path.name + ".meta.json")
+
+
+def test_compute_writes_fingerprint_sidecars(tmp_path, wands_raw):
+    root = fake_root(tmp_path, wands_raw)
+    docs, queries = vector_paths(root)
+    for path, kind in ((docs, "docs"), (queries, "queries")):
+        meta = json.loads(sidecar(path).read_text())
+        assert meta["model"] == "fake" and meta["kind"] == kind
+        assert meta["count"] == len(read_vectors(path)[0])
+        assert re.fullmatch(r"[0-9a-f]{64}", meta["texts_sha256"])
+
+
+def test_download_writes_fingerprint_sidecars(tmp_path, wands_raw):
+    root = fake_root(tmp_path, wands_raw)
+    pack_vectors(root, SCENARIO, "fake", tmp_path / "dist")
+    docs, queries = vector_paths(root)
+    before = [sidecar(p).read_text() for p in (docs, queries)]
+    for p in (docs, queries):
+        p.unlink()
+        sidecar(p).unlink()
+    result = embed_scenario(root, SCENARIO, "fake", client=serve(tmp_path / "dist"))
+    assert result.source == "published"
+    assert [sidecar(p).read_text() for p in (docs, queries)] == before
+
+
+def test_matching_sidecar_is_reused_without_compute_or_network(tmp_path, wands_raw):
+    root = fake_root(tmp_path, wands_raw)
+    seen = []
+    result = embed_scenario(root, SCENARIO, "fake", client=serve(tmp_path / "dist", seen))
+    assert result.source == "local" and seen == []
+
+
+@pytest.mark.parametrize("which", [0, 1])
+def test_missing_sidecar_is_not_reused(tmp_path, wands_raw, which):
+    root = fake_root(tmp_path, wands_raw)
+    sidecar(vector_paths(root)[which]).unlink()
+    assert local_vectors_match(root, SCENARIO, "fake") is None
+    assert embed_scenario(root, SCENARIO, "fake", embedder=FakeEmbedder()).source == "computed"
+    assert local_vectors_match(root, SCENARIO, "fake") is not None
+
+
+@pytest.mark.parametrize("content", ["{not json", "[]", '{"model": "fake"}', "null"])
+def test_malformed_sidecar_is_not_reused(tmp_path, wands_raw, content):
+    root = fake_root(tmp_path, wands_raw)
+    sidecar(vector_paths(root)[0]).write_text(content)
+    assert local_vectors_match(root, SCENARIO, "fake") is None
+
+
+def test_wrong_model_in_sidecar_is_not_reused(tmp_path, wands_raw):
+    root = fake_root(tmp_path, wands_raw)
+    path = sidecar(vector_paths(root)[1])
+    path.write_text(json.dumps({**json.loads(path.read_text()), "model": "other"}))
+    assert local_vectors_match(root, SCENARIO, "fake") is None
+
+
+def test_changed_embedding_fields_are_not_reused(tmp_path, wands_raw):
+    root = fake_root(tmp_path, wands_raw)
+    assert local_vectors_match(root, SCENARIO, "fake") is not None
+    fields = load_scenario(root, SCENARIO).embedding_fields
+    set_scenario(root, embedding_fields=fields[:1])
+    assert local_vectors_match(root, SCENARIO, "fake") is None
+
+
+def test_changed_query_variant_text_is_not_reused(tmp_path, wands_raw):
+    root = fake_root(tmp_path, wands_raw)
+    path = Workspace(root).scenario_dir(SCENARIO) / "queries.variants.jsonl"
+    rows = list(read_jsonl(path))
+    rows[0]["text"] += " changed"  # same qids, as after a different perturbation seed
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    assert local_vectors_match(root, SCENARIO, "fake") is None

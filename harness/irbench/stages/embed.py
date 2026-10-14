@@ -3,10 +3,16 @@ from pathlib import Path
 
 import httpx
 
-from irbench.embed.base import Embedder, render_doc_text
+from irbench.embed.base import Embedder
 from irbench.embed.cache import VectorCache, embed_with_cache
 from irbench.embed.models import get_embedder
-from irbench.embed.publish import download_published, find_published, local_vectors_match
+from irbench.embed.publish import (
+    download_published,
+    embedding_texts,
+    find_published,
+    local_vectors_match,
+    write_sidecar,
+)
 from irbench.embed.vectors import write_vectors
 from irbench.io import read_jsonl
 from irbench.paths import Workspace
@@ -67,10 +73,11 @@ def embed_scenario(
 
     docs = list(read_jsonl(ws.dataset_dir(scenario.dataset) / "docs.jsonl"))
     variants = list(read_jsonl(variants_path))
+    texts = embedding_texts(root, scenario_id)
     try:
         doc_vectors = embed_with_cache(
             emb,
-            [render_doc_text(d, scenario.embedding_fields) for d in docs],
+            texts["docs"],
             "doc",
             cache,
             batch_size=BATCH_SIZE,
@@ -78,7 +85,7 @@ def embed_scenario(
         )
         query_vectors = embed_with_cache(
             emb,
-            [v["text"] for v in variants],
+            texts["queries"],
             "query",
             cache,
             batch_size=BATCH_SIZE,
@@ -91,6 +98,8 @@ def embed_scenario(
     queries_path = ws.query_vectors_path(scenario_id, model_id)
     write_vectors(docs_path, [d[scenario.id_field] for d in docs], doc_vectors)
     write_vectors(queries_path, [v["qid"] for v in variants], query_vectors)
+    write_sidecar(docs_path, model_id, "docs", texts["docs"])
+    write_sidecar(queries_path, model_id, "queries", texts["queries"])
     return EmbedResult(
         docs_path, queries_path, len(docs), len(variants), len(cache) - cached_before
     )
