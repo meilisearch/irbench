@@ -98,6 +98,13 @@ def pack_vectors(
         "docs": ws.doc_vectors_path(scenario.dataset, model_id),
         "queries": ws.query_vectors_path(scenario_id, model_id),
     }
+    texts = embedding_texts(root, scenario_id)
+    for kind, src in sources.items():
+        if src.exists() and not _sidecar_matches(src, model_id, kind, texts[kind]):
+            raise ValueError(
+                f"{src}: the {kind} vectors do not match the texts the scenario embeds now; "
+                f"run `irbench embed --scenario {scenario_id} --model {model_id} --compute` first"
+            )
     out_dir.mkdir(parents=True, exist_ok=True)
     assets: dict[str, VectorAsset] = {}
     files: list[Path] = []

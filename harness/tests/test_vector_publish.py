@@ -289,3 +289,12 @@ def test_changed_query_variant_text_is_not_reused(tmp_path, wands_raw):
     rows[0]["text"] += " changed"  # same qids, as after a different perturbation seed
     path.write_text("".join(json.dumps(r) + "\n" for r in rows))
     assert local_vectors_match(root, SCENARIO, "fake") is None
+
+
+def test_pack_refuses_stale_vectors(tmp_path, wands_raw):
+    root = fake_root(tmp_path, wands_raw)
+    fields = load_scenario(root, SCENARIO).embedding_fields
+    set_scenario(root, embedding_fields=fields[:1])
+    with pytest.raises(ValueError, match="do not match the texts"):
+        pack_vectors(root, SCENARIO, "fake", tmp_path / "dist")
+    assert not (tmp_path / "dist").exists() or not any((tmp_path / "dist").iterdir())
