@@ -17,3 +17,4 @@ files:
     sha256: 10669ab7d526cb04f52079139fd88c3d467a0776441b046567f540582798982b
   metadata:
     url: https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/2020-07-16/metadata.csv
+    sha256: bd93215b369d586169b119a7f51a6cf4c61485c68fa8a88ae99abe181393c16b
