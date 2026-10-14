@@ -72,6 +72,14 @@ class RunResult:
                 return g["metrics"]["ndcg@10"]
         return None
 
+    def group_n(self, query_group: str) -> int | None:
+        if self.scores is None:
+            return None
+        for g in self.scores["relevance"]:
+            if g.get("group") == query_group:
+                return g["n"]
+        return None
+
     @property
     def query_groups(self) -> list[str]:
         if self.scores is None:

@@ -506,7 +506,10 @@ def test_query_group_table_has_one_column_per_group(tmp_path):
     build_site(results, out)
     page = read(out, PAGE)
     assert "By query group" in page
-    assert "<th>keyword</th><th>question</th>" in page
+    assert "<th>keyword<br><small>n=10</small></th><th>question<br><small>n=10</small></th>" in page
+    assert "n=10" in page  # n per group is shown in the table
+    assert "n per group is on the run page" not in page
+    assert "typo" in page.split("By query group")[1].split("</p>")[0]
     assert "0.610" in page and "0.720" in page and "0.410" in page and "0.520" in page
     # grouped rows must not leak into the overall matrix
     assert "0.990" not in page

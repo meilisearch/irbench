@@ -67,11 +67,11 @@ typo, are cut short (search as you type){% if "synonym" in view.perturbation_kin
 {% if view.query_groups %}
 <section>
 <h2>By query group</h2>
-<p class="note">nDCG@10 for each group of queries (for example question vs keyword form); n per group is on the run page.</p>
+<p class="note">nDCG@10 for each group of queries (for example question vs keyword form), over the original queries and their perturbed variants (typo, prefix); n is the number of queries behind each column.</p>
 {% for t in view.query_groups %}
 <h3>{{ t.group|group }}: nDCG@10</h3>
 <div class="scroll"><table>
-  <thead><tr><th>Engine</th><th>Model</th>{% for n in t.names %}<th>{{ n }}</th>{% endfor %}</tr></thead>
+  <thead><tr><th>Engine</th><th>Model</th>{% for n in t.names %}<th>{{ n }}{% if t.ns[loop.index0] is not none %}<br><small>n={{ t.ns[loop.index0] }}</small>{% endif %}</th>{% endfor %}</tr></thead>
   <tbody>
   {% for r in t.rows %}
     <tr>

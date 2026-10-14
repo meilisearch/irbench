@@ -165,7 +165,8 @@ def query_group_tables(s: ScenarioResults) -> list[dict[str, Any]]:
             if not r.failure and any(r.group_ndcg(group, q) is not None for q in names)
         ]
         if rows:
-            tables.append({"group": group, "names": names, "rows": rows})
+            ns = [next((n for r in s.runs if (n := r.group_n(q)) is not None), None) for q in names]
+            tables.append({"group": group, "names": names, "ns": ns, "rows": rows})
     return tables
 
 

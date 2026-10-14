@@ -30,6 +30,6 @@ tuned:
   justification:
     matchingStrategy: >-
       Carries the WANDS finding (keyword nDCG@10 0.481 -> 0.508 with `frequency`)
-      over to question-style queries, where `last` drops the final words of a
-      question first. A documented, supported search parameter; no ranking-rule
+      over to this scenario, whose queries come in question and keyword forms,
+      where `last` drops the final words of a query first. A documented, supported search parameter; no ranking-rule
       change. The tuned run measures whether the finding holds here.

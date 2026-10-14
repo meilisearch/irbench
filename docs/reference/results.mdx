@@ -69,7 +69,7 @@ For `postgres` requests:
 | Field | Description |
 |---|---|
 | `run_id`, `scenario`, `engine`, `model`, `track` | Same identity fields as the manifest. |
-| `relevance` | A list of per-group scores: `mode`, `base`, `perturbation` (`all`, `original`, `typo`, `prefix`, or `synonym`), `n` (task count), and `metrics` (`ndcg@10`, `recall@10`, `recall@100`, `mrr@10`, `success@1`). |
+| `relevance` | A list of per-group scores: `mode`, `base`, `perturbation` (`all`, `original`, `typo`, `prefix`, or `synonym`), `n` (task count), and `metrics` (`ndcg@10`, `recall@10`, `recall@100`, `mrr@10`, `success@1`). Scenarios with query groups (for example `question`/`keyword`, or a forum) add rows with an extra optional `group` key; these have `perturbation` `all` and are scored over that group's queries. Rows without `group` (all of WANDS' rows) are the overall scores: a reader wanting the overall score must skip rows that have a `group`. |
 | `checks` | A list of per `mode`/`base` check summaries: `n`, `errors`, `filter_violations`, `order_violations`, `facet_accuracy`, `facet_verified`, `facet_unverifiable`, `facet_check_errors` — fields that don't apply to a given mode are `null`. |
 | `constraint_violations` | Maps `<mode>:<base>` to a description when that group's filter or order violations are non-zero — a broken constraint means the group's nDCG doesn't actually measure that mode. |
 | `not_applicable` | Maps `<mode>:<base>` to the config's `unsupported` reason, for every mode/base combination the engine doesn't support. |

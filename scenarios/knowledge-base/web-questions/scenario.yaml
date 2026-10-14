@@ -17,7 +17,7 @@ filter_templates: []
 sort_templates: []
 
 top_k: 100
-# Facet value limit every engine must return (WANDS has 601 product_class values).
+# Facet value limit every engine must return (this scenario has no filterable fields; kept for parity with the others).
 max_facet_values: 1000
 # Faceted checks re-fetch the same query up to this many hits; at or above it the
 # result set is too large to verify and the task is reported "unverifiable".

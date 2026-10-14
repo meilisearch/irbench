@@ -8,7 +8,14 @@ from pathlib import Path
 import httpx
 import pytest
 
-from irbench.datasets.fetch import ChecksumError, RangeNotSupported, fetch_file, fetch_zip_member
+from irbench.datasets import fetch as fetch_module
+from irbench.datasets.fetch import (
+    ChecksumError,
+    MemberNotFound,
+    RangeNotSupported,
+    fetch_file,
+    fetch_zip_member,
+)
 from irbench.datasets.registry import DatasetSpec, fetch_dataset, load_dataset_spec
 from irbench.paths import Workspace
 
@@ -216,3 +223,50 @@ def test_zip_member_retries_a_dropped_range_request(tmp_path):
         client,
     )
     assert dropped and dest.read_bytes() == body
+
+
+@pytest.fixture(autouse=True)
+def _no_backoff(monkeypatch):
+    monkeypatch.setattr(fetch_module, "_sleep", lambda seconds: None)
+
+
+def test_non_range_server_body_is_never_read(tmp_path):
+    read: list[int] = []
+
+    def body():
+        for _ in range(1000):
+            read.append(1)
+            yield b"x" * 1024
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=body())
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(RangeNotSupported):
+        fetch_zip_member("https://x/set.zip", "a", tmp_path / "a", "0" * 64, client)
+    assert read == []
+
+
+def test_range_retries_back_off(tmp_path, monkeypatch):
+    sleeps: list[float] = []
+    monkeypatch.setattr(fetch_module, "_sleep", sleeps.append)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("down", request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(httpx.ConnectError):
+        fetch_zip_member("https://x/set.zip", "a", tmp_path / "a", "0" * 64, client)
+    assert sleeps == [1, 2, 4]
+
+
+def test_missing_zip_member_names_url_and_member(tmp_path):
+    with pytest.raises(MemberNotFound, match=r"https://x/set\.zip.*set/nope\.jsonl"):
+        fetch_zip_member(
+            "https://x/set.zip",
+            "set/nope.jsonl",
+            tmp_path / "n.jsonl",
+            "0" * 64,
+            _range_client(_zip_bytes(MEMBERS), []),
+        )
+    assert not (tmp_path / "n.jsonl.part").exists()

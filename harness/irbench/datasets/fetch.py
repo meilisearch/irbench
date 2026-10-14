@@ -1,6 +1,7 @@
 import hashlib
 import io
 import re
+import time
 import zipfile
 from pathlib import Path
 
@@ -46,7 +47,14 @@ def fetch_file(url: str, dest: Path, sha256: str, client: httpx.Client | None = 
 _RANGE_ATTEMPTS = 4
 
 
+_sleep = time.sleep
+
+
 class RangeNotSupported(RuntimeError):
+    pass
+
+
+class MemberNotFound(RuntimeError):
     pass
 
 
@@ -57,23 +65,29 @@ class _HttpRangeFile(io.RawIOBase):
         self.url, self.client, self.max_request, self.pos = url, client, max_request, 0
         self.size = self._total()
 
-    def _get(self, start: int, end: int) -> httpx.Response:
+    def _get(self, start: int, end: int) -> bytes:
         for attempt in range(_RANGE_ATTEMPTS):
             try:
-                r = self.client.get(self.url, headers={"Range": f"bytes={start}-{end}"})
-                break
+                # stream, so a server that ignores Range never has its body read
+                with self.client.stream(
+                    "GET", self.url, headers={"Range": f"bytes={start}-{end}"}
+                ) as r:
+                    if r.status_code != 206:
+                        raise RangeNotSupported(
+                            f"{self.url}: the server answered {r.status_code} to a range "
+                            "request; single files cannot be read out of this archive"
+                        )
+                    self._last_headers = r.headers
+                    return r.read()
             except httpx.TransportError:  # a dropped connection on a long run of reads
                 if attempt == _RANGE_ATTEMPTS - 1:
                     raise
-        if r.status_code != 206:
-            raise RangeNotSupported(
-                f"{self.url}: the server answered {r.status_code} to a range request; "
-                "single files cannot be read out of this archive"
-            )
-        return r
+                _sleep(2**attempt)
+        raise AssertionError("unreachable")
 
     def _total(self) -> int:
-        m = re.search(r"/(\d+)$", self._get(0, 0).headers.get("content-range", ""))
+        self._get(0, 0)
+        m = re.search(r"/(\d+)$", self._last_headers.get("content-range", ""))
         if not m:
             raise RangeNotSupported(f"{self.url}: no Content-Range total in the reply")
         return int(m[1])
@@ -96,7 +110,7 @@ class _HttpRangeFile(io.RawIOBase):
         if self.pos >= self.size:
             return 0
         end = min(self.pos + min(len(buffer), self.max_request), self.size) - 1
-        data = self._get(self.pos, end).content
+        data = self._get(self.pos, end)
         buffer[: len(data)] = data
         self.pos += len(data)
         return len(data)
@@ -120,9 +134,14 @@ def fetch_zip_member(
     http = client or httpx.Client(follow_redirects=True, timeout=120)
     try:
         remote = io.BufferedReader(_HttpRangeFile(url, http, buffer_size), buffer_size=buffer_size)
-        with zipfile.ZipFile(remote) as archive, archive.open(member) as src, tmp.open("wb") as out:
-            for chunk in iter(lambda: src.read(1 << 20), b""):
-                out.write(chunk)
+        with zipfile.ZipFile(remote) as archive:
+            try:
+                info = archive.getinfo(member)
+            except KeyError:
+                raise MemberNotFound(f"{url}: no member {member!r} in the archive") from None
+            with archive.open(info) as src, tmp.open("wb") as out:
+                for chunk in iter(lambda: src.read(1 << 20), b""):
+                    out.write(chunk)
         actual = sha256_file(tmp)
         if actual != sha256:
             raise ChecksumError(f"{url}!{member}: expected sha256 {sha256}, got {actual}")

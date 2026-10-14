@@ -1,6 +1,6 @@
 id: cqadupstack
 version: "beir-2021"
-license: CC BY-SA 4.0 (StackExchange content, redistributed by BEIR)
+license: CC BY-SA (StackExchange content; version per the original CQADupStack release; redistributed by BEIR)
 source: https://github.com/beir-cellar/beir
 files:
   webmasters_corpus:
