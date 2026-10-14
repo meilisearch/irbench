@@ -152,6 +152,23 @@ def model_comparison(s: ScenarioResults) -> list[dict[str, Any]]:
     return tables
 
 
+def query_group_tables(s: ScenarioResults) -> list[dict[str, Any]]:
+    """nDCG@10 per query group, per retrieval base (empty when the scenario has no groups)."""
+    names = sorted({q for r in s.runs for q in r.query_groups})
+    if not names:
+        return []
+    tables = []
+    for group in BASE_GROUPS:
+        rows = [
+            {"run": r, "cells": [r.group_ndcg(group, q) for q in names]}
+            for r in s.runs
+            if not r.failure and any(r.group_ndcg(group, q) is not None for q in names)
+        ]
+        if rows:
+            tables.append({"group": group, "names": names, "rows": rows})
+    return tables
+
+
 def na_notes(s: ScenarioResults) -> list[dict[str, Any]]:
     notes: dict[tuple[str, str], list[str]] = defaultdict(list)
     for run in s.runs:
@@ -308,6 +325,7 @@ def scenario_view(s: ScenarioResults, slots: dict[str, int]) -> dict[str, Any]:
             for p in ("typo", "prefix", "synonym")
             if any(r["deltas"].get(p) is not None for r in perturbation_rows(s))
         ],
+        "query_groups": query_group_tables(s),
         "models": model_comparison(s),
         "comparable": s.hardware not in UNPUBLISHED_PROFILES,
         "perf": perf_view(s, slots),
@@ -325,7 +343,8 @@ def run_view(run: RunResult) -> dict[str, Any]:
                 (
                     g
                     for g in run.scores["relevance"]
-                    if (g["mode"], g["base"], g["perturbation"]) == (mode, base, "all")
+                    if "group" not in g
+                    and (g["mode"], g["base"], g["perturbation"]) == (mode, base, "all")
                 ),
                 None,
             )

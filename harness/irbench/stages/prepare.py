@@ -35,7 +35,13 @@ def prepare(root: Path, scenario_id: str, client: httpx.Client | None = None) ->
 
     docs_by_id = {d[scenario.id_field]: d for d in read_jsonl(normalized.docs)}
     queries = [
-        Query(qid=r["qid"], text=r["text"], variant_of=r["qid"], perturbation="original")
+        Query(
+            qid=r["qid"],
+            text=r["text"],
+            variant_of=r["qid"],
+            perturbation="original",
+            group=r.get("group"),
+        )
         for r in read_jsonl(normalized.queries)
     ]
     qrels = read_qrels(normalized.qrels)
@@ -46,8 +52,10 @@ def prepare(root: Path, scenario_id: str, client: httpx.Client | None = None) ->
     task_set = build_tasks(scenario, variants, qrels, docs_by_id)
 
     out = ws.scenario_dir(scenario.id)
-    write_jsonl(out / "queries.variants.jsonl", (v.model_dump() for v in variants))
-    write_jsonl(out / "tasks.jsonl", (t.model_dump(mode="json") for t in task_set.tasks))
+    write_jsonl(out / "queries.variants.jsonl", (v.model_dump(exclude_none=True) for v in variants))
+    write_jsonl(
+        out / "tasks.jsonl", (t.model_dump(mode="json", exclude_none=True) for t in task_set.tasks)
+    )
     write_qrels(out / "qrels.tasks.tsv", task_set.qrels)
 
     result = PrepareResult(

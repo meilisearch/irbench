@@ -482,3 +482,38 @@ def test_wands_shaped_bundles_keep_the_synonym_column(tmp_path):
     write_bundle(results, "meilisearch", groups={"keyword/keyword": 0.5})
     build_site(results, out)
     assert "<th>synonym</th>" in read(out, PAGE)
+
+
+def _with_group_rows(bundle, ndcgs):
+    def add(d):
+        base = next(
+            r for r in d["relevance"] if (r["mode"], r["perturbation"]) == ("keyword", "all")
+        )
+        rows = [
+            {**base, "group": g, "n": 10, "metrics": {**base["metrics"], "ndcg@10": v}}
+            for g, v in ndcgs.items()
+        ]
+        return {**d, "relevance": d["relevance"] + rows}
+
+    _edit_json(bundle / "scores.json", add)
+
+
+def test_query_group_table_has_one_column_per_group(tmp_path):
+    results, out = site(tmp_path)
+    for engine, q, k in (("meilisearch", 0.61, 0.72), ("qdrant", 0.41, 0.52)):
+        bundle = write_bundle(results, engine, groups={"keyword/keyword": 0.5})
+        _with_group_rows(bundle, {"question": q, "keyword": k})
+    build_site(results, out)
+    page = read(out, PAGE)
+    assert "By query group" in page
+    assert "<th>keyword</th><th>question</th>" in page
+    assert "0.610" in page and "0.720" in page and "0.410" in page and "0.520" in page
+    # grouped rows must not leak into the overall matrix
+    assert "0.990" not in page
+
+
+def test_wands_shaped_bundles_have_no_query_group_table(tmp_path):
+    results, out = site(tmp_path)
+    write_bundle(results, "meilisearch", groups={"keyword/keyword": 0.5})
+    build_site(results, out)
+    assert "By query group" not in read(out, PAGE)

@@ -82,3 +82,24 @@ def test_unfiltered_modes_keep_source_qrels():
     result = _build()
     assert result.qrels["0-typo:keyword:keyword"] == QRELS["0"]
     assert result.qrels["0:sorted:semantic"] == QRELS["0"]
+
+
+def test_tasks_carry_the_query_group_and_ungrouped_ones_have_none():
+    variants = [
+        Query(
+            qid="0", text="platform bed", variant_of="0", perturbation="original", group="keyword"
+        ),
+        Query(
+            qid="0-typo", text="platfrom bed", variant_of="0", perturbation="typo", group="keyword"
+        ),
+        Query(qid="1", text="velvet couch", variant_of="1", perturbation="original"),
+    ]
+    result = build_tasks(
+        load_scenario(REPO_ROOT, "ecommerce/product-search"), variants, QRELS, DOCS
+    )
+    grouped = [t for t in result.tasks if t.variant_of == "0"]
+    plain = [t for t in result.tasks if t.variant_of == "1"]
+    assert grouped and plain
+    assert {t.group for t in grouped} == {"keyword"}
+    assert all(t.group is None for t in plain)
+    assert "group" not in plain[0].model_dump(mode="json", exclude_none=True)

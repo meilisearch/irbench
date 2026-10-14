@@ -64,6 +64,27 @@ typo, are cut short (search as you type){% if "synonym" in view.perturbation_kin
 {% endif %}
 </section>
 
+{% if view.query_groups %}
+<section>
+<h2>By query group</h2>
+<p class="note">nDCG@10 for each group of queries (for example question vs keyword form); n per group is on the run page.</p>
+{% for t in view.query_groups %}
+<h3>{{ t.group|group }}: nDCG@10</h3>
+<div class="scroll"><table>
+  <thead><tr><th>Engine</th><th>Model</th>{% for n in t.names %}<th>{{ n }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for r in t.rows %}
+    <tr>
+      <th scope="row">{{ r.run.label }}</th><td>{{ r.run.model }}</td>
+      {% for c in r.cells %}<td class="num">{{ c|score }}</td>{% endfor %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% endfor %}
+</section>
+{% endif %}
+
 {% if view.models %}
 <section>
 <h2>Embedding models</h2>

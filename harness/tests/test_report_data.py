@@ -4,7 +4,7 @@ import shutil
 import pytest
 
 from irbench.report.data import group_key, load_results
-from report_fixtures import perf, write_bundle
+from report_fixtures import perf, relevance, write_bundle
 
 
 def _edit_json(path, fn):
@@ -281,3 +281,35 @@ def test_tmp_and_old_directories_are_ignored(tmp_path):
     scenarios, unreadable = load_results(tmp_path)
     assert sum(len(s.runs) for s in scenarios) == 1
     assert unreadable == []
+
+
+def _grouped_run(tmp_path, extra=None):
+    rows = relevance({"keyword/keyword": 0.5})
+    # A grouped row with the same mode/base/perturbation, placed FIRST to catch order bugs.
+    rows.insert(
+        0, {**rows[0], "group": "keyword", "metrics": {**rows[0]["metrics"], "ndcg@10": 0.99}}
+    )
+    bundle = write_bundle(tmp_path, "meilisearch", groups={"keyword/keyword": 0.5})
+    _edit_json(bundle / "scores.json", lambda d: {**d, "relevance": rows + (extra or [])})
+    return load_results(tmp_path)[0][0].runs[0]
+
+
+def test_grouped_rows_never_replace_the_overall_score(tmp_path):
+    run = _grouped_run(tmp_path)
+    assert run.ndcg("keyword/keyword") == 0.5
+    assert run.group_ndcg("keyword/keyword", "keyword") == 0.99
+    assert run.group_ndcg("keyword/keyword", "other") is None
+    assert run.query_groups == ["keyword"]
+    assert run.groups == ["keyword/keyword"]
+
+
+def test_relevance_group_must_be_a_string(tmp_path):
+    bundle = write_bundle(tmp_path, "meilisearch", groups={"keyword/keyword": 0.5})
+
+    def bad(d):
+        d["relevance"][0]["group"] = 3
+        return d
+
+    _edit_json(bundle / "scores.json", bad)
+    _, unreadable = load_results(tmp_path)
+    assert unreadable and "group" in str(unreadable[0])

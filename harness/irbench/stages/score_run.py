@@ -30,7 +30,9 @@ def score_stage(ctx: RunContext) -> dict[str, Any]:
         "engine": ctx.spec.engine,
         "model": ctx.spec.model,
         "track": ctx.spec.track,
-        "relevance": [g.model_dump() for g in score_relevance(supported, ctx.qrels, run)],
+        "relevance": [
+            g.model_dump(exclude_none=True) for g in score_relevance(supported, ctx.qrels, run)
+        ],
         "checks": [s.model_dump() for s in summaries],
         "constraint_violations": _constraint_violations(summaries),
         "not_applicable": not_applicable,

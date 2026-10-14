@@ -171,7 +171,7 @@ def run(
     if manifest["stages"].get("score", {}).get("status") == "succeeded":
         scores = read_json(run_dir / "scores.json")
         for g in scores["relevance"]:
-            if g["perturbation"] == "all":
+            if g["perturbation"] == "all" and "group" not in g:
                 ndcg = g["metrics"]["ndcg@10"]
                 typer.echo(f"{g['mode']}/{g['base']}: nDCG@10={ndcg:.4f} n={g['n']}")
         for key, reason in scores["not_applicable"].items():

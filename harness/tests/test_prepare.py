@@ -7,8 +7,9 @@ from typer.testing import CliRunner
 
 from conftest import REPO_ROOT
 from irbench.cli import app
+from irbench.datasets import NORMALIZERS
 from irbench.datasets.fetch import sha256_file
-from irbench.io import read_jsonl, read_qrels
+from irbench.io import read_jsonl, read_qrels, write_jsonl
 from irbench.stages.prepare import prepare
 
 SCENARIO = "ecommerce/product-search"
@@ -79,3 +80,26 @@ def test_cli_prepare_uses_cached_raw_files(tmp_path, wands_raw):
     result = CliRunner().invoke(app, ["prepare", "--scenario", SCENARIO, "--root", str(root)])
     assert result.exit_code == 0, result.output
     assert "skipped 1 queries without relevant judgments" in result.stdout
+
+
+def test_query_group_reaches_variants_and_tasks_and_wands_stays_ungrouped(
+    tmp_path, wands_raw, monkeypatch
+):
+    root = make_root(tmp_path, wands_raw)
+    plain = prepare(root, SCENARIO, client=fixture_client(wands_raw))
+    for name in ("queries.variants.jsonl", "tasks.jsonl"):
+        assert all("group" not in r for r in read_jsonl(plain.scenario_dir / name))
+
+    real = NORMALIZERS["wands"]
+
+    def grouped(raw, out_dir):
+        result = real(raw, out_dir)
+        rows = [{**r, "group": "keyword"} for r in read_jsonl(result.queries)]
+        write_jsonl(result.queries, rows)
+        return result
+
+    monkeypatch.setitem(NORMALIZERS, "wands", grouped)
+    result = prepare(root, SCENARIO, client=fixture_client(wands_raw))
+    for name in ("queries.variants.jsonl", "tasks.jsonl"):
+        rows = list(read_jsonl(result.scenario_dir / name))
+        assert rows and {r["group"] for r in rows} == {"keyword"}

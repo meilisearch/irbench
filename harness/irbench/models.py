@@ -18,6 +18,7 @@ class Query(BaseModel):
     text: str
     variant_of: str
     perturbation: Perturbation
+    group: str | None = None
 
 
 class Filter(BaseModel):
@@ -48,3 +49,4 @@ class QueryTask(BaseModel):
     filter: Filter | None = None
     sort: Sort | None = None
     facets: list[str] = []
+    group: str | None = None

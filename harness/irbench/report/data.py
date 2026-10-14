@@ -48,7 +48,7 @@ class RunResult:
     def groups(self) -> list[str]:
         if self.scores is None:
             return []
-        found = {f"{g['mode']}/{g['base']}" for g in self.scores["relevance"]}
+        found = {f"{g['mode']}/{g['base']}" for g in self.scores["relevance"] if "group" not in g}
         found |= {key.replace(":", "/") for key in self.scores["not_applicable"]}
         return sorted(found, key=group_key)
 
@@ -57,9 +57,26 @@ class RunResult:
             return None
         mode, _, base = group.partition("/")
         for g in self.scores["relevance"]:
+            if "group" in g:
+                continue
             if (g["mode"], g["base"], g["perturbation"]) == (mode, base, perturbation):
                 return g["metrics"]["ndcg@10"]
         return None
+
+    def group_ndcg(self, group: str, query_group: str) -> float | None:
+        if self.scores is None:
+            return None
+        mode, _, base = group.partition("/")
+        for g in self.scores["relevance"]:
+            if (g["mode"], g["base"], g.get("group")) == (mode, base, query_group):
+                return g["metrics"]["ndcg@10"]
+        return None
+
+    @property
+    def query_groups(self) -> list[str]:
+        if self.scores is None:
+            return []
+        return sorted({g["group"] for g in self.scores["relevance"] if "group" in g})
 
     def na_reason(self, group: str) -> str | None:
         if self.scores is None:
@@ -224,6 +241,8 @@ def _validate_relevance_item(p: str, item: Any) -> None:
         raise ValueError(
             f"{p}: relevance item has unknown mode/base {item['mode']!r}/{item['base']!r}"
         )
+    if "group" in item and not isinstance(item["group"], str):
+        raise ValueError(f"{p}: relevance item group must be a string")
 
 
 def _validate_group_key(p: str, field: str, key: str) -> None:
