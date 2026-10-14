@@ -43,6 +43,9 @@ def fetch_file(url: str, dest: Path, sha256: str, client: httpx.Client | None = 
     return dest
 
 
+_RANGE_ATTEMPTS = 4
+
+
 class RangeNotSupported(RuntimeError):
     pass
 
@@ -55,7 +58,13 @@ class _HttpRangeFile(io.RawIOBase):
         self.size = self._total()
 
     def _get(self, start: int, end: int) -> httpx.Response:
-        r = self.client.get(self.url, headers={"Range": f"bytes={start}-{end}"})
+        for attempt in range(_RANGE_ATTEMPTS):
+            try:
+                r = self.client.get(self.url, headers={"Range": f"bytes={start}-{end}"})
+                break
+            except httpx.TransportError:  # a dropped connection on a long run of reads
+                if attempt == _RANGE_ATTEMPTS - 1:
+                    raise
         if r.status_code != 206:
             raise RangeNotSupported(
                 f"{self.url}: the server answered {r.status_code} to a range request; "

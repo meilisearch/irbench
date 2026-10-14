@@ -1,0 +1,59 @@
+---
+title: "Scenario: covid-papers"
+description: Document search over 171k CORD-19 papers with graded human judgments (TREC-COVID)
+---
+
+Scenario id: `knowledge-base/covid-papers`. It tests document search: long
+abstracts, graded judgments, and real metadata (date, source) to filter, sort
+and facet on.
+
+## Source
+
+- **Dataset:** TREC-COVID, from the BEIR archive, joined with the CORD-19
+  `metadata.csv` of 2020-07-16 on `cord_uid`.
+- **License:** CC BY-SA 4.0 (BEIR). CORD-19 papers carry their own licenses,
+  listed in `metadata.csv`.
+- **Size:** 171,331 documents, 100 queries, 132,672 judgments (grades 0, 1, 2; the 66,336 judgments of the 50 topics, once per query form).
+
+## Fields and modes
+
+| Role | Fields |
+|---|---|
+| Searchable (priority order) | `title`, `text` (the abstract) |
+| Filterable | `source`, `publish_year` |
+| Sortable | `publish_date` (`YYYYMMDD`) |
+| Facets | `source` |
+
+Modes: `keyword`, `semantic`, `hybrid`, `filtered`, `sorted`, `faceted`.
+`filtered`, `sorted` and `faceted` run on `keyword` and `semantic`.
+Filter templates: `source` equals a value, `publish_year` at least 2020. Sort
+template: `publish_date` descending. Embeddings use `title` and `text`.
+
+## Queries
+
+Each of the 50 TREC-COVID topics gives two queries that share the topic's
+judgments:
+
+- **question:** the natural-language question ("what is the origin of COVID-19");
+- **keyword:** the short keyword form ("coronavirus origin").
+
+Scores are reported per form, next to the overall scores. With 100 queries
+(50 per form), confidence intervals are wide: read small differences between
+engines as ties.
+
+## What was dropped
+
+One document with no title and no abstract, and no judgments with it. The
+grades of -1 in the source judgments become 0. No query was dropped. See
+[Methodology](/methodology/overview#dataset-and-qrels-grades).
+
+## Perturbations
+
+`typo` and `prefix`, seed `20261014`. There is no synonym perturbation and no
+synonym list: no domain vocabulary was built for this scenario.
+
+## Tuned track
+
+Meilisearch's `tuned` track sets `matchingStrategy: frequency`, carrying the
+WANDS finding over to this scenario. Its default config moves `sort` first in
+the ranking rules, so that `publish_date` sorting is strict.

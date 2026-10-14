@@ -193,3 +193,26 @@ def test_fetch_dataset_stores_members_under_their_path(tmp_path):
     paths = fetch_dataset(spec, tmp_path / "raw", _range_client(blob, []))
     assert paths["a"] == tmp_path / "raw" / "set" / "a" / "corpus.jsonl"
     assert paths["b"].read_bytes() == MEMBERS["set/b/corpus.jsonl"]
+
+
+def test_zip_member_retries_a_dropped_range_request(tmp_path):
+    blob, calls = _zip_bytes(MEMBERS), []
+    inner = _range_client(blob, calls)
+    dropped = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if len(calls) == 3 and not dropped:  # drop one request mid-read
+            dropped.append(request)
+            raise httpx.RemoteProtocolError("peer closed connection", request=request)
+        return inner.send(request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    body = MEMBERS["set/a/corpus.jsonl"]
+    dest = fetch_zip_member(
+        "https://x/set.zip",
+        "set/a/corpus.jsonl",
+        tmp_path / "a.jsonl",
+        hashlib.sha256(body).hexdigest(),
+        client,
+    )
+    assert dropped and dest.read_bytes() == body

@@ -168,5 +168,5 @@ Static HTML generated from `results/`:
 ### Later
 
 - Engines: Typesense, OpenSearch, Lucene (thin Java HTTP wrapper), Postgres, Milvus, Pinecone (relevance-only).
-- Datasets/scenarios: Amazon ESCI (e-commerce), TMDB (media), BEIR subsets (knowledge base).
+- Datasets/scenarios: Amazon ESCI (e-commerce), TMDB (media). Knowledge base: done (CQADupStack, TREC-COVID, LoTTE lifestyle), see `2026-10-14-irbench-knowledge-base-design.md`.
 - More models; multilingual queries; LLM-generated scenario track (labelled separately).

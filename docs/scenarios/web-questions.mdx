@@ -1,0 +1,51 @@
+---
+title: "Scenario: web-questions"
+description: Real Google questions against 119k forum answers (LoTTE lifestyle)
+---
+
+Scenario id: `knowledge-base/web-questions`. It tests question answering over
+plain text: real web-search questions against answers from cooking, travel and
+sports forums.
+
+## Source
+
+- **Dataset:** LoTTE lifestyle, search queries, from the Hugging Face mirrors
+  `colbertv2/lotte_passages` and `colbertv2/lotte`, pinned to a commit.
+  Queries come from Google, via GooAQ.
+- **License:** Apache-2.0 on the mirror's card; the underlying content is
+  StackExchange, CC BY-SA.
+- **Size:** 119,461 documents, 661 queries, 1,804 judgments.
+
+## Fields and modes
+
+| Role | Fields |
+|---|---|
+| Searchable | `text` |
+| Filterable, sortable, facets | none |
+
+Modes: `keyword`, `semantic`, `hybrid`. The documents have no metadata, so
+there are no `filtered`, `sorted` or `faceted` modes. Embeddings use `text`.
+
+## Queries and judgments
+
+Queries are real Google questions. The judgments are the accepted answers of
+the matching forum question: usually one or two documents per query, so they
+are sparse. Many correct answers are not judged, which lowers every absolute
+score; compare engines to each other, not to other benchmarks. Scores are
+reported per forum (cooking, travel, sports) next to the overall scores.
+
+## What was dropped
+
+Nothing: no document and no query was dropped. See
+[Methodology](/methodology/overview#dataset-and-qrels-grades).
+
+## Perturbations
+
+`typo` and `prefix`, seed `20261014`. There is no synonym perturbation and no
+synonym list.
+
+## Tuned track
+
+Meilisearch's `tuned` track sets `matchingStrategy: frequency`, carrying the
+WANDS finding over to question-style queries, where the default `last` drops
+the final words of a question first.

@@ -1,0 +1,53 @@
+---
+title: "Scenario: community-qa"
+description: Help-center style search over 89k forum posts (CQADupStack)
+---
+
+Scenario id: `knowledge-base/community-qa`. It tests help-center and
+product-support search: short typed question titles against forum posts, with
+forums and tags as structured fields.
+
+## Source
+
+- **Dataset:** CQADupStack from the BEIR archive, three forums merged into one
+  index: Webmasters (17,405 posts), Android (22,998) and WordPress (48,605).
+  Only these forums' files are read from the archive, by HTTP range requests.
+- **License:** CC BY-SA (StackExchange content, redistributed by BEIR).
+- **Size:** 89,008 documents, 1,746 queries, 3,835 judgments (binary
+  duplicates).
+
+## Fields and modes
+
+| Role | Fields |
+|---|---|
+| Searchable (priority order) | `title`, `text` |
+| Filterable | `forum`, `tags` |
+| Facets | `forum` |
+| Sortable | none |
+
+Modes: `keyword`, `semantic`, `hybrid`, `filtered`, `faceted`. `filtered` and
+`faceted` run on `keyword` and `semantic`. Filter templates: `forum` equals a
+value, `tags` equals a value. There is no `sorted` mode: the BEIR copy has no
+date or score field. `tags` has several thousand values, so it is a filter but
+not a facet. Embeddings use `title` and `text`.
+
+## Queries and judgments
+
+Queries are the test questions of the three forums (ids `<forum>-<id>`), title
+text only. The judgments mark the posts that StackExchange users flagged as
+duplicates of the question: usually one or two per query, so they are sparse.
+
+## What was dropped
+
+Nothing: no document, judgment or query was dropped. See
+[Methodology](/methodology/overview#dataset-and-qrels-grades).
+
+## Perturbations
+
+`typo` and `prefix`, seed `20261014`. There is no synonym perturbation and no
+synonym list.
+
+## Tuned track
+
+Meilisearch's `tuned` track sets `matchingStrategy: frequency`, carrying the
+WANDS finding over to question-style queries.

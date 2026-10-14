@@ -1,0 +1,25 @@
+# Meilisearch on knowledge-base/community-qa.
+#
+# default: Meilisearch as shipped. adapter.py generates only what the scenario
+#   schema requires (searchable order, filterable/sortable/facet fields,
+#   userProvided embedder, facet value limit).
+# tuned: changes within the parity rules (docs/methodology/parity). Add a
+#   `tuned:` block here; it is deep-merged over `default`.
+#
+# Keys: index (merged into index settings), search.<keyword|semantic|hybrid>
+# (merged into search bodies of that base), unsupported (key -> reason),
+# justification (key -> why a non-default ANN or ranking parameter is set).
+default:
+  index: {}
+  search: {}
+  unsupported: {}
+tuned:
+  search:
+    keyword: {matchingStrategy: frequency}
+    hybrid: {matchingStrategy: frequency}
+  justification:
+    matchingStrategy: >-
+      Carries the WANDS finding (keyword nDCG@10 0.481 -> 0.508 with `frequency`)
+      over to question-style queries, where `last` drops the final words of a
+      question first. A documented, supported search parameter; no ranking-rule
+      change. The tuned run measures whether the finding holds here.

@@ -34,6 +34,9 @@ jobs:
           path: .irbench/data
           key: datasets-${{ hashFiles('datasets/**/dataset.yaml') }}
       - run: uv run irbench prepare --scenario ecommerce/product-search
+      - run: uv run irbench prepare --scenario knowledge-base/web-questions
+      - run: uv run irbench prepare --scenario knowledge-base/community-qa
+      - run: uv run irbench prepare --scenario knowledge-base/covid-papers
       - run: uv run irbench lint
 
   contract:

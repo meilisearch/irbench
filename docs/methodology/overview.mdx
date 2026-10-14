@@ -38,8 +38,11 @@ engine for that query variant and mode.
 
 ## Dataset and qrels grades
 
-v0.1 uses **WANDS** (Wayfair; ~43k products, 480 queries, human judgments, MIT
-license). Judgments use three grades:
+The e-commerce scenario uses **WANDS** (Wayfair; ~43k products, 480 queries,
+human judgments, MIT license). The three knowledge-base scenarios
+([community-qa](/scenarios/community-qa), [covid-papers](/scenarios/covid-papers),
+[web-questions](/scenarios/web-questions)) each have their own page. WANDS
+judgments use three grades:
 
 | Label | Grade |
 |---|---|
@@ -52,8 +55,8 @@ entirely — it produces no tasks and isn't scored.
 
 ## Modes and structured bases
 
-The scenario (`scenarios/ecommerce/product-search/scenario.yaml`) declares
-six modes: `keyword`, `semantic`, `hybrid`, `filtered`, `sorted`, `faceted`.
+A scenario (for example `scenarios/ecommerce/product-search/scenario.yaml`)
+declares its modes; WANDS has six: `keyword`, `semantic`, `hybrid`, `filtered`, `sorted`, `faceted`.
 `keyword`, `semantic` and `hybrid` are retrieval bases in their own right;
 `filtered`, `sorted` and `faceted` run on top of each of the scenario's
 `structured_bases` (`keyword` and `semantic`), so a mode like `filtered` is
@@ -63,8 +66,11 @@ skipped silently (see [Parity rules](/methodology/parity)).
 
 ## Perturbation rules
 
-Perturbations are generated once per original query, seeded with
-`20261009` (from `scenario.yaml`), and versioned with the scenario:
+Perturbations are generated once per original query, seeded with the
+scenario's seed (`20261009` for WANDS, `20261014` for the knowledge-base
+scenarios; from `scenario.yaml`), and versioned with the scenario. WANDS uses
+all three kinds below; the knowledge-base scenarios use `typo` and `prefix`
+only, with no synonym list:
 
 - **typo** — one edit for words of 4–7 characters, two edits for words of 8+
   characters. Edit types: adjacent-key substitution (QWERTY-neighbor map),
@@ -140,4 +146,4 @@ and records their checksums, counts and dimension in the registry.
 - Perf: the loadgen counts errors per step; a concurrency step with an error
   rate above 0.1% is invalid (see [Performance methodology](/methodology/performance)).
 - Indexing has its own timeout (`index_timeout_s` in `scenario.yaml`, 1800
-  seconds for `ecommerce/product-search`); exceeding it fails the run.
+  seconds for `ecommerce/product-search`; each scenario sets its own); exceeding it fails the run.

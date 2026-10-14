@@ -6,6 +6,7 @@
   "navigation": {
     "groups": [
       { "group": "Get started", "pages": ["index", "quickstart"] },
+      { "group": "Scenarios", "pages": ["scenarios/community-qa", "scenarios/covid-papers", "scenarios/web-questions"] },
       { "group": "Methodology", "pages": ["methodology/overview", "methodology/parity", "methodology/performance"] },
       { "group": "Contributing", "pages": ["contributing/engine-config", "contributing/new-engine"] },
       { "group": "Reference", "pages": ["reference/cli", "reference/results"] }

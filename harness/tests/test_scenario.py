@@ -144,3 +144,17 @@ def test_synonym_kind_requires_a_vocabulary(tmp_path):
 
     with pytest.raises(ValueError, match="vocabulary"):
         load_scenario(copy_scenario(tmp_path, edit), SCENARIO)
+
+
+@pytest.mark.parametrize(
+    "scenario_id",
+    [
+        "knowledge-base/community-qa",
+        "knowledge-base/covid-papers",
+        "knowledge-base/web-questions",
+    ],
+)
+def test_knowledge_base_scenarios_load(scenario_id):
+    s = load_scenario(REPO_ROOT, scenario_id)
+    assert s.synonyms is None and s.perturbations.kinds == ["typo", "prefix"]
+    assert s.page_sizes == [20, 100] and s.top_k == 100

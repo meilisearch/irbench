@@ -26,7 +26,8 @@ pair aren't available yet — see [Published vectors](/methodology/overview#embe
 uv run irbench prepare --scenario ecommerce/product-search
 ```
 
-This downloads the WANDS dataset, verifies its checksums, normalizes it to
+This downloads the scenario's dataset (WANDS here; the `knowledge-base/*`
+scenarios work the same way), verifies its checksums, normalizes it to
 `docs.jsonl` / `queries.jsonl` / `qrels.tsv`, and applies the scenario's seeded
 perturbations to generate query variants and the per-mode task list.
 
