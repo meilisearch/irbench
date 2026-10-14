@@ -1,5 +1,6 @@
 import csv
 import re
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -8,16 +9,22 @@ from irbench.datasets.wands import NormalizedDataset
 
 csv.field_size_limit(1 << 30)
 
+EPOCH = date(1970, 1, 1)
+
 
 def publish_fields(publish_time: str) -> tuple[int | None, int | None]:
-    """CORD-19 `publish_time` (`2020-03-15`, `2020`, or empty) -> (year, YYYYMMDD).
-    A year-only date sorts as January 1st."""
+    """CORD-19 `publish_time` (`2020-03-15`, `2020`, or empty) -> (year, days since 1970-01-01).
+    A year-only or invalid date sorts as January 1st. Days, not YYYYMMDD: engines that sort on
+    float32 (Elasticsearch `float`, Qdrant formula scores) are exact only up to 2**24."""
     m = re.match(r"\s*(\d{4})(?:-(\d{1,2})-(\d{1,2}))?", publish_time or "")
     if not m:
         return None, None
     year = int(m[1])
-    month, day = (int(m[2]), int(m[3])) if m[2] else (1, 1)
-    return year, year * 10000 + month * 100 + day
+    try:
+        day = date(year, int(m[2]), int(m[3])) if m[2] else date(year, 1, 1)
+    except ValueError:
+        day = date(year, 1, 1)
+    return year, (day - EPOCH).days
 
 
 def _metadata(path: Path) -> dict[str, dict[str, Any]]:

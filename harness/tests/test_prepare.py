@@ -130,3 +130,13 @@ def test_prepare_reports_dropped_counts_and_skips_queries_with_only_dropped_judg
     assert "1" in result.skipped_queries
     counts = json.loads((result.scenario_dir / "prepare.manifest.json").read_text())["counts"]
     assert counts["dropped_docs"] == 1 and counts["dropped_judgments"] == 1
+
+
+def test_sort_values_must_be_exact_in_float32():
+    import pytest
+
+    from irbench.stages.prepare import check_sort_precision
+
+    check_sort_precision(["d"], {"a": {"d": 18336}, "b": {"d": None}, "c": {"d": 4.5}})
+    with pytest.raises(ValueError, match="2\\*\\*24"):
+        check_sort_precision(["d"], {"a": {"d": 20200625}})

@@ -14,6 +14,21 @@ from irbench.scenario import load_scenario
 from irbench.tasks import build_tasks
 from irbench.terms import scenario_term_groups
 
+FLOAT32_EXACT = 2**24
+
+
+def check_sort_precision(fields: list[str], docs_by_id: dict[str, dict]) -> None:
+    """Engines that sort on float32 (Elasticsearch `float`, Qdrant formula scores) tie or swap
+    integers above 2**24, so the order checks would flag them for the dataset's encoding."""
+    for name in fields:
+        for doc_id, doc in docs_by_id.items():
+            v = doc.get(name)
+            if isinstance(v, int) and abs(v) > FLOAT32_EXACT:
+                raise ValueError(
+                    f"sortable field {name!r} of doc {doc_id!r} is {v}, above 2**24: "
+                    "float32 engines cannot order it exactly; re-encode it (e.g. days, not YYYYMMDD)"
+                )
+
 
 @dataclass(frozen=True)
 class PrepareResult:
@@ -35,6 +50,7 @@ def prepare(root: Path, scenario_id: str, client: httpx.Client | None = None) ->
     normalized = NORMALIZERS[spec.id](raw, ws.dataset_dir(spec.id))
 
     docs_by_id = {d[scenario.id_field]: d for d in read_jsonl(normalized.docs)}
+    check_sort_precision(scenario.index_fields.sortable, docs_by_id)
     queries = [
         Query(
             qid=r["qid"],

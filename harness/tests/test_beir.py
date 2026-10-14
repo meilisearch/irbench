@@ -135,14 +135,24 @@ METADATA_CSV = (
 @pytest.mark.parametrize(
     "value, expected",
     [
-        ("2020-03-15", (2020, 20200315)),
-        ("2020", (2020, 20200101)),
+        ("2020-03-15", (2020, 18336)),
+        ("2020", (2020, 18262)),
         ("", (None, None)),
-        ("2020-3-5", (2020, 20200305)),
+        ("2020-3-5", (2020, 18326)),
+        ("2020-02-30", (2020, 18262)),
     ],
 )
 def test_publish_fields(value, expected):
     assert publish_fields(value) == expected
+
+
+def test_publish_date_is_exact_in_float32():
+    # Elasticsearch `float` and Qdrant formula scores are float32: exact only up to 2**24.
+    # YYYYMMDD (20200625) exceeds it, so neighbouring days tied or swapped when sorting.
+    import struct
+
+    _, day = publish_fields("2030-12-31")
+    assert day < 2**24 and struct.unpack("f", struct.pack("f", day))[0] == day
 
 
 def test_trec_covid_joins_metadata_and_splits_query_forms(tmp_path):
@@ -184,11 +194,11 @@ def test_trec_covid_joins_metadata_and_splits_query_forms(tmp_path):
         "title": "T1",
         "text": "A1",
         "publish_year": 2020,
-        "publish_date": 20200315,
+        "publish_date": 18336,
         "source": ["Medline", "PMC"],
         "journal": "Lancet",
     }
-    assert docs["bbb"]["publish_date"] == 20200101 and docs["bbb"]["journal"] is None
+    assert docs["bbb"]["publish_date"] == 18262 and docs["bbb"]["journal"] is None
     assert docs["ccc"]["publish_year"] is None
     assert "zzz" not in docs
     qs = list(read_jsonl(out.queries))
