@@ -118,7 +118,11 @@ def score(
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(
         json.dumps(
-            {"scenario": scenario, "run": str(run), "groups": [g.model_dump() for g in groups]},
+            {
+                "scenario": scenario,
+                "run": str(run),
+                "groups": [g.model_dump(exclude_none=True) for g in groups],
+            },
             indent=2,
         )
         + "\n",
@@ -126,7 +130,8 @@ def score(
     )
     for g in groups:
         if g.perturbation == "all":
-            typer.echo(f"{g.mode}/{g.base}: nDCG@10={g.metrics['ndcg@10']:.4f} n={g.n}")
+            label = f"{g.mode}/{g.base}" + (f" [group {g.group}]" if g.group is not None else "")
+            typer.echo(f"{label}: nDCG@10={g.metrics['ndcg@10']:.4f} n={g.n}")
 
 
 @app.command()
