@@ -1,0 +1,41 @@
+id: cqadupstack
+version: "beir-2021"
+license: CC BY-SA 4.0 (StackExchange content, redistributed by BEIR)
+source: https://github.com/beir-cellar/beir
+files:
+  webmasters_corpus:
+    url: https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/cqadupstack.zip
+    member: cqadupstack/webmasters/corpus.jsonl
+    sha256: b9c00bb5ce58c648442e80f2d05d619b63567bf2cafede2979dba3282446abb5
+  webmasters_queries:
+    url: https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/cqadupstack.zip
+    member: cqadupstack/webmasters/queries.jsonl
+    sha256: 564199829cfa1c41525817c65ef888d136d626a2b53c6b35f27e008376740833
+  webmasters_qrels:
+    url: https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/cqadupstack.zip
+    member: cqadupstack/webmasters/qrels/test.tsv
+    sha256: 6b56b9ff5ee60346934d12453dab985648c01ad2b2c67abec1d225e08ecc28de
+  android_corpus:
+    url: https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/cqadupstack.zip
+    member: cqadupstack/android/corpus.jsonl
+    sha256: aa1bad1bd193e374da8bf30299487d24059c7555a2d437f33e15b7e071cbae95
+  android_queries:
+    url: https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/cqadupstack.zip
+    member: cqadupstack/android/queries.jsonl
+    sha256: bb3bf827bc5d295297ce311ff3e6a3c48b0df4384688c8a3d762993ff3926997
+  android_qrels:
+    url: https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/cqadupstack.zip
+    member: cqadupstack/android/qrels/test.tsv
+    sha256: 8965c2259e76144f857a36b197f2dedf073e838c5196e6720990ba10251e322b
+  wordpress_corpus:
+    url: https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/cqadupstack.zip
+    member: cqadupstack/wordpress/corpus.jsonl
+    sha256: 4820c9b476a9d48b9a915741941650203baf737a71a984ed591df3007d09ba5e
+  wordpress_queries:
+    url: https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/cqadupstack.zip
+    member: cqadupstack/wordpress/queries.jsonl
+    sha256: 5508719e89c8dc54669e014adce47e1ff9fa5c6c6d2b91a991835e899dbe53e6
+  wordpress_qrels:
+    url: https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/cqadupstack.zip
+    member: cqadupstack/wordpress/qrels/test.tsv
+    sha256: bfd319c103eac106e054399160f874466a018b54548b6a474645ed80a2281b78

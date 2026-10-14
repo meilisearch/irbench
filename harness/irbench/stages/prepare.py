@@ -23,6 +23,7 @@ class PrepareResult:
     n_variants: int
     n_tasks: int
     skipped_queries: list[str]
+    dropped: dict[str, int]
 
 
 def prepare(root: Path, scenario_id: str, client: httpx.Client | None = None) -> PrepareResult:
@@ -65,6 +66,7 @@ def prepare(root: Path, scenario_id: str, client: httpx.Client | None = None) ->
         n_variants=len(variants),
         n_tasks=len(task_set.tasks),
         skipped_queries=task_set.skipped_queries,
+        dropped=normalized.dropped,
     )
     write_manifest(
         out / "prepare.manifest.json",
@@ -83,6 +85,8 @@ def prepare(root: Path, scenario_id: str, client: httpx.Client | None = None) ->
                 "variants": result.n_variants,
                 "tasks": result.n_tasks,
                 "skipped_queries": len(result.skipped_queries),
+                "dropped_docs": result.dropped.get("docs", 0),
+                "dropped_judgments": result.dropped.get("judgments", 0),
             },
             "skipped_queries": result.skipped_queries,
         },
