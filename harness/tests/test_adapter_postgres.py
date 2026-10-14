@@ -239,3 +239,21 @@ def test_no_synonyms_creates_no_thesaurus():
     ddl = make_adapter("postgres", synonyms=[]).setup_ddl()
     assert "CREATE TEXT SEARCH DICTIONARY" not in ddl
     assert "_ths," not in ddl
+
+
+def test_load_documents_strips_nul_bytes(adapter):
+    # CQADupStack posts contain U+0000, which PostgreSQL text columns reject.
+    import numpy as np
+
+    class Client:
+        rows: list = []
+
+        def copy(self, table, names, rows):
+            self.rows.extend(rows)
+
+    client = Client()
+    doc = {"id": "1", "name": "a\x00b", "product_class": ["x\x00y"]}
+    adapter.load_documents(client, [doc], np.array([[0.1, 0.2, 0.3]]))
+    values = [x for v in client.rows[0] for x in (v if isinstance(v, list) else [v])]
+    assert not any(isinstance(v, str) and "\x00" in v for v in values)
+    assert "ab" in values and "xy" in values

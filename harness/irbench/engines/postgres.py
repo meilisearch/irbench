@@ -295,15 +295,20 @@ class _Parts:
     where: str
 
 
+def _str(value: Any) -> str:
+    # PostgreSQL text cannot hold U+0000 (CQADupStack posts contain it); other engines ignore it.
+    return str(value).replace("\x00", "")
+
+
 def _text(value: Any) -> str | None:
     if value is None:
         return None
     if isinstance(value, list):
-        return ", ".join(str(v) for v in value) or None
-    return str(value) or None
+        return ", ".join(_str(v) for v in value) or None
+    return _str(value) or None
 
 
 def _terms(value: Any) -> list[str] | None:
     if value is None:
         return None
-    return [str(v) for v in value] if isinstance(value, list) else [str(value)]
+    return [_str(v) for v in value] if isinstance(value, list) else [_str(value)]
