@@ -241,3 +241,10 @@ def test_faceted_tasks_are_refused():
 def test_parse_returns_original_ids_from_payload():
     payload = {"result": {"points": [{"id": 7, "score": 0.9, "payload": {"id": "7"}}]}}
     assert make_adapter("qdrant").parse(make_task("semantic"), payload).ids == ["7"]
+
+
+def test_no_synonyms_matches_the_default_collection():
+    assert (
+        make_adapter("qdrant", synonyms=[]).collection_body()
+        == make_adapter("qdrant").collection_body()
+    )

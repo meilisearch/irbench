@@ -101,3 +101,7 @@ def test_tuned_track_uses_frequency_matching_on_keyword_and_hybrid():
     sem = _body(make_task("semantic"), V, 100, track=track)
     assert "matchingStrategy" not in sem
     assert "matchingStrategy" in config.justification
+
+
+def test_no_synonyms_creates_no_synonym_setting():
+    assert make_adapter("meilisearch", synonyms=[]).index_settings()["synonyms"] == {}

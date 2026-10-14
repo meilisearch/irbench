@@ -452,3 +452,33 @@ def test_cli_exits_1_on_unreadable_bundles(tmp_path):
     assert result.exit_code == 1
     assert bad.name in result.output and (out / "index.html").exists()
     assert bad.name in read(out, "index.html")
+
+
+def _drop_synonym_rows(bundle):
+    _edit_json(
+        bundle / "scores.json",
+        lambda d: {
+            **d,
+            "relevance": [r for r in d["relevance"] if r["perturbation"] != "synonym"],
+        },
+    )
+
+
+def test_scenario_without_synonym_perturbation_has_no_synonym_column(tmp_path):
+    results, out = site(tmp_path)
+    _drop_synonym_rows(write_bundle(results, "meilisearch", groups={"keyword/keyword": 0.5}))
+    build_site(results, out)
+    page = read(out, PAGE)
+    header = next(h for h in page.split("<thead>")[1:] if "<th>typo</th>" in h).split("</thead>")[0]
+    assert "<th>typo</th>" in header and "<th>prefix</th>" in header
+    assert "<th>synonym</th>" not in page
+    assert "or use a synonym" not in page
+    run_page = read(out, "runs/" + next(p.name for p in (out / "runs").glob("*meilisearch*.html")))
+    assert "<th>synonym</th>" not in run_page and "<th>typo</th>" in run_page
+
+
+def test_wands_shaped_bundles_keep_the_synonym_column(tmp_path):
+    results, out = site(tmp_path)
+    write_bundle(results, "meilisearch", groups={"keyword/keyword": 0.5})
+    build_site(results, out)
+    assert "<th>synonym</th>" in read(out, PAGE)

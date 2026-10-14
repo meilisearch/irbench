@@ -42,7 +42,7 @@ class Adapter(PostgresAdapter):
         cfg = self.ts_config
         ths = (
             ""
-            if self.ctx.config.synonyms
+            if self.ctx.config.synonyms or not self.thesaurus_groups()
             else (
                 f"CREATE TEXT SEARCH DICTIONARY {cfg}_ths "
                 f"(TEMPLATE = thesaurus, DictFile = {cfg}, Dictionary = english_stem);\n"

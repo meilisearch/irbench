@@ -1,9 +1,11 @@
+import shutil
+
 import pytest
 import yaml
 
 from conftest import REPO_ROOT
 from irbench.scenario import load_scenario
-from irbench.terms import load_term_groups
+from irbench.terms import load_term_groups, scenario_term_groups
 
 SCENARIO = "ecommerce/product-search"
 
@@ -111,3 +113,34 @@ def test_page_sizes_are_validated(tmp_path, sizes, message):
 
     with pytest.raises(ValueError, match=message):
         _scenario_with(tmp_path, set_sizes)()
+
+
+def copy_scenario(tmp_path, edit):
+    src = REPO_ROOT / "scenarios" / "ecommerce" / "product-search"
+    dst = tmp_path / "scenarios" / "ecommerce" / "product-search"
+    shutil.copytree(src, dst)
+    path = dst / "scenario.yaml"
+    path.write_text(yaml.safe_dump(edit(yaml.safe_load(path.read_text(encoding="utf-8")))))
+    return tmp_path
+
+
+def _no_synonyms(raw):
+    raw.pop("synonyms")
+    raw["perturbations"] = {"seed": 1, "kinds": ["typo", "prefix"]}
+    return raw
+
+
+def test_scenario_without_synonyms_or_vocabulary(tmp_path):
+    root = copy_scenario(tmp_path, _no_synonyms)
+    s = load_scenario(root, SCENARIO)
+    assert s.synonyms_path is None and s.vocabulary_path is None
+    assert scenario_term_groups(s.synonyms_path) == []
+
+
+def test_synonym_kind_requires_a_vocabulary(tmp_path):
+    def edit(raw):
+        raw["perturbations"] = {"seed": 1, "kinds": ["typo", "synonym"]}
+        return raw
+
+    with pytest.raises(ValueError, match="vocabulary"):
+        load_scenario(copy_scenario(tmp_path, edit), SCENARIO)

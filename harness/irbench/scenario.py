@@ -24,7 +24,13 @@ class FilterTemplate(BaseModel):
 class PerturbationSpec(BaseModel):
     seed: int
     kinds: list[Literal["typo", "prefix", "synonym"]]
-    vocabulary: str
+    vocabulary: str | None = None
+
+    @model_validator(mode="after")
+    def _vocabulary_for_synonyms(self) -> "PerturbationSpec":
+        if "synonym" in self.kinds and not self.vocabulary:
+            raise ValueError("perturbation kind 'synonym' needs a `vocabulary` file")
+        return self
 
 
 class PerfSpec(BaseModel):
@@ -59,7 +65,7 @@ class Scenario(BaseModel):
     perf: PerfSpec = PerfSpec()
     index_timeout_s: int
     perturbations: PerturbationSpec
-    synonyms: str
+    synonyms: str | None = None
 
     _directory: Path = PrivateAttr()
 
@@ -109,12 +115,13 @@ class Scenario(BaseModel):
         return list(self.perf.page_sizes or [self.top_k])
 
     @property
-    def vocabulary_path(self) -> Path:
-        return self._directory / self.perturbations.vocabulary
+    def vocabulary_path(self) -> Path | None:
+        v = self.perturbations.vocabulary
+        return None if v is None else self._directory / v
 
     @property
-    def synonyms_path(self) -> Path:
-        return self._directory / self.synonyms
+    def synonyms_path(self) -> Path | None:
+        return None if self.synonyms is None else self._directory / self.synonyms
 
 
 def load_scenario(root: Path, scenario_id: str) -> Scenario:

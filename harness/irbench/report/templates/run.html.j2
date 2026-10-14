@@ -59,20 +59,20 @@
 <section>
 <h2>Relevance</h2>
 <div class="scroll"><table>
-  <thead><tr><th>Mode</th><th>n</th><th>nDCG@10</th><th>Recall@10</th><th>Recall@100</th><th>MRR@10</th><th>Success@1</th><th>original</th><th>typo</th><th>prefix</th><th>synonym</th></tr></thead>
+  <thead><tr><th>Mode</th><th>n</th><th>nDCG@10</th><th>Recall@10</th><th>Recall@100</th><th>MRR@10</th><th>Success@1</th>{% for p in view.perturbation_columns %}<th>{{ p }}</th>{% endfor %}</tr></thead>
   <tbody>
   {% for r in view.relevance %}
     <tr>
       <th scope="row">{{ r.group|group }}</th>
       {% if r.na %}
-      <td class="na" colspan="10">N/A: {{ r.na }}</td>
+      <td class="na" colspan="{{ view.perturbation_columns|length + 6 }}">N/A: {{ r.na }}</td>
       {% else %}
       <td class="num">{{ r.n }}</td>
       {% for m in ["ndcg@10", "recall@10", "recall@100", "mrr@10", "success@1"] %}<td class="num">{{ r.metrics[m]|score }}</td>{% endfor %}
-      {% for p in ["original", "typo", "prefix", "synonym"] %}<td class="num">{{ r.by_perturbation[p]|score }}</td>{% endfor %}
+      {% for p in view.perturbation_columns %}<td class="num">{{ r.by_perturbation[p]|score }}</td>{% endfor %}
       {% endif %}
     </tr>
-    {% if r.violation %}<tr><td></td><td class="violated" colspan="10">⚠ constraint violated: {{ r.violation }}</td></tr>{% endif %}
+    {% if r.violation %}<tr><td></td><td class="violated" colspan="{{ view.perturbation_columns|length + 6 }}">⚠ constraint violated: {{ r.violation }}</td></tr>{% endif %}
   {% endfor %}
   </tbody>
 </table></div>

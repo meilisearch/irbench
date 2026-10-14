@@ -12,7 +12,7 @@ from irbench.paths import Workspace
 from irbench.perturb.variants import make_variants
 from irbench.scenario import load_scenario
 from irbench.tasks import build_tasks
-from irbench.terms import load_term_groups
+from irbench.terms import scenario_term_groups
 
 
 @dataclass(frozen=True)
@@ -41,7 +41,7 @@ def prepare(root: Path, scenario_id: str, client: httpx.Client | None = None) ->
     qrels = read_qrels(normalized.qrels)
 
     p = scenario.perturbations
-    vocabulary = load_term_groups(scenario.vocabulary_path)
+    vocabulary = scenario_term_groups(scenario.vocabulary_path)
     variants = make_variants(queries, p.seed, list(p.kinds), vocabulary)
     task_set = build_tasks(scenario, variants, qrels, docs_by_id)
 

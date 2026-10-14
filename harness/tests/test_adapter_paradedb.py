@@ -1,6 +1,6 @@
 import pytest
 
-from adapter_helpers import SCENARIO, make_task
+from adapter_helpers import SCENARIO, make_adapter, make_task
 from conftest import REPO_ROOT
 from irbench.engines.base import IndexContext, SqlRequest, load_adapter_class
 from irbench.engines.config import load_engine_config
@@ -80,3 +80,10 @@ def test_sorted_keyword_keeps_id_tiebreak(adapter):
     sort = Sort(field="average_rating", direction="desc")
     r = adapter.render(make_task("sorted", "keyword", text="sofa", sort=sort), None, 100)
     assert "ORDER BY average_rating DESC NULLS LAST, id" in r.sql
+
+
+def test_no_synonyms_matches_the_default_setup():
+    assert (
+        make_adapter("postgres-paradedb", synonyms=[]).setup_ddl()
+        == make_adapter("postgres-paradedb").setup_ddl()
+    )

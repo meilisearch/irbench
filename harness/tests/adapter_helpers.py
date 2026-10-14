@@ -3,12 +3,12 @@ from irbench.engines.base import IndexContext, load_adapter_class
 from irbench.engines.config import TrackConfig
 from irbench.models import QueryTask
 from irbench.scenario import load_scenario
-from irbench.terms import load_term_groups
+from irbench.terms import scenario_term_groups
 
 SCENARIO = "ecommerce/product-search"
 
 
-def make_adapter(engine, track=None, dim=3, n_docs=None):
+def make_adapter(engine, track=None, dim=3, n_docs=None, synonyms=None):
     cls = load_adapter_class(REPO_ROOT, engine)
     scenario = load_scenario(REPO_ROOT, SCENARIO)
     return cls(
@@ -17,7 +17,9 @@ def make_adapter(engine, track=None, dim=3, n_docs=None):
             config=TrackConfig.model_validate(track or {}),
             index="idx",
             dim=dim,
-            synonyms=load_term_groups(scenario.synonyms_path),
+            synonyms=(
+                scenario_term_groups(scenario.synonyms_path) if synonyms is None else synonyms
+            ),
             n_docs=n_docs,
         )
     )

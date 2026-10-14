@@ -1,6 +1,6 @@
 import pytest
 
-from adapter_helpers import SCENARIO, make_task
+from adapter_helpers import SCENARIO, make_adapter, make_task
 from conftest import REPO_ROOT
 from irbench.engines.base import IndexContext, SqlRequest, load_adapter_class
 from irbench.engines.config import load_engine_config
@@ -233,3 +233,9 @@ def test_facet_buckets_are_capped_at_the_scenario_max(adapter):
     n = r.params.index(cap) + 1
     assert r.params.count(cap) == 1
     assert r.sql.count(f"ORDER BY c DESC, v LIMIT ${n}::text::int") == 2
+
+
+def test_no_synonyms_creates_no_thesaurus():
+    ddl = make_adapter("postgres", synonyms=[]).setup_ddl()
+    assert "CREATE TEXT SEARCH DICTIONARY" not in ddl
+    assert "_ths," not in ddl

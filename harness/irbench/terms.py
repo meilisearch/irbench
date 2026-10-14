@@ -19,3 +19,8 @@ def load_term_groups(path: Path) -> list[list[str]]:
             seen[term] = lineno
         groups.append(group)
     return groups
+
+
+def scenario_term_groups(path: Path | None) -> list[list[str]]:
+    """Term groups of a scenario file, or none when the scenario has no such file."""
+    return [] if path is None else load_term_groups(path)

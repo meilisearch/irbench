@@ -44,21 +44,22 @@ whose results broke the mode's contract (filter or order violations); it does no
 <section>
 <h2>Imperfect queries</h2>
 <p class="note">nDCG@10 on the original queries, and the change when the same queries carry a
-typo, are cut short (search as you type) or use a synonym. Perturbation rules are in the methodology.</p>
+typo, are cut short (search as you type){% if "synonym" in view.perturbation_kinds %} or use a synonym{% endif %}. Perturbation rules are in the methodology.</p>
 <div class="scroll"><table>
-  <thead><tr><th>Engine</th><th>Model</th><th>Mode</th><th>original</th><th>typo</th><th>prefix</th><th>synonym</th></tr></thead>
+  <thead><tr><th>Engine</th><th>Model</th><th>Mode</th><th>original</th>{% for p in view.perturbation_kinds %}<th>{{ p }}</th>{% endfor %}</tr></thead>
   <tbody>
   {% for r in view.perturbations %}
     <tr>
       <th scope="row">{{ r.run.label }}</th><td>{{ r.run.model }}</td><td>{{ r.group|group }}</td>
       <td class="num">{{ r.original|score }}</td>
-      {% for p in ["typo", "prefix"] %}<td class="num delta">{{ r.deltas[p]|delta }}</td>{% endfor %}
-      <td class="num delta">{{ r.deltas["synonym"]|delta }}{% if r.synonyms_note %} <span title="synonyms.txt not loaded: {{ r.synonyms_note }}">&dagger;</span>{% endif %}</td>
+      {% for p in view.perturbation_kinds %}
+      <td class="num delta">{{ r.deltas[p]|delta }}{% if p == "synonym" and r.synonyms_note %} <span title="synonyms.txt not loaded: {{ r.synonyms_note }}">&dagger;</span>{% endif %}</td>
+      {% endfor %}
     </tr>
   {% endfor %}
   </tbody>
 </table></div>
-{% if view.perturbations|selectattr("synonyms_note")|list %}
+{% if "synonym" in view.perturbation_kinds and view.perturbations|selectattr("synonyms_note")|list %}
 <p class="note">&dagger; This engine does not load the shared <code>synonyms.txt</code>; its synonym column does not measure synonym support (reason on hover and on its run page).</p>
 {% endif %}
 </section>

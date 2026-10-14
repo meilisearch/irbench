@@ -21,7 +21,7 @@ from irbench.models import Qrels, QueryTask
 from irbench.paths import Workspace
 from irbench.runs import RunSpec
 from irbench.scenario import Scenario, load_scenario
-from irbench.terms import load_term_groups
+from irbench.terms import scenario_term_groups
 
 ClientFactory = Callable[[str], Any]
 
@@ -113,7 +113,7 @@ class RunContext:
                 config=self.track,
                 index=index_name(self.spec.scenario, self.spec.model),
                 dim=int(self.doc_vectors.shape[1]),
-                synonyms=load_term_groups(self.scenario.synonyms_path),
+                synonyms=scenario_term_groups(self.scenario.synonyms_path),
                 n_docs=len(self.docs),
             )
         )

@@ -303,6 +303,11 @@ def scenario_view(s: ScenarioResults, slots: dict[str, int]) -> dict[str, Any]:
         "matrix": [{"run": r, "cells": [relevance_cell(r, g) for g in s.groups]} for r in s.runs],
         "na_notes": na_notes(s),
         "perturbations": perturbation_rows(s),
+        "perturbation_kinds": [
+            p
+            for p in ("typo", "prefix", "synonym")
+            if any(r["deltas"].get(p) is not None for r in perturbation_rows(s))
+        ],
         "models": model_comparison(s),
         "comparable": s.hardware not in UNPUBLISHED_PROFILES,
         "perf": perf_view(s, slots),
@@ -337,6 +342,9 @@ def run_view(run: RunResult) -> dict[str, Any]:
     config = run.manifest.get("config", {})
     return {
         "relevance": rows,
+        "perturbation_columns": [
+            p for p in PERTURBATIONS if any(r["by_perturbation"][p] is not None for r in rows)
+        ],
         "checks": sorted(
             (run.scores or {}).get("checks", []),
             key=lambda c: group_key(f"{c['mode']}/{c['base']}"),
