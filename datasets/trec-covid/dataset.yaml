@@ -1,0 +1,19 @@
+id: trec-covid
+version: "beir-2021+cord19-2020-07-16"
+license: CC BY-SA 4.0 (BEIR); CORD-19 papers carry their own licenses (metadata.csv `license`)
+source: https://github.com/beir-cellar/beir and https://github.com/allenai/cord19
+files:
+  corpus:
+    url: https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/trec-covid.zip
+    member: trec-covid/corpus.jsonl
+    sha256: aded69896598665082316d00df487d22212cc5a8611db05db34eb40d04ed00d7
+  queries:
+    url: https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/trec-covid.zip
+    member: trec-covid/queries.jsonl
+    sha256: 78f4b76bfef251a0baf37a6cea5c4ba8376cb4536c34635709aaa4a2783b208c
+  qrels:
+    url: https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/trec-covid.zip
+    member: trec-covid/qrels/test.tsv
+    sha256: 10669ab7d526cb04f52079139fd88c3d467a0776441b046567f540582798982b
+  metadata:
+    url: https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/2020-07-16/metadata.csv

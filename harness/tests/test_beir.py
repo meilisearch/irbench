@@ -1,8 +1,11 @@
 import json
 
+import pytest
+
 from irbench.datasets.beir import read_qrels_tsv
 from irbench.datasets.cqadupstack import FORUMS, normalize_cqadupstack
 from irbench.datasets.lotte import normalize_lotte
+from irbench.datasets.trec_covid import normalize_trec_covid, publish_fields
 from irbench.io import read_jsonl, read_qrels
 
 
@@ -118,3 +121,81 @@ def test_read_qrels_tsv_skips_header_and_clamps_negative_grades(tmp_path):
     path = tmp_path / "test.tsv"
     path.write_text("query-id\tcorpus-id\tscore\nq1\td1\t2\nq1\td2\t-1\n")
     assert read_qrels_tsv(path) == {"q1": {"d1": 2, "d2": 0}}
+
+
+METADATA_CSV = (
+    "cord_uid,sha,source_x,title,doi,pmcid,pubmed_id,license,abstract,publish_time,authors,journal\n"
+    "aaa,,Medline; PMC,T1,,,,cc-by,A1,2020-03-15,X,Lancet\n"
+    "aaa,,WHO,T1 dup,,,,cc-by,A1,2019-01-01,X,Other\n"
+    "bbb,,ArXiv,T2,,,,arxiv,A2,2020,Y,\n"
+    "ccc,,PMC,T3,,,,cc,A3,,Z,BMJ\n"
+)
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        ("2020-03-15", (2020, 20200315)),
+        ("2020", (2020, 20200101)),
+        ("", (None, None)),
+        ("2020-3-5", (2020, 20200305)),
+    ],
+)
+def test_publish_fields(value, expected):
+    assert publish_fields(value) == expected
+
+
+def test_trec_covid_joins_metadata_and_splits_query_forms(tmp_path):
+    corpus = _jsonl(
+        tmp_path / "corpus.jsonl",
+        [
+            {"_id": "aaa", "title": "T1", "text": "A1", "metadata": {"url": "u", "pubmed_id": "1"}},
+            {"_id": "bbb", "title": "T2", "text": "A2", "metadata": {}},
+            {"_id": "ccc", "title": "T3", "text": "", "metadata": {}},
+            {"_id": "zzz", "title": "", "text": "", "metadata": {}},
+        ],
+    )
+    queries = _jsonl(
+        tmp_path / "queries.jsonl",
+        [
+            {
+                "_id": "1",
+                "text": "what is the origin of COVID-19",
+                "metadata": {"query": "coronavirus origin", "narrative": "n"},
+            },
+        ],
+    )
+    (tmp_path / "test.tsv").write_text(
+        "query-id\tcorpus-id\tscore\n1\taaa\t2\n1\tbbb\t-1\n1\tzzz\t1\n"
+    )
+    (tmp_path / "metadata.csv").write_text(METADATA_CSV)
+    out = normalize_trec_covid(
+        {
+            "corpus": corpus,
+            "queries": queries,
+            "qrels": tmp_path / "test.tsv",
+            "metadata": tmp_path / "metadata.csv",
+        },
+        tmp_path / "out",
+    )
+    docs = {d["id"]: d for d in read_jsonl(out.docs)}
+    assert docs["aaa"] == {
+        "id": "aaa",
+        "title": "T1",
+        "text": "A1",
+        "publish_year": 2020,
+        "publish_date": 20200315,
+        "source": ["Medline", "PMC"],
+        "journal": "Lancet",
+    }
+    assert docs["bbb"]["publish_date"] == 20200101 and docs["bbb"]["journal"] is None
+    assert docs["ccc"]["publish_year"] is None
+    assert "zzz" not in docs
+    qs = list(read_jsonl(out.queries))
+    assert qs == [
+        {"qid": "1-question", "text": "what is the origin of COVID-19", "group": "question"},
+        {"qid": "1-keyword", "text": "coronavirus origin", "group": "keyword"},
+    ]
+    qrels = read_qrels(out.qrels)
+    assert qrels["1-question"] == qrels["1-keyword"] == {"aaa": 2, "bbb": 0}
+    assert out.dropped == {"docs": 1, "judgments": 2}  # zzz under both query forms
