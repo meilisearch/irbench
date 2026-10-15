@@ -1,0 +1,45 @@
+# ParadeDB (Postgres 17 + pg_search BM25 + pgvector) on ecommerce/product-search.
+#
+# default: pg_search as shipped: one bm25 index over the searchable fields, a
+#   disjunction (|||) of per-field matches with boosts n - i in scenario order
+#   (name 5 ... description 1), default tokenizer; pgvector HNSW at its defaults,
+#   B-tree/GIN indexes on filter and sort fields.
+# tuned: changes within the parity rules (docs/methodology/parity); add a `tuned:`
+#   block here, deep-merged over `default`.
+#
+# Keys: index.settings (database-level GUCs), unsupported (key -> reason),
+# synonyms (why synonyms.txt is not loaded), justification (key -> why a
+# non-default setting is set).
+default:
+  index:
+    settings:
+      hnsw.ef_search: 100
+      hnsw.iterative_scan: relaxed_order
+      plan_cache_mode: force_custom_plan
+  search: {}
+  synonyms: >-
+    pg_search 0.26.1 has no synonym feature; expanding queries in the harness
+    would break the parity rules.
+  unsupported: {}
+  justification:
+    settings.hnsw.ef_search: >-
+      pgvector's HNSW candidate pool is ef_search (default 40), and one scan
+      cannot return more rows than that. 100 is the smallest value that returns
+      the scenario's top_k = 100 without relying on iterative scans. The other
+      engines' pools differ: the Elasticsearch adapter sets only k = top_k, so
+      num_candidates defaults to 1.5 * k = 150; the Qdrant adapter sets no ef,
+      so search ef defaults to the collection's ef_construct (100). Build
+      parameters also differ: HNSW m is 16 everywhere, ef_construction is 64
+      in pgvector's defaults against 100 in Elasticsearch and Qdrant.
+    settings.hnsw.iterative_scan: >-
+      Without iterative scans (off by default in pgvector 0.8), a filtered
+      vector query keeps only the ef_search nearest rows before filtering and
+      can return fewer than top_k results. relaxed_order is pgvector's
+      documented setting for filtered queries.
+    settings.plan_cache_mode: >-
+      pg_search's boost cast on a bound parameter (`$1::text::pdb.boost(n)`)
+      needs custom plans: once Postgres switches a prepared statement to a
+      generic plan (psycopg auto-prepares after 5 executions, the loadgen
+      always prepares) the `|||` right-hand side is no longer a constant and
+      pg_search fails with "must be a text or text array value".
+      force_custom_plan keeps every execution on a custom plan.

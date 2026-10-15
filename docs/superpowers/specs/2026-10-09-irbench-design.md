@@ -74,9 +74,9 @@ Each stage reads and writes files; any stage is re-runnable and cacheable.
 2. **embed** — for each model, embed docs and all query variants. Cache as Parquet keyed by (dataset version, model id, text sha256). Publish as release assets / Hugging Face dataset; `embed` downloads published vectors when available instead of recomputing.
 3. **up** — start a single engine container with pinned image digest and resource limits from the hardware profile; wait for healthcheck.
 4. **index** — adapter creates index and loads documents. Record wall-clock indexing time (until engine reports all tasks done), peak RSS, on-disk size.
-5. **render** — adapter renders every (variant × mode) into `rendered/<engine>/<scenario>/<model>/<mode>/<qid>.json` containing `{protocol: http|postgres, method, url, headers, body | sql, params}`.
+5. **render** — adapter renders every (variant × mode) into the run directory, one file per query, containing the request format of the Postgres spec §3 (`2026-10-12-irbench-postgres-design.md`): `{protocol: http, method, path, headers, body}` or `{protocol: postgres, sql, params}`. HTTP requests carry a `path` instead of a `url`; the base URL comes from the run config. Path: `rendered/<mode>/<base>/<qid>.json` in the run dir. Speed requests per page size: see `2026-10-14-irbench-page-sizes-design.md`.
 6. **relevance** — execute each rendered request once, sequentially; parse result IDs via adapter; write TREC run file (top 100).
-7. **perf** — Rust loadgen replays the same rendered files:
+7. **perf** — Rust loadgen replays the rendered files, once per page size (`perf-p<N>.json`):
    - warm-up: one full pass, discarded;
    - latency: concurrency 1, report p50/p95/p99/mean;
    - throughput: step concurrency (1, 2, 4, 8, 16, 32, 64); max QPS is the highest step with p99 ≤ 100 ms and error rate ≤ 0.1%.
@@ -117,7 +117,7 @@ Documented in `docs/methodology/parity.mdx`; machine-checkable rules enforced in
 - Same searchable fields and priority order (from scenario). Engines without field weighting use their closest native equivalent, noted in config.
 - One shared `synonyms.txt` per scenario; engine either loads it or declares `synonyms: unsupported`.
 - Same vectors, cosine similarity, same top-k. ANN parameters start at each engine's documented defaults; any change requires a `justification:` field.
-- Hybrid uses the engine's native fusion only. No harness-side fusion. Otherwise N/A.
+- Hybrid uses the engine's native fusion. For SQL engines, a fusion query written in SQL and executed entirely inside the database (e.g. Reciprocal Rank Fusion over two CTEs) counts as native; the SQL is part of the rendered request and documented in the engine README. Harness-side fusion is never allowed. Otherwise N/A.
 - Typo tolerance, prefix search, stemming: language defaults; explicit settings required to enable a feature at all (e.g. `fuzziness: AUTO`) are allowed and visible.
 - Modes are supported natively or through a documented, commonly used extension (e.g. pgvector, ParadeDB/pg_search for Postgres). No custom workarounds.
 - No per-query or qrels-fitted tuning. CI rejects configs containing query IDs or query strings from the query set.
@@ -150,7 +150,7 @@ Documented in `docs/methodology/parity.mdx`; machine-checkable rules enforced in
 
 Static HTML generated from `results/`:
 - Per scenario: engines × modes matrix (nDCG@10), perturbation breakdown (original vs typo/prefix/synonym deltas).
-- Performance: latency percentiles, QPS curve, indexing time / RAM / disk.
+- Performance: latency percentiles, QPS curve, indexing time / RAM / disk; one section per page size (see the page-sizes design).
 - Model comparison per engine.
 - Per run: config diff vs default, manifest, N/A reasons, credits for tuned configs.
 - Links to Mintlify methodology docs.
@@ -168,5 +168,5 @@ Static HTML generated from `results/`:
 ### Later
 
 - Engines: Typesense, OpenSearch, Lucene (thin Java HTTP wrapper), Postgres, Milvus, Pinecone (relevance-only).
-- Datasets/scenarios: Amazon ESCI (e-commerce), TMDB (media), BEIR subsets (knowledge base).
+- Datasets/scenarios: Amazon ESCI (e-commerce), TMDB (media). Knowledge base: done (CQADupStack, TREC-COVID, LoTTE lifestyle), see `2026-10-14-irbench-knowledge-base-design.md`.
 - More models; multilingual queries; LLM-generated scenario track (labelled separately).

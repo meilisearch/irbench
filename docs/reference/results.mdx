@@ -1,0 +1,102 @@
+---
+title: Results reference
+description: The published results bundle layout and the fields of its JSON files
+---
+
+## Bundle layout
+
+`irbench publish` copies a finished run's outputs into `results/<run-id>/`,
+where `<run-id>` is `<scenario>__<engine>__<model>__<track>__<hardware
+profile>`. Each folder holds whichever of these files the run produced:
+
+- `manifest.json`
+- `scores.json`
+- `perf.json`
+- `index.json`
+
+A failed run still has its manifest, so the report can show the failure. Only
+runs on a reference hardware profile are published; results from different
+profiles are never compared. The `rendered/` request files and `run.trec`
+stay in `.irbench/runs/<run-id>/` and aren't copied into the published
+bundle — they're reproducible from the manifest. `irbench report --results
+results --out site` builds the static report from this folder.
+
+The fields below are taken from a real local run,
+`.irbench/runs/ecommerce__product-search__meilisearch__bge-small-en-v1.5__default__local/`.
+
+## Rendered requests
+
+Each file under `rendered/` is one request, in one of two protocols selected by
+the `protocol` field (absent means `http`).
+
+```json
+{"protocol": "http", "method": "POST", "path": "/indexes/i/search", "headers": {}, "body": {}}
+{"protocol": "postgres", "sql": "SELECT id FROM docs WHERE name = $1::text ORDER BY embedding <=> $2::text::vector LIMIT $3::text::int", "params": ["sofa", [0.01, 0.02], 100]}
+```
+
+For `postgres` requests:
+
+- `sql` uses positional placeholders `$1..$n`; `params` is a JSON array.
+- Every placeholder is written `$n::text`, optionally followed by a further
+  cast (`$2::text::vector`, `$3::text::int`).
+- Params are bound as text by one rule, implemented identically in the Python
+  client and the Rust load generator: `null` is `NULL`; a boolean is
+  `true`/`false`; an integer is decimal; a float is its shortest
+  representation; a string is itself; a list of numbers is a pgvector literal
+  `[a,b,...]`.
+- Relevance and performance run exactly this SQL with these params. A SQL
+  error or a timeout (the scenario's `request_timeout_s`, applied as
+  `statement_timeout`) counts as a request error, as for HTTP.
+- Results are rows; the adapter reads the `id` column in rank order. A faceted
+  statement returns one row `{ids, facets}`.
+
+## `manifest.json`
+
+| Field | Description |
+|---|---|
+| `run_id`, `scenario`, `engine`, `model`, `track` | The run's identity. |
+| `hardware` | The hardware profile used (`id`, `description`, `engine.cpuset`, `engine.memory`, `loadgen.cpuset`). |
+| `engine_image` | `image` (the pinned tag) and `digest` (the resolved image digest), recorded once the `up` stage starts the container. |
+| `dataset` | `id`, `version`, and `files` (a checksum per source file). |
+| `seed` | The perturbation seed used to prepare the scenario. |
+| `config` | `path` to the engine config, `hash` of the effective track config, `diff_vs_default` (settings that differ from the `default` track), and `credits` (the `tuned` track's `{name, url}` list; empty for `default`). |
+| `stages` | One entry per pipeline stage run, each with `started_at`, `status` (`succeeded`/`failed`), `seconds`, and a stage-specific `result` (e.g. `index`'s result is its `index.json` contents; `perf`'s result is the same per-group summary found in `scores.json`'s `perf`). |
+| `status` | `succeeded` or `failed` for the run as a whole. |
+| `irbench_version`, `git_sha`, `created_at` | Added by the manifest writer itself, not the pipeline. |
+
+## `scores.json`
+
+| Field | Description |
+|---|---|
+| `run_id`, `scenario`, `engine`, `model`, `track` | Same identity fields as the manifest. |
+| `relevance` | A list of per-group scores: `mode`, `base`, `perturbation` (`all`, `original`, `typo`, `prefix`, or `synonym`), `n` (task count), and `metrics` (`ndcg@10`, `recall@10`, `recall@100`, `mrr@10`, `success@1`). Scenarios with query groups (for example `question`/`keyword`, or a forum) add rows with an extra optional `group` key; these have `perturbation` `all` and are scored over that group's queries. Rows without `group` (all of WANDS' rows) are the overall scores: a reader wanting the overall score must skip rows that have a `group`. |
+| `checks` | A list of per `mode`/`base` check summaries: `n`, `errors`, `filter_violations`, `order_violations`, `facet_accuracy`, `facet_verified`, `facet_unverifiable`, `facet_check_errors` — fields that don't apply to a given mode are `null`. |
+| `constraint_violations` | Maps `<mode>:<base>` to a description when that group's filter or order violations are non-zero — a broken constraint means the group's nDCG doesn't actually measure that mode. |
+| `not_applicable` | Maps `<mode>:<base>` to the config's `unsupported` reason, for every mode/base combination the engine doesn't support. |
+| `errors` | Count of relevance-stage search requests that errored. |
+| `perf` | Per-group latency/throughput summary (see below), or `null` if the run has no perf data. |
+
+## `perf.json`
+
+This is the Rust load generator's raw output; `scores.json`'s `perf` field is
+a smaller per-group summary derived from it (`summarize_perf` in
+`harness/irbench/stages/perf.py`).
+
+| Field | Description |
+|---|---|
+| `base_url`, `requests` | The engine URL and total request count replayed. |
+| `limits` | `p99_ms` and `max_error_rate` — the thresholds a throughput step must meet to be valid. |
+| `warmup` | `requests`, `errors`, `seconds` for the discarded warm-up pass. |
+| `latency` | Per `<mode>/<base>` group (plus `all`): `count`, `errors`, `mean_ms`, `p50_ms`, `p95_ms`, `p99_ms`, `max_ms` at concurrency 1. Not every group is comparable across engines: see [Reading latencies across engines](/methodology/performance#reading-latencies-across-engines). |
+| `throughput` | Per throughput group: `max_qps`, `max_qps_concurrency`, and `steps` — each step has `concurrency`, `seconds`, `requests`, `errors`, `qps`, `error_rate`, `p50_ms`, `p95_ms`, `p99_ms`, `valid`. |
+| `skipped_groups` | Throughput groups that were not run. |
+| `failures` (`loadgen/README.md`) | Phases (warm-up, a latency pass, or the lowest throughput step) where the engine answered nothing or exceeded the error-rate limit; non-empty means the measurement isn't valid and the loadgen exits with status 2. |
+
+## `index.json`
+
+| Field | Description |
+|---|---|
+| `seconds` | Wall-clock indexing time. |
+| `n_docs` | Number of documents indexed. |
+| `memory_peak_bytes` | The engine container's peak memory (`memory.peak` cgroup value), or `null` if unavailable. |
+| `disk_bytes` | Size of the engine's data directory after indexing, or `null` if unavailable. |

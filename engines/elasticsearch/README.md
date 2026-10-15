@@ -19,7 +19,7 @@ Not enabled by default (allowed in `tuned` with a visible setting): `fuzziness`,
 ## Modes
 
 - keyword: `multi_match`.
-- semantic: top-level `knn` with `k = top_k` (100) and the default `num_candidates`.
+- semantic: top-level `knn` with `k` = the request depth (`top_k` = 100 for relevance, the page size for speed) and the default `num_candidates`.
 - hybrid: `query` + `knn` in one request; Elasticsearch adds the two scores (its documented native combination). No harness-side fusion.
 - filtered: `bool.filter` (keyword) or `knn.filter` (semantic, pre-filtering).
 - sorted: `sort` on the numeric field.

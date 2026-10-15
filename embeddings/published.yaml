@@ -1,0 +1,3 @@
+# Published vectors. `irbench embed` downloads these instead of computing them.
+# Written by `irbench vectors pack`; each url is an asset of a GitHub release.
+vectors: []

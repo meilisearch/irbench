@@ -1,0 +1,18 @@
+# Elasticsearch on knowledge-base/web-questions.
+#
+# default: Elasticsearch as shipped. adapter.py generates only what the
+#   scenario schema requires (mapping, field boosts
+#   from the scenario's priority order, dense_vector).
+#   Not enabled by default: fuzziness, prefix matching, stemming, RRF.
+# tuned: changes within the parity rules. Add a `tuned:` block here; it is
+#   deep-merged over `default`. Example: fuzziness on keyword queries:
+#     tuned:
+#       search:
+#         keyword: {query: {multi_match: {fuzziness: AUTO}}}
+#
+# Keys: index (merged into the create-index body), search.<keyword|semantic|hybrid>
+# (merged into search bodies of that base), unsupported, justification.
+default:
+  index: {}
+  search: {}
+  unsupported: {}

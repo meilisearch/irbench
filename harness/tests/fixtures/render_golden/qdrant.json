@@ -1,0 +1,670 @@
+{
+ "faceted-keyword/check": {
+  "body": {
+   "limit": 1000,
+   "prefetch": [
+    {
+     "limit": 1000,
+     "query": {
+      "model": "qdrant/bm25",
+      "text": "grey sofa"
+     },
+     "using": "name"
+    },
+    {
+     "limit": 1000,
+     "query": {
+      "model": "qdrant/bm25",
+      "text": "grey sofa"
+     },
+     "using": "product_class"
+    },
+    {
+     "limit": 1000,
+     "query": {
+      "model": "qdrant/bm25",
+      "text": "grey sofa"
+     },
+     "using": "category"
+    },
+    {
+     "limit": 1000,
+     "query": {
+      "model": "qdrant/bm25",
+      "text": "grey sofa"
+     },
+     "using": "features"
+    },
+    {
+     "limit": 1000,
+     "query": {
+      "model": "qdrant/bm25",
+      "text": "grey sofa"
+     },
+     "using": "description"
+    }
+   ],
+   "query": {
+    "defaults": {
+     "$score[0]": 0,
+     "$score[1]": 0,
+     "$score[2]": 0,
+     "$score[3]": 0,
+     "$score[4]": 0
+    },
+    "formula": {
+     "sum": [
+      {
+       "mult": [
+        5,
+        "$score[0]"
+       ]
+      },
+      {
+       "mult": [
+        4,
+        "$score[1]"
+       ]
+      },
+      {
+       "mult": [
+        3,
+        "$score[2]"
+       ]
+      },
+      {
+       "mult": [
+        2,
+        "$score[3]"
+       ]
+      },
+      {
+       "mult": [
+        1,
+        "$score[4]"
+       ]
+      }
+     ]
+    }
+   },
+   "with_payload": [
+    "id"
+   ]
+  },
+  "headers": {},
+  "method": "POST",
+  "path": "/collections/idx/points/query",
+  "protocol": "http"
+ },
+ "faceted-keyword/main": {
+  "error": "qdrant adapter does not render faceted tasks; 1:faceted:keyword must be declared unsupported in the config"
+ },
+ "faceted-semantic/check": {
+  "body": {
+   "limit": 1000,
+   "query": [
+    0.1,
+    0.2,
+    0.3
+   ],
+   "using": "dense",
+   "with_payload": [
+    "id"
+   ]
+  },
+  "headers": {},
+  "method": "POST",
+  "path": "/collections/idx/points/query",
+  "protocol": "http"
+ },
+ "faceted-semantic/main": {
+  "error": "qdrant adapter does not render faceted tasks; 1:faceted:semantic must be declared unsupported in the config"
+ },
+ "filtered-keyword/main": {
+  "body": {
+   "filter": {
+    "must": [
+     {
+      "key": "product_class",
+      "match": {
+       "value": "Beds"
+      }
+     }
+    ]
+   },
+   "limit": 100,
+   "prefetch": [
+    {
+     "filter": {
+      "must": [
+       {
+        "key": "product_class",
+        "match": {
+         "value": "Beds"
+        }
+       }
+      ]
+     },
+     "limit": 100,
+     "query": {
+      "model": "qdrant/bm25",
+      "text": "grey sofa"
+     },
+     "using": "name"
+    },
+    {
+     "filter": {
+      "must": [
+       {
+        "key": "product_class",
+        "match": {
+         "value": "Beds"
+        }
+       }
+      ]
+     },
+     "limit": 100,
+     "query": {
+      "model": "qdrant/bm25",
+      "text": "grey sofa"
+     },
+     "using": "product_class"
+    },
+    {
+     "filter": {
+      "must": [
+       {
+        "key": "product_class",
+        "match": {
+         "value": "Beds"
+        }
+       }
+      ]
+     },
+     "limit": 100,
+     "query": {
+      "model": "qdrant/bm25",
+      "text": "grey sofa"
+     },
+     "using": "category"
+    },
+    {
+     "filter": {
+      "must": [
+       {
+        "key": "product_class",
+        "match": {
+         "value": "Beds"
+        }
+       }
+      ]
+     },
+     "limit": 100,
+     "query": {
+      "model": "qdrant/bm25",
+      "text": "grey sofa"
+     },
+     "using": "features"
+    },
+    {
+     "filter": {
+      "must": [
+       {
+        "key": "product_class",
+        "match": {
+         "value": "Beds"
+        }
+       }
+      ]
+     },
+     "limit": 100,
+     "query": {
+      "model": "qdrant/bm25",
+      "text": "grey sofa"
+     },
+     "using": "description"
+    }
+   ],
+   "query": {
+    "defaults": {
+     "$score[0]": 0,
+     "$score[1]": 0,
+     "$score[2]": 0,
+     "$score[3]": 0,
+     "$score[4]": 0
+    },
+    "formula": {
+     "sum": [
+      {
+       "mult": [
+        5,
+        "$score[0]"
+       ]
+      },
+      {
+       "mult": [
+        4,
+        "$score[1]"
+       ]
+      },
+      {
+       "mult": [
+        3,
+        "$score[2]"
+       ]
+      },
+      {
+       "mult": [
+        2,
+        "$score[3]"
+       ]
+      },
+      {
+       "mult": [
+        1,
+        "$score[4]"
+       ]
+      }
+     ]
+    }
+   },
+   "with_payload": [
+    "id"
+   ]
+  },
+  "headers": {},
+  "method": "POST",
+  "path": "/collections/idx/points/query",
+  "protocol": "http"
+ },
+ "filtered-semantic/main": {
+  "body": {
+   "filter": {
+    "must": [
+     {
+      "key": "product_class",
+      "match": {
+       "value": "Beds"
+      }
+     }
+    ]
+   },
+   "limit": 100,
+   "query": [
+    0.1,
+    0.2,
+    0.3
+   ],
+   "using": "dense",
+   "with_payload": [
+    "id"
+   ]
+  },
+  "headers": {},
+  "method": "POST",
+  "path": "/collections/idx/points/query",
+  "protocol": "http"
+ },
+ "hybrid/main": {
+  "body": {
+   "limit": 100,
+   "prefetch": [
+    {
+     "limit": 100,
+     "prefetch": [
+      {
+       "limit": 100,
+       "query": {
+        "model": "qdrant/bm25",
+        "text": "grey sofa"
+       },
+       "using": "name"
+      },
+      {
+       "limit": 100,
+       "query": {
+        "model": "qdrant/bm25",
+        "text": "grey sofa"
+       },
+       "using": "product_class"
+      },
+      {
+       "limit": 100,
+       "query": {
+        "model": "qdrant/bm25",
+        "text": "grey sofa"
+       },
+       "using": "category"
+      },
+      {
+       "limit": 100,
+       "query": {
+        "model": "qdrant/bm25",
+        "text": "grey sofa"
+       },
+       "using": "features"
+      },
+      {
+       "limit": 100,
+       "query": {
+        "model": "qdrant/bm25",
+        "text": "grey sofa"
+       },
+       "using": "description"
+      }
+     ],
+     "query": {
+      "defaults": {
+       "$score[0]": 0,
+       "$score[1]": 0,
+       "$score[2]": 0,
+       "$score[3]": 0,
+       "$score[4]": 0
+      },
+      "formula": {
+       "sum": [
+        {
+         "mult": [
+          5,
+          "$score[0]"
+         ]
+        },
+        {
+         "mult": [
+          4,
+          "$score[1]"
+         ]
+        },
+        {
+         "mult": [
+          3,
+          "$score[2]"
+         ]
+        },
+        {
+         "mult": [
+          2,
+          "$score[3]"
+         ]
+        },
+        {
+         "mult": [
+          1,
+          "$score[4]"
+         ]
+        }
+       ]
+      }
+     }
+    },
+    {
+     "limit": 100,
+     "query": [
+      0.1,
+      0.2,
+      0.3
+     ],
+     "using": "dense"
+    }
+   ],
+   "query": {
+    "fusion": "rrf"
+   },
+   "with_payload": [
+    "id"
+   ]
+  },
+  "headers": {},
+  "method": "POST",
+  "path": "/collections/idx/points/query",
+  "protocol": "http"
+ },
+ "keyword/main": {
+  "body": {
+   "limit": 100,
+   "prefetch": [
+    {
+     "limit": 100,
+     "query": {
+      "model": "qdrant/bm25",
+      "text": "grey sofa"
+     },
+     "using": "name"
+    },
+    {
+     "limit": 100,
+     "query": {
+      "model": "qdrant/bm25",
+      "text": "grey sofa"
+     },
+     "using": "product_class"
+    },
+    {
+     "limit": 100,
+     "query": {
+      "model": "qdrant/bm25",
+      "text": "grey sofa"
+     },
+     "using": "category"
+    },
+    {
+     "limit": 100,
+     "query": {
+      "model": "qdrant/bm25",
+      "text": "grey sofa"
+     },
+     "using": "features"
+    },
+    {
+     "limit": 100,
+     "query": {
+      "model": "qdrant/bm25",
+      "text": "grey sofa"
+     },
+     "using": "description"
+    }
+   ],
+   "query": {
+    "defaults": {
+     "$score[0]": 0,
+     "$score[1]": 0,
+     "$score[2]": 0,
+     "$score[3]": 0,
+     "$score[4]": 0
+    },
+    "formula": {
+     "sum": [
+      {
+       "mult": [
+        5,
+        "$score[0]"
+       ]
+      },
+      {
+       "mult": [
+        4,
+        "$score[1]"
+       ]
+      },
+      {
+       "mult": [
+        3,
+        "$score[2]"
+       ]
+      },
+      {
+       "mult": [
+        2,
+        "$score[3]"
+       ]
+      },
+      {
+       "mult": [
+        1,
+        "$score[4]"
+       ]
+      }
+     ]
+    }
+   },
+   "with_payload": [
+    "id"
+   ]
+  },
+  "headers": {},
+  "method": "POST",
+  "path": "/collections/idx/points/query",
+  "protocol": "http"
+ },
+ "semantic/main": {
+  "body": {
+   "limit": 100,
+   "query": [
+    0.1,
+    0.2,
+    0.3
+   ],
+   "using": "dense",
+   "with_payload": [
+    "id"
+   ]
+  },
+  "headers": {},
+  "method": "POST",
+  "path": "/collections/idx/points/query",
+  "protocol": "http"
+ },
+ "sorted-keyword/main": {
+  "body": {
+   "limit": 100,
+   "prefetch": {
+    "limit": 1000,
+    "prefetch": [
+     {
+      "limit": 1000,
+      "query": {
+       "model": "qdrant/bm25",
+       "text": "grey sofa"
+      },
+      "using": "name"
+     },
+     {
+      "limit": 1000,
+      "query": {
+       "model": "qdrant/bm25",
+       "text": "grey sofa"
+      },
+      "using": "product_class"
+     },
+     {
+      "limit": 1000,
+      "query": {
+       "model": "qdrant/bm25",
+       "text": "grey sofa"
+      },
+      "using": "category"
+     },
+     {
+      "limit": 1000,
+      "query": {
+       "model": "qdrant/bm25",
+       "text": "grey sofa"
+      },
+      "using": "features"
+     },
+     {
+      "limit": 1000,
+      "query": {
+       "model": "qdrant/bm25",
+       "text": "grey sofa"
+      },
+      "using": "description"
+     }
+    ],
+    "query": {
+     "defaults": {
+      "$score[0]": 0,
+      "$score[1]": 0,
+      "$score[2]": 0,
+      "$score[3]": 0,
+      "$score[4]": 0
+     },
+     "formula": {
+      "sum": [
+       {
+        "mult": [
+         5,
+         "$score[0]"
+        ]
+       },
+       {
+        "mult": [
+         4,
+         "$score[1]"
+        ]
+       },
+       {
+        "mult": [
+         3,
+         "$score[2]"
+        ]
+       },
+       {
+        "mult": [
+         2,
+         "$score[3]"
+        ]
+       },
+       {
+        "mult": [
+         1,
+         "$score[4]"
+        ]
+       }
+      ]
+     }
+    }
+   },
+   "query": {
+    "defaults": {
+     "average_rating": -1e+18
+    },
+    "formula": "average_rating"
+   },
+   "with_payload": [
+    "id"
+   ]
+  },
+  "headers": {},
+  "method": "POST",
+  "path": "/collections/idx/points/query",
+  "protocol": "http"
+ },
+ "sorted-semantic/main": {
+  "body": {
+   "limit": 100,
+   "prefetch": {
+    "limit": 100,
+    "query": [
+     0.1,
+     0.2,
+     0.3
+    ],
+    "using": "dense"
+   },
+   "query": {
+    "defaults": {
+     "average_rating": -1e+18
+    },
+    "formula": "average_rating"
+   },
+   "with_payload": [
+    "id"
+   ]
+  },
+  "headers": {},
+  "method": "POST",
+  "path": "/collections/idx/points/query",
+  "protocol": "http"
+ }
+}

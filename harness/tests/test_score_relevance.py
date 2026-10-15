@@ -4,7 +4,9 @@ from irbench.models import QueryTask
 from irbench.score.relevance import score_relevance
 
 
-def _task(tid: str, perturbation: str = "original", mode: str = "keyword") -> QueryTask:
+def _task(
+    tid: str, perturbation: str = "original", mode: str = "keyword", group: str | None = None
+) -> QueryTask:
     return QueryTask(
         task_id=tid,
         qid=tid,
@@ -13,6 +15,7 @@ def _task(tid: str, perturbation: str = "original", mode: str = "keyword") -> Qu
         text="x",
         mode=mode,
         base="keyword" if mode != "semantic" else "semantic",
+        group=group,
     )
 
 
@@ -71,3 +74,23 @@ def test_groups_by_mode_and_perturbation():
 def test_empty_run_is_all_zero():
     scores = score_relevance([_task("t1")], QRELS, {})
     assert all(v == 0.0 for v in _group(scores).metrics.values())
+
+
+def test_group_rows_are_added_after_the_existing_rows():
+    tasks = [_task("t1", group="question"), _task("t2", group="keyword")]
+    rows = score_relevance(tasks, QRELS, {"t1": ["d1"], "t2": ["d5"]})
+    plain = [r for r in rows if r.group is None]
+    grouped = [r for r in rows if r.group is not None]
+    assert rows[: len(plain)] == plain
+    assert {(r.mode, r.base, r.perturbation, r.group) for r in grouped} == {
+        ("keyword", "keyword", "all", "question"),
+        ("keyword", "keyword", "all", "keyword"),
+    }
+    assert sum(r.n for r in grouped) == next(r for r in plain if r.perturbation == "all").n
+
+
+def test_ungrouped_tasks_produce_exactly_todays_rows():
+    rows = score_relevance([_task("t1"), _task("t2")], QRELS, {"t1": ["d1"], "t2": ["d5"]})
+    assert all(r.group is None for r in rows)
+    dumped = [r.model_dump(exclude_none=True) for r in rows]
+    assert all(set(d) == {"mode", "base", "perturbation", "n", "metrics"} for d in dumped)

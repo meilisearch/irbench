@@ -1,0 +1,18 @@
+# Qdrant on knowledge-base/community-qa.
+#
+# default: Qdrant as shipped. adapter.py generates only what the scenario
+#   schema requires (a Cosine dense vector, one BM25 sparse vector per searchable
+#   field, payload indexes for filterable, sortable and facet fields). HNSW and
+#   search parameters are Qdrant's defaults.
+# tuned: changes within the parity rules; add a `tuned:` block (deep-merged).
+#
+# Keys: index (merged into the create-collection body),
+# search.<keyword|semantic|hybrid> (merged into query bodies of that base),
+# unsupported (key -> reason, shown as N/A in results), justification.
+default:
+  index: {}
+  search: {}
+  unsupported:
+    faceted: >-
+      Qdrant's facet API counts the points matching a filter, not the points
+      returned by a query, so counts cannot describe the query's results.

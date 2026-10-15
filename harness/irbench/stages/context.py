@@ -7,19 +7,28 @@ import httpx
 import numpy as np
 
 from irbench.embed.vectors import read_vectors
-from irbench.engines.base import EngineAdapter, IndexContext, index_name, load_adapter_class
+from irbench.engines.base import (
+    EngineAdapter,
+    IndexContext,
+    engine_base_url,
+    index_name,
+    load_adapter_class,
+)
 from irbench.engines.config import EngineConfig, TrackConfig, load_engine_config
+from irbench.engines.pg import PostgresClient
 from irbench.io import read_jsonl, read_qrels
 from irbench.models import Qrels, QueryTask
 from irbench.paths import Workspace
 from irbench.runs import RunSpec
 from irbench.scenario import Scenario, load_scenario
-from irbench.terms import load_term_groups
+from irbench.terms import scenario_term_groups
 
-ClientFactory = Callable[[str], httpx.Client]
+ClientFactory = Callable[[str], Any]
 
 
-def default_client(base_url: str) -> httpx.Client:
+def default_client(base_url: str) -> Any:
+    if base_url.startswith(("postgresql://", "postgres://")):
+        return PostgresClient(base_url)
     return httpx.Client(base_url=base_url, timeout=60.0)
 
 
@@ -104,13 +113,14 @@ class RunContext:
                 config=self.track,
                 index=index_name(self.spec.scenario, self.spec.model),
                 dim=int(self.doc_vectors.shape[1]),
-                synonyms=load_term_groups(self.scenario.synonyms_path),
+                synonyms=scenario_term_groups(self.scenario.synonyms_path),
+                n_docs=len(self.docs),
             )
         )
 
     @property
     def base_url(self) -> str:
-        return f"http://{self.spec.host}:{self.adapter_cls.host_port}"
+        return engine_base_url(self.adapter_cls, self.spec.host)
 
     def client(self) -> httpx.Client:
         return self.client_factory(self.base_url)
@@ -122,6 +132,15 @@ class RunContext:
             raise ValueError(f"no query vector for {task.qid!r}: {self._embed_hint()}")
         return self.query_vectors[task.qid].tolist()
 
-    def rendered_path(self, task: QueryTask, check: bool = False) -> Path:
+    def rendered_dir_for(self, page_size: int) -> Path:
+        """Requests for one page size: rendered/ at top_k (shared with relevance)."""
+        if page_size == self.scenario.top_k:
+            return self.rendered_dir
+        return self.run_dir / f"rendered-p{page_size}"
+
+    def rendered_path(
+        self, task: QueryTask, check: bool = False, page_size: int | None = None
+    ) -> Path:
         name = f"{task.qid}.check.json" if check else f"{task.qid}.json"
-        return self.rendered_dir / task.mode / task.base / name
+        base = self.rendered_dir if page_size is None else self.rendered_dir_for(page_size)
+        return base / task.mode / task.base / name

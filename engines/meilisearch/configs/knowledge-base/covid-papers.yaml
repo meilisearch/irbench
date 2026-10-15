@@ -1,0 +1,35 @@
+# Meilisearch on knowledge-base/covid-papers.
+#
+# default: Meilisearch as shipped. adapter.py generates only what the scenario
+#   schema requires (searchable order, filterable/sortable/facet fields,
+#   userProvided embedder, facet value limit).
+# tuned: changes within the parity rules (docs/methodology/parity). Add a
+#   `tuned:` block here; it is deep-merged over `default`.
+#
+# Keys: index (merged into index settings), search.<keyword|semantic|hybrid>
+# (merged into search bodies of that base), unsupported (key -> reason),
+# justification (key -> why a non-default ANN or ranking parameter is set).
+default:
+  index:
+    # Default rules with `sort` moved first (see justification).
+    rankingRules: [sort, words, typo, proximity, attributeRank, wordPosition, exactness]
+  search: {}
+  unsupported: {}
+  justification:
+    rankingRules: >-
+      The scenario's sorted mode requires results ordered by `publish_date`.
+      With the shipped order, `sort` ranks after words/typo/proximity/attributeRank
+      (and after vector similarity), so it only breaks ties. Moving it first makes
+      `sort` strict on both bases. Requests without `sort` are unaffected: the
+      rule is inactive without a sort parameter (checked on v1.54.3 for keyword,
+      semantic and hybrid queries).
+tuned:
+  search:
+    keyword: {matchingStrategy: frequency}
+    hybrid: {matchingStrategy: frequency}
+  justification:
+    matchingStrategy: >-
+      Carries the WANDS finding (keyword nDCG@10 0.481 -> 0.508 with `frequency`)
+      over to this scenario, whose queries come in question and keyword forms,
+      where `last` drops the final words of a query first. A documented, supported search parameter; no ranking-rule
+      change. The tuned run measures whether the finding holds here.

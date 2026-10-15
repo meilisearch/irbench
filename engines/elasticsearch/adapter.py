@@ -127,9 +127,16 @@ class Adapter(EngineAdapter):
         return {"range": {f.field: {f.op: float(f.value)}}}
 
     def render(
-        self, task: QueryTask, vector: list[float] | None, limit: int, facets: bool = True
+        self,
+        task: QueryTask,
+        vector: list[float] | None,
+        limit: int,
+        facets: bool = True,
+        *,
+        depth: int | None = None,
     ) -> Request:
         scenario = self.ctx.scenario
+        depth = self.pool_depth(depth)
         body: dict[str, Any] = {"size": limit, "_source": False}
         filters = [self._filter_clause(task.filter)] if task.filter is not None else []
         if task.base in ("keyword", "hybrid"):
@@ -139,7 +146,7 @@ class Adapter(EngineAdapter):
             knn: dict[str, Any] = {
                 "field": VECTOR_FIELD,
                 "query_vector": require_vector(task, vector),
-                "k": scenario.top_k,
+                "k": depth,
             }
             if filters:
                 knn["filter"] = filters

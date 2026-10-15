@@ -32,6 +32,12 @@ def make_variants(
             if text is None or _norm(text) == _norm(query.text):
                 continue
             out.append(
-                Query(qid=f"{query.qid}-{kind}", text=text, variant_of=query.qid, perturbation=kind)
+                Query(
+                    qid=f"{query.qid}-{kind}",
+                    text=text,
+                    variant_of=query.qid,
+                    perturbation=kind,
+                    group=query.group,
+                )
             )
     return out

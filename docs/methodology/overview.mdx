@@ -1,0 +1,149 @@
+---
+title: Methodology overview
+description: The pipeline, the dataset, modes, perturbations, metrics and error handling
+---
+
+## The nine pipeline stages
+
+`prepare` and `embed` write under `.irbench/data`, `.irbench/scenarios` and
+`.irbench/embeddings` — shared across every run of a scenario/model. Only the
+run stages (`up` through `down`) write under `.irbench/runs/<run-id>/`. Any
+stage is re-runnable, and re-running a stage invalidates its own outputs and
+every later stage's.
+
+| # | Stage | Writes |
+|---|---|---|
+| 1 | `prepare` | `docs.jsonl`, `queries.jsonl`, `qrels.tsv`, and — after applying the scenario's seeded perturbations — `queries.variants.jsonl` and the per-mode task list |
+| 2 | `embed` | the doc and query vector cache (Parquet), downloaded from the published registry or computed locally |
+| 3 | `up` | starts the engine container with the pinned image and the hardware profile's resource limits; waits for its healthcheck |
+| 4 | `index` | `index.json` — indexing wall-clock time, peak memory, on-disk size |
+| 5 | `render` | `rendered/<mode>/<base>/<qid>.json` (one file per query variant × mode, plus `<qid>.check.json` for facet-verification fetches), inside the run directory `.irbench/runs/<run-id>/`, which already encodes scenario, engine, model, track and hardware profile; `na.json` for tasks the engine doesn't support |
+| 6 | `relevance` | `run.trec` (top 100 results per task), `checks.jsonl`, `errors.jsonl` |
+| 7 | `perf` | `perf.json` — latency and throughput, replayed by the Rust load generator |
+| 8 | `score` | `scores.json` — relevance metrics, constraint checks, and N/A reasons |
+| 9 | `down` | stops the container and deletes its volumes |
+
+## Requests as data
+
+The Python harness and each engine's adapter only *render* requests; they
+never embed any benchmark-specific fusion or ranking logic into how a request
+is built beyond what the adapter needs to speak that engine's API. Every
+request sent during the `relevance` stage, and replayed during `perf`, exists
+first as a file under `rendered/<mode>/<base>/<qid>.json`:
+either an `http` request (`{protocol, method, path, headers, body | content}`)
+or a `postgres` request (`{protocol, sql, params}`); see
+[Rendered requests](/reference/results#rendered-requests).
+You can open any one of these files and see exactly what was sent to the
+engine for that query variant and mode.
+
+## Dataset and qrels grades
+
+The e-commerce scenario uses **WANDS** (Wayfair; ~43k products, 480 queries,
+human judgments, MIT license). The three knowledge-base scenarios
+([community-qa](/scenarios/community-qa), [covid-papers](/scenarios/covid-papers),
+[web-questions](/scenarios/web-questions)) each have their own page. WANDS
+judgments use three grades:
+
+| Label | Grade |
+|---|---|
+| Exact | 2 |
+| Partial | 1 |
+| Irrelevant | 0 |
+
+A query with no document graded above 0 (no relevant judgment) is skipped
+entirely — it produces no tasks and isn't scored.
+
+## Modes and structured bases
+
+A scenario (for example `scenarios/ecommerce/product-search/scenario.yaml`)
+declares its modes; WANDS has six: `keyword`, `semantic`, `hybrid`, `filtered`, `sorted`, `faceted`.
+`keyword`, `semantic` and `hybrid` are retrieval bases in their own right;
+`filtered`, `sorted` and `faceted` run on top of each of the scenario's
+`structured_bases` (`keyword` and `semantic`), so a mode like `filtered` is
+always scored as `filtered/keyword` and `filtered/semantic` separately. A
+mode an engine doesn't implement for a given base is marked N/A, never
+skipped silently (see [Parity rules](/methodology/parity)).
+
+## Perturbation rules
+
+Perturbations are generated once per original query, seeded with the
+scenario's seed (`20261009` for WANDS, `20261014` for the knowledge-base
+scenarios; from `scenario.yaml`), and versioned with the scenario. WANDS uses
+all three kinds below; the knowledge-base scenarios use `typo` and `prefix`
+only, with no synonym list:
+
+- **typo** — one edit for words of 4–7 characters, two edits for words of 8+
+  characters. Edit types: adjacent-key substitution (QWERTY-neighbor map),
+  deletion, duplication, or transposition. Words under 4 characters are left
+  untouched, and at most one word per query is perturbed.
+- **prefix** — truncates the last word to 40–70% of its length (minimum 2
+  characters kept), simulating search-as-you-type. The last word must be at
+  least 3 characters long, or the query gets no prefix variant.
+- **synonym** — replaces one term with an entry from a reviewed,
+  per-scenario vocabulary-mismatch list (e.g. sofa ↔ couch). This list is
+  distinct from `synonyms.txt`: the perturbation list tests whether an engine
+  bridges a vocabulary gap on its own, while `synonyms.txt` is the dictionary
+  an engine's config may choose to load. A query with no applicable term
+  produces no synonym variant.
+
+Each variant inherits its source query's qrels unchanged.
+
+## Metrics
+
+Relevance is scored with [`ranx`](https://github.com/AmenRa/ranx):
+nDCG@10 (linear gain), Recall@10, Recall@100, MRR@10, and Success@1 (reported
+from `ranx`'s `hit_rate@1`). These are cross-checked against `trec_eval` on a
+fixed fixture. Metrics are reported overall and broken down per perturbation
+type (original, typo, prefix, synonym) — never combined into one score.
+
+## Scoring of filtered, sorted and faceted modes
+
+WANDS qrels judge unfiltered queries, so these structured modes derive their
+own ground truth deterministically, on top of each structured base:
+
+- **filtered** — each query is paired with a filter from the scenario's
+  filter templates (a seeded choice among filters that keep at least one
+  relevant document). The effective qrels become the original qrels
+  intersected with the documents matching that filter. The harness also
+  checks **filter violations**: returned documents that don't match the
+  filter. This must be 0.
+- **sorted** — query plus a sort template (e.g. average rating descending).
+  The harness reports **order violations** (must be 0) and the nDCG@10 of the
+  sorted top-10 against the original qrels, to see whether relevance survives
+  sorting.
+- **faceted** — query plus facet fields. The harness computes facet counts
+  itself over the engine's own full result set for that query and compares
+  them to what the engine reported — this tests correctness, not relevance —
+  and also reports latency.
+
+## Embeddings and vectors
+
+Engines never embed documents or queries themselves: vectors are computed
+once by the harness, cached, and published as GitHub release assets listed in
+`embeddings/published.yaml`, so reproducing a run needs no model download or
+API key. `irbench embed` first reuses the local doc and query vector files
+for that scenario/model pair when they already exist, their ids match the
+prepared data, and their fingerprint sidecar (`<file>.meta.json`, a hash of the
+exact texts embedded) matches the texts that would be embedded now — no network
+involved. Vectors without a matching sidecar are never reused. Only when a file is
+missing or fails these checks
+does it consult the registry and download the published
+vectors; with no registry entry, or when asked to (`--compute`), it computes
+them locally instead. A maintainer packs newly computed vectors for
+publishing with `irbench vectors pack`, which copies them to release assets
+and records their checksums, counts and dimension in the registry.
+
+## Error handling
+
+- A failed stage marks that run `failed`, with the reason recorded in the
+  manifest; the rest of the batch continues, and the report shows the
+  failure explicitly.
+- Relevance: a request error or timeout (10 seconds, `request_timeout_s` in
+  `scenario.yaml`) scores that task 0 and is logged in `errors.jsonl`.
+  Above `max_error_rate` (0.001, i.e. 0.1%) of relevance requests failing,
+  the run fails outright instead of publishing zeros for a crashed or
+  misconfigured engine.
+- Perf: the loadgen counts errors per step; a concurrency step with an error
+  rate above 0.1% is invalid (see [Performance methodology](/methodology/performance)).
+- Indexing has its own timeout (`index_timeout_s` in `scenario.yaml`, 1800
+  seconds for `ecommerce/product-search`; each scenario sets its own); exceeding it fails the run.

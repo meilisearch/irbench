@@ -1,0 +1,79 @@
+<section>
+<h2>Performance</h2>
+<p class="note">Measured by replaying rendered requests (warm-up pass discarded). The page-100
+requests are exactly the ones scored for relevance; other page sizes replay the same queries
+with limit = depth = N, and their relevance is not measured. Latency is at one client. Throughput steps up the number of concurrent clients and
+stops at the first invalid step, so max QPS is the best (highest-QPS) step within that leading
+run of valid steps (limits are listed under each page size). Speed is measured at each page
+size with the same protocol; relevance always uses the top 100. Indexing is wall-clock time until the engine reports every document indexed.</p>
+{% if view.perf.unmeasured %}
+<p class="note">Performance was not measured for: {{ view.perf.unmeasured|join(", ") }}.</p>
+{% endif %}
+{% for sz in view.perf.sizes %}
+{% if sz.headline %}
+<div class="page-size">
+<h3>Page of {{ sz.size }} results{% if sz.title %} ({{ sz.title }}){% endif %}</h3>
+{% else %}
+<details class="page-size"><summary>Page of {{ sz.size }} results{% if sz.title %} ({{ sz.title }}){% endif %}</summary>
+{% endif %}
+<h3>Latency at one client: p50 / p99 (ms)</h3>
+<div class="scroll"><table>
+  <thead><tr><th>Mode</th>{% for r in sz.runs %}<th>{{ r.label }} · {{ r.model }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for row in sz.latency %}
+    <tr><th scope="row">{{ row.group|group }}</th>{% for c in row.cells %}<td class="num {{ c.kind }}"{% if c.note %} title="{{ c.note }}"{% endif %}>{{ c.text }}</td>{% endfor %}</tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+
+<h3>Throughput: max QPS</h3>
+<div class="scroll"><table>
+  <thead><tr><th>Mode</th>{% for r in sz.runs %}<th>{{ r.label }} · {{ r.model }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for row in sz.max_qps %}
+    <tr><th scope="row">{{ row.group|group }}</th>{% for c in row.cells %}<td class="num {{ c.kind }}"{% if c.note %} title="{{ c.note }}"{% endif %}>{{ c.text }}</td>{% endfor %}</tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+
+{% for chart in sz.charts %}
+<h3>{{ chart.group|group }} · {{ chart.model }}: QPS by concurrent clients</h3>
+<ul class="legend">
+{% for se in chart.series %}
+  <li><span class="key{% if se.dashed %} dashed{% endif %}" style="--c: var(--series-{{ se.slot if se.slot else 'other' }})"></span>{{ se.label }}</li>
+{% endfor %}
+</ul>
+{{ chart.svg }}
+<p class="note">Hollow markers are invalid steps (p99 or error rate over the limit); stepping stops there.</p>
+<details><summary>Step values</summary>
+<table>
+  <thead><tr><th>Clients</th>{% for se in chart.series %}<th>{{ se.label }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for row in chart.table %}<tr><th scope="row">{{ row.concurrency }}</th>{% for c in row.cells %}<td class="num">{{ c }}</td>{% endfor %}</tr>{% endfor %}
+  </tbody>
+</table>
+</details>
+{% endfor %}
+{% if sz.limits %}
+<p class="note">Limits at this page size: p99 ≤ {{ sz.limits.p99_ms|g }} ms and ≤ {{ (sz.limits.max_error_rate * 100)|g }}% errors.</p>
+{% endif %}
+{% if sz.headline %}
+</div>
+{% else %}
+</details>
+{% endif %}
+{% endfor %}
+
+{% if view.perf.indexing %}
+<h3>Indexing cost</h3>
+<div class="scroll"><table>
+  <thead><tr><th>Engine</th><th>Model</th><th>Documents</th><th>Time (s)</th><th>Peak memory</th><th>Disk</th></tr></thead>
+  <tbody>
+  {% for r in view.perf.indexing %}
+    <tr><th scope="row">{{ r.label }}</th><td>{{ r.model }}</td><td class="num">{{ "{:,}".format(r.index.n_docs) }}</td>
+      <td class="num">{{ "%.1f"|format(r.index.seconds) }}</td><td class="num">{{ r.index.memory_peak_bytes|bytes }}</td><td class="num">{{ r.index.disk_bytes|bytes }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% endif %}
+</section>

@@ -24,7 +24,27 @@ class FilterTemplate(BaseModel):
 class PerturbationSpec(BaseModel):
     seed: int
     kinds: list[Literal["typo", "prefix", "synonym"]]
-    vocabulary: str
+    vocabulary: str | None = None
+
+    @model_validator(mode="after")
+    def _vocabulary_for_synonyms(self) -> "PerturbationSpec":
+        if "synonym" in self.kinds and not self.vocabulary:
+            raise ValueError("perturbation kind 'synonym' needs a `vocabulary` file")
+        return self
+
+
+class PerfSpec(BaseModel):
+    """Spec §5.7 load protocol, identical for every engine."""
+
+    concurrency: list[int] = [1, 2, 4, 8, 16, 32, 64]
+    step_seconds: float = 20.0
+    p99_limit_ms: float = 100.0
+    max_error_rate: float = 0.001
+    throughput_groups: list[str] = ["keyword/keyword", "semantic/semantic", "hybrid/hybrid"]
+    warmup_concurrency: int = 4
+    # Result counts the perf stage measures, headline first (spec 2026-10-14 §3.1).
+    # None means [top_k]; read it through Scenario.page_sizes.
+    page_sizes: list[int] | None = None
 
 
 class Scenario(BaseModel):
@@ -42,9 +62,10 @@ class Scenario(BaseModel):
     facet_verify_limit: int = 1000
     request_timeout_s: float = 10.0
     max_error_rate: float = 0.001
+    perf: PerfSpec = PerfSpec()
     index_timeout_s: int
     perturbations: PerturbationSpec
-    synonyms: str
+    synonyms: str | None = None
 
     _directory: Path = PrivateAttr()
 
@@ -72,6 +93,16 @@ class Scenario(BaseModel):
                 raise ValueError(f"sort template field {s.field!r} is not sortable")
         if "faceted" in self.modes and not f.facets:
             raise ValueError("faceted mode needs at least one facet field")
+        sizes = self.perf.page_sizes
+        if sizes is not None:
+            if not sizes:
+                raise ValueError("perf.page_sizes must be non-empty")
+            if any(b <= a for a, b in zip(sizes, sizes[1:])):
+                raise ValueError(f"perf.page_sizes must be strictly ascending, got {sizes}")
+            if any(not 1 <= n <= self.top_k for n in sizes):
+                raise ValueError(
+                    f"perf.page_sizes must each be between 1 and top_k ({self.top_k}), got {sizes}"
+                )
         return self
 
     @property
@@ -79,12 +110,18 @@ class Scenario(BaseModel):
         return self._directory
 
     @property
-    def vocabulary_path(self) -> Path:
-        return self._directory / self.perturbations.vocabulary
+    def page_sizes(self) -> list[int]:
+        """Page sizes the perf stage measures, headline (smallest) first."""
+        return list(self.perf.page_sizes or [self.top_k])
 
     @property
-    def synonyms_path(self) -> Path:
-        return self._directory / self.synonyms
+    def vocabulary_path(self) -> Path | None:
+        v = self.perturbations.vocabulary
+        return None if v is None else self._directory / v
+
+    @property
+    def synonyms_path(self) -> Path | None:
+        return None if self.synonyms is None else self._directory / self.synonyms
 
 
 def load_scenario(root: Path, scenario_id: str) -> Scenario:

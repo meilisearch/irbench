@@ -1,9 +1,11 @@
 from typing import Any
 
 from irbench.io import read_json, read_jsonl, read_run, write_json
+from irbench.perf_files import read_perf_reports
 from irbench.score.checks import CheckSummary, TaskCheck, summarize_checks
 from irbench.score.relevance import score_relevance
 from irbench.stages.context import RunContext
+from irbench.stages.perf import summarize_perf
 
 
 def score_stage(ctx: RunContext) -> dict[str, Any]:
@@ -28,11 +30,15 @@ def score_stage(ctx: RunContext) -> dict[str, Any]:
         "engine": ctx.spec.engine,
         "model": ctx.spec.model,
         "track": ctx.spec.track,
-        "relevance": [g.model_dump() for g in score_relevance(supported, ctx.qrels, run)],
+        "relevance": [
+            g.model_dump(exclude_none=True) for g in score_relevance(supported, ctx.qrels, run)
+        ],
         "checks": [s.model_dump() for s in summaries],
         "constraint_violations": _constraint_violations(summaries),
         "not_applicable": not_applicable,
         "errors": sum(1 for e in read_jsonl(run_dir / "errors.jsonl") if e["request"] == "search"),
+        "perf": {str(n): summarize_perf(report) for n, report in read_perf_reports(run_dir).items()}
+        or None,
     }
     write_json(run_dir / "scores.json", report)
     return report

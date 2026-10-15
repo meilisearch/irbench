@@ -12,6 +12,8 @@ dependencies = [
   "pyarrow>=16",
   "numpy>=1.26",
   "ranx>=0.3.21",
+  "jinja2>=3.1",
+  "psycopg[binary]>=3.2",
 ]
 
 [project.optional-dependencies]
@@ -22,7 +24,11 @@ embed-api = ["openai>=1.40"]
 irbench = "irbench.cli:app"
 
 [dependency-groups]
-dev = ["pytest>=8.2", "ruff>=0.6"]
+dev = [
+    "pytest>=8.2",
+ "pytrec-eval-terrier>=0.5.7",
+ "ruff>=0.6",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -51,5 +57,5 @@ ignore = ["E501"]
 # Test helpers are imported as top-level modules (pytest rootdir import mode).
 known-first-party = [
   "irbench", "conftest", "test_prepare", "test_embed_cache",
-  "fake_engine", "adapter_helpers", "contract_fixture",
+  "fake_engine", "adapter_helpers", "contract_fixture", "report_fixtures",
 ]

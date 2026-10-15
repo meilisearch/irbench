@@ -2,7 +2,7 @@ import time
 from dataclasses import asdict, dataclass
 
 from irbench.io import write_json
-from irbench.runtime.docker import Runtime, wait_healthy
+from irbench.runtime.docker import Runtime, wait_ready
 from irbench.stages.context import RunContext
 
 HEALTH_TIMEOUT_S = 180
@@ -19,7 +19,7 @@ class IndexStats:
 def index_stage(ctx: RunContext, runtime: Runtime) -> IndexStats:
     adapter, docs, vectors = ctx.adapter, ctx.docs, ctx.doc_vectors
     with ctx.client() as client:
-        wait_healthy(client, adapter.health_path, HEALTH_TIMEOUT_S)
+        wait_ready(client, adapter.health_path, HEALTH_TIMEOUT_S)
         start = time.perf_counter()
         adapter.create_index(client)
         adapter.load_documents(client, docs, vectors)

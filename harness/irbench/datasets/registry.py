@@ -5,12 +5,14 @@ import httpx
 import yaml
 from pydantic import BaseModel
 
-from irbench.datasets.fetch import fetch_file
+from irbench.datasets.fetch import fetch_file, fetch_zip_member
 
 
 class FileSpec(BaseModel):
     url: str
     sha256: str
+    # A path inside the zip at `url`; only that member is fetched (range requests).
+    member: str | None = None
 
 
 class DatasetSpec(BaseModel):
@@ -32,7 +34,11 @@ def load_dataset_spec(root: Path, dataset_id: str) -> DatasetSpec:
 def fetch_dataset(
     spec: DatasetSpec, raw_dir: Path, client: httpx.Client | None = None
 ) -> dict[str, Path]:
-    return {
-        name: fetch_file(f.url, raw_dir / Path(urlparse(f.url).path).name, f.sha256, client)
-        for name, f in spec.files.items()
-    }
+    out: dict[str, Path] = {}
+    for name, f in spec.files.items():
+        if f.member:
+            out[name] = fetch_zip_member(f.url, f.member, raw_dir / f.member, f.sha256, client)
+        else:
+            dest = raw_dir / Path(urlparse(f.url).path).name
+            out[name] = fetch_file(f.url, dest, f.sha256, client)
+    return out

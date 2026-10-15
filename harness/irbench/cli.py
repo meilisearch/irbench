@@ -4,9 +4,14 @@ from pathlib import Path
 import typer
 
 from irbench import __version__
+from irbench.embed.publish import DEFAULT_RELEASE, REGISTRY, RELEASE_REPO, pack_vectors
 from irbench.io import read_json, read_jsonl, read_qrels, read_run
+from irbench.lint import lint_repo
 from irbench.models import QueryTask
 from irbench.paths import Workspace
+from irbench.perf_files import LEGACY_PAGE_SIZE
+from irbench.publish import publish_run
+from irbench.report.render import DEFAULT_DOCS_URL, build_site
 from irbench.runs import STAGES, RunSpec
 from irbench.score.relevance import score_relevance
 from irbench.stages.embed import embed_scenario
@@ -16,6 +21,9 @@ from irbench.stages.run import run_pipeline
 app = typer.Typer(no_args_is_help=True, help="IRBench: information retrieval benchmark harness.")
 
 ROOT_OPTION = typer.Option(Path.cwd(), "--root", help="Repository root.")
+
+vectors_app = typer.Typer(no_args_is_help=True, help="Pack embedding vectors for publishing.")
+app.add_typer(vectors_app, name="vectors")
 
 
 @app.callback()
@@ -49,12 +57,43 @@ def prepare(
 def embed(
     scenario: str = typer.Option(..., "--scenario"),
     model: str = typer.Option(..., "--model", help="Model id from the embedding registry."),
+    compute: bool = typer.Option(
+        False, "--compute", help="Embed locally even when published vectors exist."
+    ),
     root: Path = ROOT_OPTION,
 ) -> None:
-    """Embed docs and query variants with one model (cached, resumable)."""
-    r = embed_scenario(root, scenario, model)
-    typer.echo(f"{model}: {r.n_docs} docs, {r.n_queries} queries, {r.n_computed} newly embedded")
+    """Embed docs and query variants with one model: reuse local vectors that already
+    match the prepared data, otherwise download its published vectors, otherwise compute."""
+    r = embed_scenario(root, scenario, model, compute=compute)
+    typer.echo(
+        f"{model}: {r.n_docs} docs, {r.n_queries} queries, {r.n_computed} newly embedded "
+        f"({r.source})"
+    )
     typer.echo(f"docs: {r.docs_path}\nqueries: {r.queries_path}")
+
+
+@vectors_app.command("pack")
+def vectors_pack(
+    scenario: str = typer.Option(..., "--scenario"),
+    model: str = typer.Option(..., "--model"),
+    release: str = typer.Option(DEFAULT_RELEASE, "--release", help="GitHub release tag."),
+    out: Path = typer.Option(Path("dist/vectors"), "--out"),
+    root: Path = ROOT_OPTION,
+) -> None:
+    """Copy computed vectors into release assets and record them in embeddings/published.yaml."""
+    out_dir = out if out.is_absolute() else root / out
+    entry, files = pack_vectors(root, scenario, model, out_dir, release)
+    typer.echo(
+        f"packed {entry.docs.count} doc and {entry.queries.count} query vectors "
+        f"(dim {entry.docs.dim}); updated {REGISTRY}"
+    )
+    typer.echo("upload them, then commit the registry:")
+    typer.echo(
+        f"  gh release view {release} -R {RELEASE_REPO} >/dev/null 2>&1 || "
+        f"gh release create {release} -R {RELEASE_REPO} --title 'Published vectors' "
+        "--notes 'Embedding vectors used by IRBench runs.'"
+    )
+    typer.echo(f"  gh release upload {release} {' '.join(str(f) for f in files)} -R {RELEASE_REPO}")
 
 
 @app.command()
@@ -79,7 +118,11 @@ def score(
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(
         json.dumps(
-            {"scenario": scenario, "run": str(run), "groups": [g.model_dump() for g in groups]},
+            {
+                "scenario": scenario,
+                "run": str(run),
+                "groups": [g.model_dump(exclude_none=True) for g in groups],
+            },
             indent=2,
         )
         + "\n",
@@ -87,7 +130,19 @@ def score(
     )
     for g in groups:
         if g.perturbation == "all":
-            typer.echo(f"{g.mode}/{g.base}: nDCG@10={g.metrics['ndcg@10']:.4f} n={g.n}")
+            label = f"{g.mode}/{g.base}" + (f" [group {g.group}]" if g.group is not None else "")
+            typer.echo(f"{label}: nDCG@10={g.metrics['ndcg@10']:.4f} n={g.n}")
+
+
+@app.command()
+def lint(root: Path = ROOT_OPTION) -> None:
+    """Check engine configs against the machine-checkable parity rules (spec §7)."""
+    n, findings = lint_repo(root)
+    for finding in findings:
+        typer.echo(str(finding), err=True)
+    typer.echo(f"lint: {n} configs, {len(findings)} findings")
+    if findings:
+        raise typer.Exit(code=1)
 
 
 @app.command()
@@ -121,13 +176,66 @@ def run(
     if manifest["stages"].get("score", {}).get("status") == "succeeded":
         scores = read_json(run_dir / "scores.json")
         for g in scores["relevance"]:
-            if g["perturbation"] == "all":
+            if g["perturbation"] == "all" and "group" not in g:
                 ndcg = g["metrics"]["ndcg@10"]
                 typer.echo(f"{g['mode']}/{g['base']}: nDCG@10={ndcg:.4f} n={g['n']}")
         for key, reason in scores["not_applicable"].items():
             typer.echo(f"{key.replace(':', '/')}: N/A ({reason})")
         for key, what in scores["constraint_violations"].items():
             typer.echo(f"{key.replace(':', '/')}: CONSTRAINT VIOLATED ({what})")
+        perf = scores.get("perf") or {}
+        if perf and all("p50_ms" in v for v in perf.values()):  # legacy flat summary
+            perf = {str(LEGACY_PAGE_SIZE): perf}
+        for size, groups in perf.items():
+            for group, p in groups.items():
+                qps = (
+                    "n/a"
+                    if p["max_qps"] is None
+                    else f"{p['max_qps']:.0f} (c={p['max_qps_concurrency']})"
+                )
+                typer.echo(
+                    f"perf p{size} {group}: p50={p['p50_ms']:.2f}ms "
+                    f"p99={p['p99_ms']:.2f}ms max_qps={qps}"
+                )
     typer.echo(f"run dir: {run_dir}")
     if manifest["status"] != "succeeded":
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def publish(
+    run_ids: list[str] = typer.Argument(..., help="Run ids (folder names under .irbench/runs)."),
+    results: Path | None = typer.Option(None, "--results", help="Default: <root>/results."),
+    root: Path = ROOT_OPTION,
+) -> None:
+    """Copy finished runs into results/ (reference hardware profiles only)."""
+    failed = False
+    for run_id in run_ids:
+        try:
+            dest = publish_run(root, run_id, results)
+        except (FileNotFoundError, ValueError) as e:
+            typer.echo(f"{run_id}: {e}", err=True)
+            failed = True
+        else:
+            typer.echo(f"published {dest.relative_to(root) if dest.is_relative_to(root) else dest}")
+    if failed:
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def report(
+    results: Path = typer.Option(..., "--results", help="results/ or .irbench/runs for a preview."),
+    out: Path = typer.Option(..., "--out", help="Output directory (replaced on every build)."),
+    docs_url: str = typer.Option(DEFAULT_DOCS_URL, "--docs-url"),
+) -> None:
+    """Build the static HTML report from run bundles."""
+    try:
+        site = build_site(results, out, docs_url)
+    except (FileNotFoundError, FileExistsError) as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(code=1) from e
+    for u in site.unreadable:
+        typer.echo(f"unreadable bundle {u.path}: {u.error}", err=True)
+    typer.echo(f"report: {len(site.pages)} pages in {out}")
+    if site.unreadable:
         raise typer.Exit(code=1)

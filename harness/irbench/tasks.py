@@ -47,6 +47,7 @@ def build_tasks(
             text=query.text,
             mode=mode,
             base=base,
+            group=query.group,
             **extra,
         )
         result.tasks.append(task)

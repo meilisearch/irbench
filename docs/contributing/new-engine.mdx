@@ -1,0 +1,92 @@
+---
+title: Adding a new engine
+description: The files, adapter interface and contract tests a new engine needs
+---
+
+Adding an engine to IRBench means adding a new folder under `engines/` and
+implementing a small Python adapter. This page lists what's required.
+
+## Files every engine needs
+
+Under `engines/<engine>/`:
+
+- **`adapter.py`** — defines `Adapter`, a subclass of `EngineAdapter`
+  (see below). `Adapter.name` must equal the engine's folder name.
+- **`README.md`** — parity notes: what the default config sends, which
+  modes are supported, and the reasons behind any N/A entries.
+- **`docker/compose.yaml`** — a `services.engine` with a version-pinned
+  image (no `latest` tag — `irbench lint`'s `image-pin` rule rejects it) and
+  a healthcheck.
+- **`configs/<scenario>.yaml`** — at minimum a `default` track for every
+  scenario the engine supports (see
+  [Editing an engine config](/contributing/engine-config)).
+
+`irbench lint`'s `engine-files` rule checks that `adapter.py`, `README.md`
+and `docker/compose.yaml` exist for every engine folder.
+
+## Adapter methods
+
+`EngineAdapter` (`harness/irbench/engines/base.py`) is an abstract base
+class. A new adapter implements:
+
+| Method | What it does |
+|---|---|
+| `create_index(client)` | Drops any existing index with this name, then creates it from the scenario schema. |
+| `load_documents(client, docs, vectors)` | Sends every document with its vector (row *i* of `vectors` belongs to `docs[i]`). |
+| `wait_until_indexed(client, n_docs, timeout_s)` | Returns once all `n_docs` are searchable; raises `TimeoutError` or `EngineError` otherwise. |
+| `render(task, vector, limit, facets=True)` | Builds the search `Request` for one task (`facets=False` renders the facet-verification fetch). |
+| `parse(task, payload)` | Extracts doc IDs in rank order (and facet counts when requested) from a response body. |
+
+It also sets the class attributes `name`, `host_port`, `health_path` and
+`data_dir`, and may override `unsupported_reason(task)` and
+`search_params(task)` (both have working defaults backed by the engine
+config's `unsupported` and `search` maps).
+
+## SQL engines
+
+An engine queried with SQL over the Postgres wire protocol sets
+`protocol = "postgres"` on its adapter and returns `SqlRequest` objects
+(`harness/irbench/engines/base.py`) from `render`, instead of HTTP `Request`s.
+The simplest route is to subclass `irbench.engines.postgres.PostgresAdapter`,
+which already implements the schema, loading, and the semantic, hybrid,
+filtered, sorted and faceted statements. A subclass implements two abstract
+hooks, `keyword_match(q, text)` and `text_index_ddl()`, and may override
+`setup_ddl()`, `extra_columns()` and `keyword_tiebreak()`. The latter is the
+suffix after `score DESC` wherever the keyword base is ranked by score; it
+defaults to `, id` (a total order), and an engine whose BM25 scan can only
+push a bare score order down to its index returns `""`. The `postgres`
+adapter overrides `keyword_match`, `text_index_ddl`, `setup_ddl` and
+`extra_columns`; `postgres-paradedb` overrides `setup_ddl`, `text_index_ddl`,
+`keyword_match` and `keyword_tiebreak`.
+
+Rules for the SQL:
+
+- Write every placeholder as `$n::text`, optionally followed by a cast
+  (`$2::text::vector`, `$3::text::int`). Params are bound as text by
+  `irbench.engines.pg.bind_param`, the same rule as the load generator (see
+  [Rendered requests](/reference/results#rendered-requests)).
+- The adapter receives a `PostgresClient` where an HTTP adapter receives an
+  `httpx.Client`. The performance stage takes its connection string from
+  `engine_base_url`, which builds it from `host_port` for `postgres` adapters.
+
+## Contract tests
+
+`harness/tests/test_contract.py` runs every listed engine's adapter against
+a 100-document fixture in Docker, checking known-answer queries for keyword,
+semantic, hybrid, filtered, sorted and faceted modes (skipping modes the
+config marks unsupported). To add a new engine, add its folder name to the
+`ENGINES` list at the top of that file:
+
+```python
+ENGINES = ["meilisearch", "elasticsearch", "qdrant", "postgres", "postgres-paradedb"]
+```
+
+Run the suite for just the new engine with:
+
+```bash
+uv run pytest -m docker -k <engine>
+```
+
+These tests need Docker and are excluded from the default `pytest` run
+(`addopts = "-m 'not slow and not docker'"` in `pyproject.toml`); CI runs
+them explicitly on every PR.

@@ -1,3 +1,5 @@
+import json
+
 from adapter_helpers import SCENARIO, make_adapter, make_task
 from conftest import REPO_ROOT
 from irbench.engines.config import load_engine_config
@@ -87,3 +89,8 @@ def test_parse_ids_and_aggregations():
     result = adapter.parse(make_task("faceted", "keyword", facets=["product_class"]), payload)
     assert result.ids == ["9", "2"] and result.facets == {"product_class": {"Beds": 3}}
     assert adapter.parse(make_task("keyword"), {"hits": {"hits": []}}).facets is None
+
+
+def test_no_synonyms_creates_no_synonym_filter():
+    body = make_adapter("elasticsearch", synonyms=[]).index_body()
+    assert "irbench_synonyms" not in json.dumps(body)

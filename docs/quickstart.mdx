@@ -1,0 +1,64 @@
+---
+title: Quickstart
+description: Prepare a scenario, run one engine, and preview a local report
+---
+
+## Prerequisites
+
+- Python 3.12, managed with [`uv`](https://docs.astral.sh/uv/).
+- Docker, to run the engine containers.
+- A Rust toolchain, to build the `irbench-loadgen` performance binary.
+
+## Install
+
+```bash
+uv sync --extra embed-local
+```
+
+`embed-local` pulls in `sentence-transformers`, needed to embed documents and
+queries with a local model such as `bge-small-en-v1.5`. You only need this
+extra, or an embedding API key, when published vectors for a scenario/model
+pair aren't available yet — see [Published vectors](/methodology/overview#embeddings-and-vectors).
+
+## Prepare a scenario
+
+```bash
+uv run irbench prepare --scenario ecommerce/product-search
+```
+
+This downloads the scenario's dataset (WANDS here; the `knowledge-base/*`
+scenarios work the same way), verifies its checksums, normalizes it to
+`docs.jsonl` / `queries.jsonl` / `qrels.tsv`, and applies the scenario's seeded
+perturbations to generate query variants and the per-mode task list.
+
+## Run one engine
+
+```bash
+uv run irbench run --scenario ecommerce/product-search --engine meilisearch --model bge-small-en-v1.5
+```
+
+This runs the full pipeline on the `local` hardware profile: it embeds any
+vectors that aren't cached yet, starts the Meilisearch container, indexes the
+dataset, renders every query variant × mode to a request file, executes those
+requests once to score relevance, replays them with the Rust load generator to
+measure performance, and scores the run. Once the run finishes, each stage's
+result is printed with its status (`succeeded` or `failed`); a full run's
+manifest, scores, and performance numbers land under
+`.irbench/runs/<run-id>/`.
+
+## Preview a report
+
+```bash
+uv run irbench report --results .irbench/runs --out .irbench/site
+```
+
+This builds the static HTML report from whatever runs you have locally,
+including runs on the `local` hardware profile. Open
+`.irbench/site/index.html` in a browser to see it.
+
+Numbers produced on the `local` profile are for your own iteration only: they
+have no CPU or memory pinning, so they are **not comparable** to the
+published results and `irbench publish` refuses to publish them. Only runs on
+a pinned reference hardware profile (see
+[Performance methodology](/methodology/performance)) are published and
+compared.

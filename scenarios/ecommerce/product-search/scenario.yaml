@@ -45,3 +45,16 @@ perturbations:
   vocabulary: vocab_mismatch.txt
 
 synonyms: synonyms.txt
+
+# Load protocol for the perf stage (spec §5.7), identical for every engine.
+perf:
+  concurrency: [1, 2, 4, 8, 16, 32, 64]
+  step_seconds: 20
+  p99_limit_ms: 100
+  max_error_rate: 0.001
+  # Throughput runs on the retrieval bases; latency covers every mode.
+  throughput_groups: [keyword/keyword, semantic/semantic, hybrid/hybrid]
+  warmup_concurrency: 4
+  # Speed is measured at each page size, same protocol; relevance always uses top_k.
+  # 20: a search results page (headline). 100: deep retrieval (reranking, RAG).
+  page_sizes: [20, 100]

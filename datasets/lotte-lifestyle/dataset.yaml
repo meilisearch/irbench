@@ -1,0 +1,11 @@
+id: lotte-lifestyle
+version: "colbertv2-lotte@1a87807d+passages@3be7f857"
+license: Apache-2.0 (Hugging Face card); StackExchange content, CC BY-SA
+source: https://github.com/stanford-futuredata/ColBERT/blob/main/LoTTE.md
+files:
+  collection:
+    url: https://huggingface.co/datasets/colbertv2/lotte_passages/resolve/3be7f857585299f1268d29d3591202d731ea84a1/lifestyle/test_collection.jsonl
+    sha256: 6afca45a7a83ceaf5f1144631c57ab7796750037732970534511dab49a79ad9b
+  qas:
+    url: https://huggingface.co/datasets/colbertv2/lotte/resolve/1a87807da631e4197d77f7e720c38941abcf26d1/lifestyle/test_qas.search.jsonl
+    sha256: 4215b80512270e328c0f267b5b4b60b4a8914e34d4b5182994822acc53cdd539

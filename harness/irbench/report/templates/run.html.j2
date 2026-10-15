@@ -1,0 +1,121 @@
+{% extends "base.html.j2" %}
+{% block title %}{{ run.label }} · {{ run.model }} · IRBench{% endblock %}
+{% block main %}
+<p class="crumbs"><a href="../{{ s.slug }}.html">{{ s.scenario }} · {{ s.hardware }}</a></p>
+<h1>{{ run.label }} · {{ run.model }}</h1>
+<p class="meta">Status <strong>{{ run.status }}</strong> · track <code>{{ run.track }}</code> · profile <code>{{ run.hardware }}</code></p>
+{% if run.failure %}<p class="alert">{{ run.failure }}</p>{% endif %}
+
+{% if view.credits %}
+<section><h2>Credits</h2><p>Tuned configuration contributed by
+{% for c in view.credits %}{% if c.safe_url %}<a href="{{ c.safe_url }}">{{ c.name }}</a>{% else %}{{ c.name }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}.</p></section>
+{% endif %}
+
+<section>
+<h2>Configuration</h2>
+<dl class="facts">
+  <dt>Config file</dt><dd><code>{{ run.manifest.config.path|default("—") }}</code></dd>
+  <dt>Config hash</dt><dd><code>{{ run.manifest.config.hash|default("—") }}</code></dd>
+{% if view.synonyms %}
+  <dt>Synonyms</dt><dd>Synonyms not loaded: {{ view.synonyms }}</dd>
+{% endif %}
+</dl>
+{% if view.diff %}
+<h3>Changes from the default track</h3>
+<div class="scroll"><table>
+  <thead><tr><th>Setting</th><th>Default</th><th>This run</th></tr></thead>
+  <tbody>
+  {% for key, change in view.diff|dictsort %}
+    <tr><th scope="row"><code>{{ key }}</code></th><td><code>{{ change.default|tojson }}</code></td><td><code>{{ change.effective|tojson }}</code></td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}
+<p class="note">Identical to the default track.</p>
+{% endif %}
+</section>
+
+<section>
+<h2>Environment</h2>
+<dl class="facts">
+  <dt>Engine image</dt><dd><code>{{ run.manifest.engine_image.image|default("—") if run.manifest.engine_image is defined else "—" }}</code></dd>
+  <dt>Image digest</dt><dd><code>{{ run.manifest.engine_image.digest|default("—") if run.manifest.engine_image is defined else "—" }}</code></dd>
+  <dt>Harness</dt><dd><code>{{ run.manifest.irbench_version|default("—") }}</code> at <code>{{ run.manifest.git_sha|default("—") }}</code></dd>
+  <dt>Dataset</dt><dd><code>{{ run.manifest.dataset.id|default("—") if run.manifest.dataset is defined else "—" }}@{{ run.manifest.dataset.version|default("—") if run.manifest.dataset is defined else "—" }}</code></dd>
+  <dt>Perturbation seed</dt><dd><code>{{ run.manifest.seed|default("—") }}</code></dd>
+</dl>
+<h3>Stages</h3>
+<div class="scroll"><table>
+  <thead><tr><th>Stage</th><th>Status</th><th>Seconds</th><th>Error</th></tr></thead>
+  <tbody>
+  {% for name, info in view.stages.items() %}
+    <tr><th scope="row">{{ name }}</th><td>{{ info.status }}</td><td class="num">{{ info.seconds|default("—") }}</td><td>{{ info.error|default("") }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+</section>
+
+{% if view.relevance %}
+<section>
+<h2>Relevance</h2>
+<div class="scroll"><table>
+  <thead><tr><th>Mode</th><th>n</th><th>nDCG@10</th><th>Recall@10</th><th>Recall@100</th><th>MRR@10</th><th>Success@1</th>{% for p in view.perturbation_columns %}<th>{{ p }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for r in view.relevance %}
+    <tr>
+      <th scope="row">{{ r.group|group }}</th>
+      {% if r.na %}
+      <td class="na" colspan="{{ view.perturbation_columns|length + 6 }}">N/A: {{ r.na }}</td>
+      {% else %}
+      <td class="num">{{ r.n }}</td>
+      {% for m in ["ndcg@10", "recall@10", "recall@100", "mrr@10", "success@1"] %}<td class="num">{{ r.metrics[m]|score }}</td>{% endfor %}
+      {% for p in view.perturbation_columns %}<td class="num">{{ r.by_perturbation[p]|score }}</td>{% endfor %}
+      {% endif %}
+    </tr>
+    {% if r.violation %}<tr><td></td><td class="violated" colspan="{{ view.perturbation_columns|length + 6 }}">⚠ constraint violated: {{ r.violation }}</td></tr>{% endif %}
+  {% endfor %}
+  </tbody>
+</table></div>
+</section>
+{% endif %}
+
+{% if view.checks %}
+<section>
+<h2>Correctness checks</h2>
+<div class="scroll"><table>
+  <thead><tr><th>Mode</th><th>Tasks</th><th>Filter violations</th><th>Order violations</th><th>Facet accuracy</th><th>Facets verified</th><th>Facets unverifiable</th></tr></thead>
+  <tbody>
+  {% for c in view.checks %}
+    <tr>
+      <th scope="row">{{ (c.mode ~ "/" ~ c.base)|group }}</th><td class="num">{{ c.n }}</td>
+      <td class="num">{{ c.filter_violations if c.filter_violations is not none else "—" }}</td>
+      <td class="num">{{ c.order_violations if c.order_violations is not none else "—" }}</td>
+      <td class="num">{{ c.facet_accuracy|score }}</td>
+      <td class="num">{{ c.facet_verified if c.facet_verified is not none else "—" }}</td>
+      <td class="num">{{ c.facet_unverifiable if c.facet_unverifiable is not none else "—" }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+</section>
+{% endif %}
+
+{% if view.perf %}
+<section>
+<h2>Performance</h2>
+{% for sz in view.perf %}
+<h3>Page of {{ sz.size }} results{% if sz.title %} ({{ sz.title }}){% endif %}</h3>
+<div class="scroll"><table>
+  <thead><tr><th>Mode</th><th>Latency p50 / p99 (ms)</th><th>Max QPS</th></tr></thead>
+  <tbody>
+  {% for row in sz.rows %}
+    <tr><th scope="row">{{ row.group|group }}</th>
+      <td class="num {{ row.latency.kind }}">{{ row.latency.text }}</td>
+      <td class="num {{ row.max_qps.kind }}"{% if row.max_qps.note %} title="{{ row.max_qps.note }}"{% endif %}>{{ row.max_qps.text }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% endfor %}
+</section>
+{% endif %}
+{% endblock %}

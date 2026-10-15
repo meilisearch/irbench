@@ -1,0 +1,207 @@
+{
+ "faceted-keyword/check": {
+  "body": {
+   "attributesToRetrieve": [
+    "id"
+   ],
+   "limit": 1000,
+   "q": "grey sofa"
+  },
+  "headers": {},
+  "method": "POST",
+  "path": "/indexes/idx/search",
+  "protocol": "http"
+ },
+ "faceted-keyword/main": {
+  "body": {
+   "attributesToRetrieve": [
+    "id"
+   ],
+   "facets": [
+    "product_class"
+   ],
+   "limit": 100,
+   "q": "grey sofa"
+  },
+  "headers": {},
+  "method": "POST",
+  "path": "/indexes/idx/search",
+  "protocol": "http"
+ },
+ "faceted-semantic/check": {
+  "body": {
+   "attributesToRetrieve": [
+    "id"
+   ],
+   "hybrid": {
+    "embedder": "default",
+    "semanticRatio": 1.0
+   },
+   "limit": 1000,
+   "vector": [
+    0.1,
+    0.2,
+    0.3
+   ]
+  },
+  "headers": {},
+  "method": "POST",
+  "path": "/indexes/idx/search",
+  "protocol": "http"
+ },
+ "faceted-semantic/main": {
+  "body": {
+   "attributesToRetrieve": [
+    "id"
+   ],
+   "facets": [
+    "product_class"
+   ],
+   "hybrid": {
+    "embedder": "default",
+    "semanticRatio": 1.0
+   },
+   "limit": 100,
+   "vector": [
+    0.1,
+    0.2,
+    0.3
+   ]
+  },
+  "headers": {},
+  "method": "POST",
+  "path": "/indexes/idx/search",
+  "protocol": "http"
+ },
+ "filtered-keyword/main": {
+  "body": {
+   "attributesToRetrieve": [
+    "id"
+   ],
+   "filter": "product_class = \"Beds\"",
+   "limit": 100,
+   "q": "grey sofa"
+  },
+  "headers": {},
+  "method": "POST",
+  "path": "/indexes/idx/search",
+  "protocol": "http"
+ },
+ "filtered-semantic/main": {
+  "body": {
+   "attributesToRetrieve": [
+    "id"
+   ],
+   "filter": "product_class = \"Beds\"",
+   "hybrid": {
+    "embedder": "default",
+    "semanticRatio": 1.0
+   },
+   "limit": 100,
+   "vector": [
+    0.1,
+    0.2,
+    0.3
+   ]
+  },
+  "headers": {},
+  "method": "POST",
+  "path": "/indexes/idx/search",
+  "protocol": "http"
+ },
+ "hybrid/main": {
+  "body": {
+   "attributesToRetrieve": [
+    "id"
+   ],
+   "hybrid": {
+    "embedder": "default"
+   },
+   "limit": 100,
+   "q": "grey sofa",
+   "vector": [
+    0.1,
+    0.2,
+    0.3
+   ]
+  },
+  "headers": {},
+  "method": "POST",
+  "path": "/indexes/idx/search",
+  "protocol": "http"
+ },
+ "keyword/main": {
+  "body": {
+   "attributesToRetrieve": [
+    "id"
+   ],
+   "limit": 100,
+   "q": "grey sofa"
+  },
+  "headers": {},
+  "method": "POST",
+  "path": "/indexes/idx/search",
+  "protocol": "http"
+ },
+ "semantic/main": {
+  "body": {
+   "attributesToRetrieve": [
+    "id"
+   ],
+   "hybrid": {
+    "embedder": "default",
+    "semanticRatio": 1.0
+   },
+   "limit": 100,
+   "vector": [
+    0.1,
+    0.2,
+    0.3
+   ]
+  },
+  "headers": {},
+  "method": "POST",
+  "path": "/indexes/idx/search",
+  "protocol": "http"
+ },
+ "sorted-keyword/main": {
+  "body": {
+   "attributesToRetrieve": [
+    "id"
+   ],
+   "limit": 100,
+   "q": "grey sofa",
+   "sort": [
+    "average_rating:desc"
+   ]
+  },
+  "headers": {},
+  "method": "POST",
+  "path": "/indexes/idx/search",
+  "protocol": "http"
+ },
+ "sorted-semantic/main": {
+  "body": {
+   "attributesToRetrieve": [
+    "id"
+   ],
+   "hybrid": {
+    "embedder": "default",
+    "semanticRatio": 1.0
+   },
+   "limit": 100,
+   "sort": [
+    "average_rating:desc"
+   ],
+   "vector": [
+    0.1,
+    0.2,
+    0.3
+   ]
+  },
+  "headers": {},
+  "method": "POST",
+  "path": "/indexes/idx/search",
+  "protocol": "http"
+ }
+}

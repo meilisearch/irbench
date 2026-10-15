@@ -17,6 +17,7 @@ class GroupScore(BaseModel):
     perturbation: str
     n: int
     metrics: dict[str, float]
+    group: str | None = None
 
 
 def _ranked_scores(ids: list[str]) -> dict[str, float]:
@@ -44,14 +45,29 @@ def _evaluate(task_ids: list[str], qrels: Qrels, run: RunResults) -> dict[str, f
 
 def score_relevance(tasks: list[QueryTask], qrels: Qrels, run: RunResults) -> list[GroupScore]:
     groups: dict[tuple[str, str, str], list[str]] = defaultdict(list)
+    by_query_group: dict[tuple[str, str, str], list[str]] = defaultdict(list)
     for task in tasks:
         if task.task_id not in qrels:
             raise ValueError(f"task {task.task_id} has no qrels")
         groups[(task.mode, task.base, "all")].append(task.task_id)
         groups[(task.mode, task.base, task.perturbation)].append(task.task_id)
-    return [
+        if task.group is not None:
+            by_query_group[(task.mode, task.base, task.group)].append(task.task_id)
+    rows = [
         GroupScore(
             mode=mode, base=base, perturbation=p, n=len(ids), metrics=_evaluate(ids, qrels, run)
         )
         for (mode, base, p), ids in sorted(groups.items())
     ]
+    rows += [
+        GroupScore(
+            mode=mode,
+            base=base,
+            perturbation="all",
+            group=group,
+            n=len(ids),
+            metrics=_evaluate(ids, qrels, run),
+        )
+        for (mode, base, group), ids in sorted(by_query_group.items())
+    ]
+    return rows

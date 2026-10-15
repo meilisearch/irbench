@@ -110,7 +110,13 @@ class Adapter(EngineAdapter):
             )
 
     def render(
-        self, task: QueryTask, vector: list[float] | None, limit: int, facets: bool = True
+        self,
+        task: QueryTask,
+        vector: list[float] | None,
+        limit: int,
+        facets: bool = True,
+        *,
+        depth: int | None = None,
     ) -> Request:
         body: dict[str, Any] = {}
         if task.base in ("keyword", "hybrid"):

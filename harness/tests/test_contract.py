@@ -2,27 +2,28 @@
 queries for every mode it claims. Needs Docker: `uv run pytest -m docker`."""
 
 from dataclasses import dataclass
+from typing import Any
 
-import httpx
 import numpy as np
 import pytest
 
 from adapter_helpers import SCENARIO, make_task
 from conftest import REPO_ROOT
 from contract_fixture import COLORS, ITEMS, contract_docs, rating
-from irbench.engines.base import EngineAdapter, IndexContext, load_adapter_class
+from irbench.engines.base import EngineAdapter, IndexContext, engine_base_url, load_adapter_class
 from irbench.engines.config import load_engine_config
 from irbench.models import Filter, Sort
-from irbench.runtime.docker import DockerRuntime, wait_healthy
+from irbench.runtime.docker import DockerRuntime, wait_ready
 from irbench.runtime.hardware import load_hardware
 from irbench.scenario import load_scenario
 from irbench.score.checks import check_task
+from irbench.stages.context import default_client
 from irbench.stages.relevance import run_request
 from irbench.terms import load_term_groups
 
 pytestmark = pytest.mark.docker
 
-ENGINES = ["meilisearch", "elasticsearch", "qdrant"]
+ENGINES = ["meilisearch", "elasticsearch", "qdrant", "postgres", "postgres-paradedb"]
 INDEX = "irbench_contract"
 TOP_K = 100
 VERIFY_LIMIT = 1000
@@ -31,7 +32,7 @@ VERIFY_LIMIT = 1000
 @dataclass
 class Engine:
     adapter: EngineAdapter
-    client: httpx.Client
+    client: Any
     docs: list[dict]
     docs_by_id: dict[str, dict]
     vectors: np.ndarray
@@ -65,13 +66,14 @@ def engine(request):
             index=INDEX,
             dim=vectors.shape[1],
             synonyms=load_term_groups(scenario.synonyms_path),
+            n_docs=len(docs),
         )
     )
     runtime = DockerRuntime(REPO_ROOT, name, load_hardware(REPO_ROOT, "local"))
     runtime.up()
-    client = httpx.Client(base_url=f"http://localhost:{cls.host_port}", timeout=60)
+    client = default_client(engine_base_url(cls, "localhost"))
     try:
-        wait_healthy(client, cls.health_path, 180)
+        wait_ready(client, cls.health_path, 180)
         e = Engine(adapter, client, docs, {d["id"]: d for d in docs}, vectors)
         e.index()
         yield e
@@ -96,6 +98,9 @@ def test_keyword_known_answer(engine):
 
 
 def test_keyword_loads_shared_synonyms(engine):
+    reason = engine.adapter.ctx.config.synonyms
+    if reason:
+        pytest.skip(f"{engine.adapter.name}: synonyms.txt is not loaded — {reason}")
     ids = engine.search(make_task("keyword", text="gray")).ids
     assert ids and set(ids) <= _ids_where(lambda i: COLORS[i // 10] == "grey")
 
@@ -136,9 +141,10 @@ def test_sorted_keyword_orders_and_puts_missing_values_last(engine):
 
 
 def test_sorted_keyword_orders_across_relevance_buckets(engine):
-    # "grey chair": doc 53 matches both words, other grey docs and chairs match one.
+    # "grey" matches the ten grey docs (50-59), whose relevance scores differ, so sorting
+    # by review_count must reorder across relevance levels (works for OR and AND engines).
     sort = Sort(field="review_count", direction="desc")
-    task = make_task("sorted", "keyword", text="grey chair", sort=sort)
+    task = make_task("sorted", "keyword", text="grey", sort=sort)
     result = engine.search(task)
     assert len(result.ids) > 1
     assert check_task(task, result, None, engine.docs_by_id, VERIFY_LIMIT).order_violations == 0
@@ -160,3 +166,51 @@ def test_facet_counts_match_the_result_set(engine, base):
     check = check_task(task, result, check_ids, engine.docs_by_id, VERIFY_LIMIT)
     assert check.facet_verifiable is True
     assert check.facet_accuracy == 1.0, (result.facets, check_ids)
+
+
+def test_hostile_query_text_is_harmless(engine):
+    engine.search(make_task("keyword", text='sofa\'; DROP TABLE x; -- "grey" | !velvet'))
+    assert engine.search(make_task("keyword", text="sofa")).ids  # still answers afterwards
+
+
+def test_postgres_synonym_groups_unify(engine):
+    """Every member of every synonyms.txt group yields the same tsvector, and one member's
+    query matches a document that contains another (needs the engine's text search config)."""
+    if engine.adapter.name != "postgres":
+        pytest.skip("Postgres text search configuration only")
+    cfg = engine.adapter.ts_config
+    for group in engine.adapter.thesaurus_groups():
+        vectors = {
+            member: engine.client.execute(
+                f"SELECT to_tsvector('{cfg}', $1::text)::text AS v", [member]
+            )[0]["v"]
+            for member in group
+        }
+        assert len(set(vectors.values())) == 1, vectors
+        for query in group:
+            for doc in group:
+                hit = engine.client.execute(
+                    f"SELECT to_tsvector('{cfg}', 'a ' || $1::text || ' b') @@ "
+                    f"websearch_to_tsquery('{cfg}', $2::text) AS hit",
+                    [doc, query],
+                )[0]["hit"]
+                assert hit, (query, doc)
+
+
+def test_repeated_statement_survives_the_generic_plan_switch(engine):
+    """psycopg auto-prepares after 5 executions, then Postgres runs 5 custom plans before it may pick a generic one (execution 11 on): the loadgen always prepares. The same
+    rendered statement must keep working past Postgres' switch to a generic plan. A fresh
+    client proves the database-level settings reach every new connection."""
+    if engine.adapter.protocol != "postgres":
+        pytest.skip("Postgres prepared statements only")
+    from irbench.engines.pg import PostgresClient
+
+    task = make_task("keyword", text="white table")
+    request = engine.adapter.render(task, None, TOP_K)
+    client = PostgresClient(engine.client.dsn)
+    try:
+        for i in range(30):
+            rows = client.execute(request.sql, request.params, 30)
+            assert rows and rows[0]["id"] == "42", f"execution {i + 1}"
+    finally:
+        client.close()

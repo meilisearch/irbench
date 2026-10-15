@@ -12,11 +12,12 @@ from irbench.embed.base import Embedder
 from irbench.io import read_json
 from irbench.manifest import write_manifest
 from irbench.runs import STAGES, RunSpec
-from irbench.runtime.docker import DockerRuntime, Runtime
+from irbench.runtime.docker import DockerRuntime, Runner, Runtime, run_command
 from irbench.runtime.hardware import HardwareProfile, load_hardware
 from irbench.stages.context import ClientFactory, RunContext, default_client
 from irbench.stages.embed import embed_scenario
 from irbench.stages.index import index_stage
+from irbench.stages.perf import perf_stage
 from irbench.stages.prepare import prepare
 from irbench.stages.relevance import relevance_stage
 from irbench.stages.render import render_stage
@@ -28,8 +29,9 @@ GENERATED_KEYS = ("irbench_version", "git_sha", "created_at")
 # outputs and those of every later stage.
 STAGE_OUTPUTS = {
     "index": ("index.json",),
-    "render": ("rendered", "na.json"),
+    "render": ("rendered", "rendered-p*", "na.json"),
     "relevance": ("run.trec", "checks.jsonl", "errors.jsonl"),
+    "perf": ("perf.json", "perf-p*.json"),
     "score": ("scores.json",),
 }
 
@@ -47,6 +49,7 @@ def run_pipeline(
     client_factory: ClientFactory | None = None,
     prepare_client: httpx.Client | None = None,
     embedder: Embedder | None = None,
+    loadgen_runner: Runner | None = None,
 ) -> dict[str, Any]:
     unknown = [s for s in stages if s not in STAGES]
     if unknown:
@@ -77,7 +80,7 @@ def run_pipeline(
             return {"tasks": prepare(root, spec.scenario, client=prepare_client).n_tasks}
         if stage == "embed":
             result = embed_scenario(root, spec.scenario, spec.model, embedder)
-            return {"computed": result.n_computed}
+            return {"computed": result.n_computed, "source": result.source}
         if stage == "up":
             runtime.up()
             manifest["engine_image"] = runtime.image_info()
@@ -96,6 +99,8 @@ def run_pipeline(
                     f"{limit:.2%}: see errors.jsonl"
                 )
             return asdict(result)
+        if stage == "perf":
+            return perf_stage(ctx, profile, runner=loadgen_runner or run_command)
         if stage == "score":
             report = score_stage(ctx)
             return {"errors": report["errors"], "not_applicable": len(report["not_applicable"])}
@@ -145,12 +150,12 @@ def _invalidate_from(run_dir: Path, log: dict[str, Any], first: str | None) -> N
         return
     for stage in STAGES[STAGES.index(first) :]:
         log.pop(stage, None)
-        for name in STAGE_OUTPUTS.get(stage, ()):
-            path = run_dir / name
-            if path.is_dir():
-                shutil.rmtree(path)
-            else:
-                path.unlink(missing_ok=True)
+        for pattern in STAGE_OUTPUTS.get(stage, ()):
+            for path in run_dir.glob(pattern):
+                if path.is_dir():
+                    shutil.rmtree(path)
+                else:
+                    path.unlink(missing_ok=True)
 
 
 def _describe_inputs(ctx: RunContext, manifest: dict[str, Any]) -> None:
@@ -159,6 +164,11 @@ def _describe_inputs(ctx: RunContext, manifest: dict[str, Any]) -> None:
             "path": str(ctx.config.path.relative_to(ctx.root)),
             "hash": ctx.config.hash(ctx.spec.track),
             "diff_vs_default": ctx.config.diff(ctx.spec.track),
+            "synonyms": ctx.config.track(ctx.spec.track).synonyms,
+            # Credits belong to the tuned track (spec §11); the default track is the engine as shipped.
+            "credits": [c.model_dump() for c in ctx.config.credits]
+            if ctx.spec.track == "tuned"
+            else [],
         }
     except (FileNotFoundError, ValueError) as e:
         manifest["config"] = {"error": str(e)}

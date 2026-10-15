@@ -1,4 +1,8 @@
 import hashlib
+import io
+import re
+import time
+import zipfile
 from pathlib import Path
 
 import httpx
@@ -37,4 +41,115 @@ def fetch_file(url: str, dest: Path, sha256: str, client: httpx.Client | None = 
         tmp.unlink()
         raise ChecksumError(f"{url}: expected sha256 {sha256}, got {actual}")
     tmp.replace(dest)
+    return dest
+
+
+_RANGE_ATTEMPTS = 4
+
+
+_sleep = time.sleep
+
+
+class RangeNotSupported(RuntimeError):
+    pass
+
+
+class MemberNotFound(RuntimeError):
+    pass
+
+
+class _HttpRangeFile(io.RawIOBase):
+    """Read-only, seekable view of a remote file, one HTTP range request per read."""
+
+    def __init__(self, url: str, client: httpx.Client, max_request: int):
+        self.url, self.client, self.max_request, self.pos = url, client, max_request, 0
+        self.size = self._total()
+
+    def _get(self, start: int, end: int) -> bytes:
+        for attempt in range(_RANGE_ATTEMPTS):
+            try:
+                # stream, so a server that ignores Range never has its body read
+                with self.client.stream(
+                    "GET", self.url, headers={"Range": f"bytes={start}-{end}"}
+                ) as r:
+                    if r.status_code != 206:
+                        raise RangeNotSupported(
+                            f"{self.url}: the server answered {r.status_code} to a range "
+                            "request; single files cannot be read out of this archive"
+                        )
+                    self._last_headers = r.headers
+                    return r.read()
+            except httpx.TransportError:  # a dropped connection on a long run of reads
+                if attempt == _RANGE_ATTEMPTS - 1:
+                    raise
+                _sleep(2**attempt)
+        raise AssertionError("unreachable")
+
+    def _total(self) -> int:
+        self._get(0, 0)
+        m = re.search(r"/(\d+)$", self._last_headers.get("content-range", ""))
+        if not m:
+            raise RangeNotSupported(f"{self.url}: no Content-Range total in the reply")
+        return int(m[1])
+
+    def readable(self) -> bool:
+        return True
+
+    def seekable(self) -> bool:
+        return True
+
+    def tell(self) -> int:
+        return self.pos
+
+    def seek(self, offset: int, whence: int = io.SEEK_SET) -> int:
+        base = {io.SEEK_SET: 0, io.SEEK_CUR: self.pos, io.SEEK_END: self.size}[whence]
+        self.pos = base + offset
+        return self.pos
+
+    def readinto(self, buffer) -> int:  # type: ignore[override]
+        if self.pos >= self.size:
+            return 0
+        end = min(self.pos + min(len(buffer), self.max_request), self.size) - 1
+        data = self._get(self.pos, end)
+        buffer[: len(data)] = data
+        self.pos += len(data)
+        return len(data)
+
+
+def fetch_zip_member(
+    url: str,
+    member: str,
+    dest: Path,
+    sha256: str,
+    client: httpx.Client | None = None,
+    buffer_size: int = 8 << 20,
+) -> Path:
+    """Extract one member of a remote zip, reading only the bytes it needs. The member is
+    streamed to disk in chunks; `buffer_size` is the size of each range request."""
+    if dest.exists() and sha256_file(dest) == sha256:
+        return dest
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_name(dest.name + ".part")
+    owned = client is None
+    http = client or httpx.Client(follow_redirects=True, timeout=120)
+    try:
+        remote = io.BufferedReader(_HttpRangeFile(url, http, buffer_size), buffer_size=buffer_size)
+        with zipfile.ZipFile(remote) as archive:
+            try:
+                info = archive.getinfo(member)
+            except KeyError:
+                raise MemberNotFound(f"{url}: no member {member!r} in the archive") from None
+            with archive.open(info) as src, tmp.open("wb") as out:
+                for chunk in iter(lambda: src.read(1 << 20), b""):
+                    out.write(chunk)
+        actual = sha256_file(tmp)
+        if actual != sha256:
+            raise ChecksumError(f"{url}!{member}: expected sha256 {sha256}, got {actual}")
+        tmp.replace(dest)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+    finally:
+        if owned:
+            http.close()
     return dest
