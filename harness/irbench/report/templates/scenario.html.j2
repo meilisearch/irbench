@@ -67,7 +67,7 @@ typo, are cut short (search as you type){% if "synonym" in view.perturbation_kin
 {% if view.query_groups %}
 <section>
 <h2>By query group</h2>
-<p class="note">nDCG@10 for each group of queries (for example question vs keyword form), over the original queries and their perturbed variants (typo, prefix); n is the number of queries behind each column.</p>
+<p class="note">nDCG@10 for each group of queries (for example question vs keyword form), over the original queries and their perturbed variants (typo, prefix); n is the number of tasks behind each column (each query plus its typo and prefix variants).</p>
 {% for t in view.query_groups %}
 <h3>{{ t.group|group }}: nDCG@10</h3>
 <div class="scroll"><table>
