@@ -55,7 +55,25 @@ def test_keyword_semantic_hybrid_requests():
     assert "query" not in sem
     assert sem["knn"] == {"field": "vector", "query_vector": V, "k": 100}
     hyb = _body(make_task("hybrid"), V)
-    assert hyb["query"]["multi_match"]["query"] == "grey sofa" and hyb["knn"]["k"] == 100
+    assert "query" not in hyb and "knn" not in hyb
+    assert hyb["retriever"] == {
+        "rrf": {
+            "retrievers": [
+                {"standard": {"query": {"multi_match": {"query": "grey sofa", "fields": FIELDS}}}},
+                {"knn": {"field": "vector", "query_vector": V, "k": 100}},
+            ],
+            "rank_constant": 60,
+            "rank_window_size": 100,
+        }
+    }
+
+
+def test_hybrid_rrf_window_follows_the_request_depth():
+    adapter = make_adapter("elasticsearch")
+    body = adapter.render(make_task("hybrid"), V, 20, depth=20).body
+    rrf = body["retriever"]["rrf"]
+    assert body["size"] == 20 and rrf["rank_window_size"] == 20
+    assert rrf["retrievers"][1]["knn"]["k"] == 20
 
 
 def test_filters_on_keyword_and_vector_bases():

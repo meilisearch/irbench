@@ -23,7 +23,9 @@ def test_meilisearch_page_of_20():
 
 def test_elasticsearch_knn_k_follows_depth():
     body = _body("elasticsearch", make_task("hybrid"), 20, 20)
-    assert body["size"] == 20 and body["knn"]["k"] == 20
+    rrf = body["retriever"]["rrf"]
+    assert body["size"] == 20 and rrf["rank_window_size"] == 20
+    assert rrf["retrievers"][1]["knn"]["k"] == 20
 
 
 def test_qdrant_pools_follow_depth():

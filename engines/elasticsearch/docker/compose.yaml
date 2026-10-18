@@ -8,6 +8,10 @@ services:
     environment:
       discovery.type: single-node
       xpack.security.enabled: "false"   # local benchmark only
+      # The rrf retriever (hybrid) needs a paid license; the basic license returns 403. The
+      # self-generated 30-day trial unlocks it. `down -v` drops the volume, so every run
+      # starts a fresh trial.
+      xpack.license.self_generated.type: trial
       # No heap override: Elasticsearch sizes its heap from the container memory limit.
     volumes:
       - data:/usr/share/elasticsearch/data

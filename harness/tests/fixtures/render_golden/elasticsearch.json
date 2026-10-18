@@ -161,25 +161,39 @@
  "hybrid/main": {
   "body": {
    "_source": false,
-   "knn": {
-    "field": "vector",
-    "k": 100,
-    "query_vector": [
-     0.1,
-     0.2,
-     0.3
-    ]
-   },
-   "query": {
-    "multi_match": {
-     "fields": [
-      "name^5",
-      "product_class^4",
-      "category^3",
-      "features^2",
-      "description^1"
-     ],
-     "query": "grey sofa"
+   "retriever": {
+    "rrf": {
+     "rank_constant": 60,
+     "rank_window_size": 100,
+     "retrievers": [
+      {
+       "standard": {
+        "query": {
+         "multi_match": {
+          "fields": [
+           "name^5",
+           "product_class^4",
+           "category^3",
+           "features^2",
+           "description^1"
+          ],
+          "query": "grey sofa"
+         }
+        }
+       }
+      },
+      {
+       "knn": {
+        "field": "vector",
+        "k": 100,
+        "query_vector": [
+         0.1,
+         0.2,
+         0.3
+        ]
+       }
+      }
+     ]
     }
    },
    "size": 100

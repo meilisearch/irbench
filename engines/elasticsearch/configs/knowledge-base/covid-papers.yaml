@@ -3,7 +3,8 @@
 # default: Elasticsearch as shipped. adapter.py generates only what the
 #   scenario schema requires (mapping, field boosts
 #   from the scenario's priority order, dense_vector).
-#   Not enabled by default: fuzziness, prefix matching, stemming, RRF.
+#   Not enabled by default: fuzziness, prefix matching, stemming. Hybrid uses
+#   the rrf retriever (trial license, see README).
 # tuned: changes within the parity rules. Add a `tuned:` block here; it is
 #   deep-merged over `default`. Example: fuzziness on keyword queries:
 #     tuned:

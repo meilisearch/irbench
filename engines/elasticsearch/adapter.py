@@ -22,6 +22,8 @@ VECTOR_FIELD = "vector"
 SYNONYMS_FILTER = "irbench_synonyms"
 SEARCH_ANALYZER = "irbench_search"
 BATCH_SIZE = 1000
+# Reciprocal rank fusion constant, the same k = 60 as Qdrant and the two Postgres engines.
+RRF_RANK_CONSTANT = 60
 
 
 class Adapter(EngineAdapter):
@@ -126,6 +128,22 @@ class Adapter(EngineAdapter):
             return {"term": {self.exact_field(f.field): f.value}}
         return {"range": {f.field: {f.op: float(f.value)}}}
 
+    def _knn(
+        self,
+        task: QueryTask,
+        vector: list[float] | None,
+        depth: int,
+        filters: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        knn: dict[str, Any] = {
+            "field": VECTOR_FIELD,
+            "query_vector": require_vector(task, vector),
+            "k": depth,
+        }
+        if filters:
+            knn["filter"] = filters
+        return knn
+
     def render(
         self,
         task: QueryTask,
@@ -139,18 +157,28 @@ class Adapter(EngineAdapter):
         depth = self.pool_depth(depth)
         body: dict[str, Any] = {"size": limit, "_source": False}
         filters = [self._filter_clause(task.filter)] if task.filter is not None else []
-        if task.base in ("keyword", "hybrid"):
+        if task.base == "keyword":
             query = self._text_query(task.text)
             body["query"] = {"bool": {"must": [query], "filter": filters}} if filters else query
-        if task.base in ("semantic", "hybrid"):
-            knn: dict[str, Any] = {
-                "field": VECTOR_FIELD,
-                "query_vector": require_vector(task, vector),
-                "k": depth,
-            }
+        if task.base == "semantic":
+            body["knn"] = self._knn(task, vector, depth, filters)
+        if task.base == "hybrid":
+            # Native rank fusion of the BM25 top `depth` and the vector top `depth`. Adding the
+            # two scores (`query` + `knn`) lets BM25, whose scores are unbounded, drown the
+            # cosine score in [0, 1].
+            standard: dict[str, Any] = {"query": self._text_query(task.text)}
             if filters:
-                knn["filter"] = filters
-            body["knn"] = knn
+                standard["filter"] = filters
+            body["retriever"] = {
+                "rrf": {
+                    "retrievers": [
+                        {"standard": standard},
+                        {"knn": self._knn(task, vector, depth, filters)},
+                    ],
+                    "rank_constant": RRF_RANK_CONSTANT,
+                    "rank_window_size": max(depth, limit),
+                }
+            }
         if task.sort is not None:
             body["sort"] = [{task.sort.field: {"order": task.sort.direction}}]
         if facets and task.facets:
