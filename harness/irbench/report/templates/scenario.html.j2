@@ -11,8 +11,11 @@ the method; they are not comparable with published results.</p>
 
 <section>
 <h2>Relevance: nDCG@10 by mode</h2>
-<p class="note">N/A marks a mode the engine does not support (reasons below). ⚠ marks a score
-whose results broke the mode's contract (filter or order violations); it does not measure that mode.</p>
+<p class="note">Bold marks the best score of each column (per embedding model); ≈ marks a score
+not significantly below it (paired randomization test over the same tasks, p ≥ 0.05). ± is the
+half-width of the 95% confidence interval. N/A marks a mode the engine does not support (reasons
+below). ⚠ marks a score whose results broke the mode's contract (filter or order violations); it
+does not measure that mode.</p>
 <div class="scroll"><table class="matrix">
   <thead><tr><th>Engine</th><th>Model</th>{% for g in view.columns %}<th>{{ g|group }}</th>{% endfor %}</tr></thead>
   <tbody>
@@ -24,13 +27,30 @@ whose results broke the mode's contract (filter or order violations); it does no
       <td class="failed" colspan="{{ view.columns|length }}">{{ row.run.status }}: {{ row.run.failure }}</td>
       {% else %}
       {% for c in row.cells %}
-      <td class="num {{ c.kind }}"{% if c.note %} title="{{ c.note }}"{% endif %}>{% if c.kind == "violated" %}⚠ {% endif %}{{ c.text }}</td>
+      <td class="num {{ c.kind }}{% if c.best %} best{% endif %}"{% if c.note %} title="{{ c.note }}"{% endif %}>{% if c.kind == "violated" %}⚠ {% endif %}{% if c.tied %}≈ {% endif %}{% if c.best %}<strong>{{ c.text }}</strong>{% else %}{{ c.text }}{% endif %}{% if c.ci %} <small class="ci">{{ c.ci }}</small>{% endif %}</td>
       {% endfor %}
       {% endif %}
     </tr>
   {% endfor %}
   </tbody>
 </table></div>
+{% if view.judged %}
+<h3>Judged results: judged@10</h3>
+<p class="note">Share of each query's top 10 results that carry a relevance judgment (relevant or
+not). Unjudged documents count as non-relevant, so a run with low judged@10 may be better than
+its nDCG@10 says: it returns documents nobody assessed.</p>
+<div class="scroll"><table>
+  <thead><tr><th>Engine</th><th>Model</th>{% for g in view.judged_groups %}<th>{{ g|group }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for r in view.judged %}
+    <tr>
+      <th scope="row">{{ r.run.label }}</th><td>{{ r.run.model }}</td>
+      {% for v in r.cells %}<td class="num">{{ v|score }}</td>{% endfor %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% endif %}
 {% if view.na_notes %}
 <h3>Not applicable</h3>
 <ul class="notes">

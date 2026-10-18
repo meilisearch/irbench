@@ -3,7 +3,7 @@ only compared within a profile, §8) and one per run. Plain HTML, no JavaScript.
 
 import shutil
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from importlib import resources
 from pathlib import Path
 from typing import Any
@@ -20,6 +20,7 @@ from irbench.report.data import (
     group_key,
     load_results,
 )
+from irbench.report.stats import ALPHA, paired_randomization_p
 
 MARKER = ".irbench-report"
 DEFAULT_DOCS_URL = "https://github.com/meilisearch/irbench/tree/main/docs"
@@ -33,6 +34,9 @@ class Cell:
     text: str
     kind: str  # score | na | violated | missing | failed
     note: str = ""
+    ci: str = ""  # 95% confidence interval half-width, e.g. "±0.012"
+    best: bool = False  # highest score of its column (same embedding model)
+    tied: bool = False  # not significantly different from the best (paired test)
 
 
 @dataclass(frozen=True)
@@ -104,7 +108,46 @@ def relevance_cell(run: RunResult, group: str) -> Cell:
             "violated",
             f"constraint violated: {violation}; this score does not measure the mode",
         )
-    return Cell(fmt_score(value), "score")
+    ci = run.ndcg_ci95(group)
+    half = f"±{(ci[1] - ci[0]) / 2:.3f}" if ci else ""
+    note = f"95% CI {ci[0]:.3f}–{ci[1]:.3f}" if ci else ""
+    return Cell(fmt_score(value), "score", note, half)
+
+
+def mark_winners(runs: list[RunResult], groups: list[str]) -> list[list[Cell]]:
+    """Relevance cells per run, with each column's best score (per embedding model) marked,
+    and the runs whose gap to it is not significant (paired randomization test, p ≥ ALPHA)
+    marked as tied. Bundles without per-task scores get no tie mark."""
+    cells = [[relevance_cell(r, g) for g in groups] for r in runs]
+    for j, group in enumerate(groups):
+        by_model: dict[str, list[int]] = defaultdict(list)
+        for i, run in enumerate(runs):
+            if not run.failure and cells[i][j].kind == "score":
+                by_model[run.model].append(i)
+        for indexes in by_model.values():
+            best = max(indexes, key=lambda i: runs[i].ndcg(group) or 0.0)
+            cells[best][j] = replace(cells[best][j], best=True)
+            best_tasks = runs[best].per_task(group)
+            for i in indexes:
+                other = runs[i].per_task(group)
+                if i == best or best_tasks is None or other is None:
+                    continue
+                p = paired_randomization_p(best_tasks, other)
+                if p is not None and p >= ALPHA:
+                    c = cells[i][j]
+                    note = f"{c.note}; " if c.note else ""
+                    cells[i][j] = replace(
+                        c, tied=True, note=f"{note}not significantly below the best (p = {p:.2f})"
+                    )
+    return cells
+
+
+def judged_rows(s: ScenarioResults) -> list[dict[str, Any]]:
+    """judged@10 per run on the retrieval bases (empty for bundles scored before it existed)."""
+    rows = [
+        {"run": r, "cells": [r.judged(g) for g in BASE_GROUPS]} for r in s.runs if not r.failure
+    ]
+    return [r for r in rows if any(v is not None for v in r["cells"])]
 
 
 def _delta(value: float | None, base: float) -> float | None:
@@ -318,7 +361,11 @@ def perf_view(s: ScenarioResults, slots: dict[str, int]) -> dict[str, Any]:
 def scenario_view(s: ScenarioResults, slots: dict[str, int]) -> dict[str, Any]:
     return {
         "columns": s.groups,
-        "matrix": [{"run": r, "cells": [relevance_cell(r, g) for g in s.groups]} for r in s.runs],
+        "matrix": [
+            {"run": r, "cells": cells} for r, cells in zip(s.runs, mark_winners(s.runs, s.groups))
+        ],
+        "judged": judged_rows(s),
+        "judged_groups": BASE_GROUPS,
         "na_notes": na_notes(s),
         "perturbations": perturbation_rows(s),
         "perturbation_kinds": [

@@ -96,6 +96,35 @@ from `ranx`'s `hit_rate@1`). These are cross-checked against `trec_eval` on a
 fixed fixture. Metrics are reported overall and broken down per perturbation
 type (original, typo, prefix, synonym) — never combined into one score.
 
+### Judged@10
+
+Qrels only judge some documents per query, and an unjudged document counts as
+non-relevant in every metric above. **Judged@10** is the mean share of each
+task's top 10 results (duplicates removed) that carry a judgment of any grade,
+0 included; tasks that returned nothing are left out. It is not a quality
+metric: it says how much of a run the qrels can see. When two runs have close
+nDCG@10 and one has a much lower judged@10, the qrels may underrate it, because
+it returns documents nobody assessed. Pooled qrels such as TREC-COVID are the
+most exposed. WANDS and TREC-COVID qrels include grade 0 (judged not
+relevant); CQADupStack and LoTTE list only relevant documents, so on
+community-qa and web-questions judged@10 is the share of known relevant
+documents and does not separate "unjudged" from "judged not relevant".
+
+### Confidence intervals and significance
+
+Each nDCG@10 row of a mode (overall and per perturbation; not the query-group
+rows) carries a 95% confidence interval of the mean over its tasks (normal approximation, mean ± 1.96 · sd / √n). The
+report shows the half-width (±) of the overall interval.
+
+The scenario page bolds the best nDCG@10 of each column, per embedding model,
+and marks with ≈ every other run whose gap to the best is not significant: a
+paired randomization test (sign flips of the per-task differences, 10,000
+rounds, fixed seed, two-sided) over the tasks both runs scored, with p ≥ 0.05.
+Tasks are not independent (a query and its typo and prefix variants share
+qrels), so the interval and the p-value are somewhat optimistic; no
+multiple-comparison correction is applied. Treat a gap without ≈ as likely
+real and a gap with ≈ as not shown by this query set.
+
 ## Scoring of filtered, sorted and faceted modes
 
 WANDS qrels judge unfiltered queries, so these structured modes derive their

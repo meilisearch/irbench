@@ -520,3 +520,48 @@ def test_wands_shaped_bundles_have_no_query_group_table(tmp_path):
     write_bundle(results, "meilisearch", groups={"keyword/keyword": 0.5})
     build_site(results, out)
     assert "By query group" not in read(out, PAGE)
+
+
+def _add_per_task(bundle, group, values, ci=None, judged=None):
+    """Give a bundle per-task nDCG@10 for one group, and optionally a CI and judged@10."""
+    path = bundle / "scores.json"
+    scores = json.loads(path.read_text())
+    mode, base = group.split("/")
+    scores.setdefault("per_task", {"ndcg@10": {}})["ndcg@10"].update(
+        {f"q{i}:{mode}:{base}": v for i, v in enumerate(values)}
+    )
+    for row in scores["relevance"]:
+        if (row["mode"], row["base"], row["perturbation"]) == (mode, base, "all"):
+            row["metrics"]["ndcg@10"] = sum(values) / len(values)
+            if ci:
+                row["ndcg_ci95"] = ci
+            if judged is not None:
+                row["metrics"]["judged@10"] = judged
+    path.write_text(json.dumps(scores))
+
+
+def test_matrix_bolds_the_best_and_marks_ties(tmp_path):
+    results, out = site(tmp_path)
+    g = "keyword/keyword"
+    best = [0.9, 0.8, 0.7, 0.6] * 25
+    # Differences of ±0.05 that nearly cancel out: a gap of 0.001, far from significant.
+    near = [v - 0.05 if i < 51 else v + 0.05 for i, v in enumerate(best)]
+    far = [v - 0.3 for v in best]
+    _add_per_task(write_bundle(results, "meilisearch"), g, best, ci=[0.70, 0.80], judged=0.9)
+    _add_per_task(write_bundle(results, "qdrant"), g, near, judged=0.5)
+    _add_per_task(write_bundle(results, "elasticsearch"), g, far)
+    page = read(build_site(results, out).pages[1].parent, PAGE)
+    assert "<strong>0.750</strong>" in page and '<small class="ci">±0.050</small>' in page
+    assert page.count("≈ 0.") == 1 and "≈ 0.749" in page  # qdrant: tied with the best
+    assert "≈ 0.450" not in page and "0.450" in page  # elasticsearch: significantly below
+    assert "not significantly below the best (p = " in page
+    assert "judged@10" in page and "0.900" in page and "0.500" in page
+
+
+def test_bundles_without_per_task_scores_get_no_tie_mark(tmp_path):
+    results, out = site(tmp_path)
+    write_bundle(results, "meilisearch", groups={"keyword/keyword": 0.6})
+    write_bundle(results, "qdrant", groups={"keyword/keyword": 0.5999})
+    page = read(build_site(results, out).pages[1].parent, PAGE)
+    assert "<strong>0.600</strong>" in page and "≈ 0." not in page
+    assert "Judged results" not in page

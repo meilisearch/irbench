@@ -63,6 +63,37 @@ class RunResult:
                 return g["metrics"]["ndcg@10"]
         return None
 
+    def _all_row(self, group: str) -> dict[str, Any] | None:
+        if self.scores is None:
+            return None
+        mode, _, base = group.partition("/")
+        for g in self.scores["relevance"]:
+            if "group" not in g and (g["mode"], g["base"], g["perturbation"]) == (
+                mode,
+                base,
+                "all",
+            ):
+                return g
+        return None
+
+    def ndcg_ci95(self, group: str) -> tuple[float, float] | None:
+        row = self._all_row(group)
+        ci = row.get("ndcg_ci95") if row else None
+        return (ci[0], ci[1]) if ci else None
+
+    def judged(self, group: str) -> float | None:
+        row = self._all_row(group)
+        return row["metrics"].get("judged@10") if row else None
+
+    def per_task(self, group: str) -> dict[str, float] | None:
+        """nDCG@10 of each task of a mode/base group; None for bundles scored before
+        per-task scores were recorded."""
+        if self.scores is None or "per_task" not in self.scores:
+            return None
+        mode, _, base = group.partition("/")
+        suffix = f":{mode}:{base}"
+        return {t: v for t, v in self.scores["per_task"]["ndcg@10"].items() if t.endswith(suffix)}
+
     def group_ndcg(self, group: str, query_group: str) -> float | None:
         if self.scores is None:
             return None
@@ -291,6 +322,12 @@ def _validate_files(d: Path, files: dict[str, Any]) -> None:
             raise ValueError(f"{p} constraint_violations must be a dict")
         for key in scores["constraint_violations"]:
             _validate_group_key(p, "constraint_violations", key)
+        if "per_task" in scores:
+            per_task = scores["per_task"]
+            if not isinstance(per_task, dict) or not isinstance(per_task.get("ndcg@10"), dict):
+                raise ValueError(f"{p} per_task must be a dict with an ndcg@10 dict")
+            for key, value in per_task["ndcg@10"].items():
+                _validate_number(p, f"per_task.ndcg@10.{key}", value)
 
     if files["perf"] is not None:
         paths = perf_report_paths(d)

@@ -56,6 +56,7 @@ table { border-collapse: collapse; margin: 8px 0; font-size: 14px; }
 th, td { padding: 6px 10px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
 thead th { color: var(--text-2); font-weight: 600; border-bottom-color: var(--text-2); }
 td.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.num small.ci { color: var(--text-2); }
 td.na, td.missing { color: var(--text-2); }
 td.na[title] { text-decoration: underline dotted; cursor: help; }
 td.violated { color: var(--text); background: var(--alert-bg); }
