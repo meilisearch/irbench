@@ -3,7 +3,7 @@ from typing import Any
 from irbench.io import read_json, read_jsonl, read_run, write_json
 from irbench.perf_files import read_perf_reports
 from irbench.score.checks import CheckSummary, TaskCheck, summarize_checks
-from irbench.score.relevance import score_relevance
+from irbench.score.relevance import per_task_ndcg, score_relevance
 from irbench.stages.context import RunContext
 from irbench.stages.perf import summarize_perf
 
@@ -33,6 +33,8 @@ def score_stage(ctx: RunContext) -> dict[str, Any]:
         "relevance": [
             g.model_dump(exclude_none=True) for g in score_relevance(supported, ctx.qrels, run)
         ],
+        # Per-task nDCG@10 lets the report test whether two runs really differ (paired test).
+        "per_task": {"ndcg@10": per_task_ndcg(supported, ctx.qrels, run)},
         "checks": [s.model_dump() for s in summaries],
         "constraint_violations": _constraint_violations(summaries),
         "not_applicable": not_applicable,

@@ -1,7 +1,7 @@
 import pytest
 
 from irbench.models import QueryTask
-from irbench.score.relevance import score_relevance
+from irbench.score.relevance import ci95, judged_at_k, per_task_ndcg, score_relevance
 
 
 def _task(
@@ -93,4 +93,40 @@ def test_ungrouped_tasks_produce_exactly_todays_rows():
     rows = score_relevance([_task("t1"), _task("t2")], QRELS, {"t1": ["d1"], "t2": ["d5"]})
     assert all(r.group is None for r in rows)
     dumped = [r.model_dump(exclude_none=True) for r in rows]
-    assert all(set(d) == {"mode", "base", "perturbation", "n", "metrics"} for d in dumped)
+    keys = {"mode", "base", "perturbation", "n", "metrics", "ndcg_ci95"}
+    assert all(set(d) == keys for d in dumped)
+
+
+def test_judged_counts_any_grade_and_skips_empty_results():
+    # t1: d3 (grade 0) and d1 judged, d9 not -> 2/3; t2 returned nothing and is left out.
+    assert judged_at_k(["t1", "t2"], QRELS, {"t1": ["d3", "d1", "d9"]}) == pytest.approx(2 / 3)
+    assert judged_at_k(["t1"], QRELS, {"t1": ["d9", "d9", "d1"]}) == pytest.approx(1 / 2)
+    assert judged_at_k(["t1"], QRELS, {}) == 0.0
+    scores = score_relevance([_task("t1")], QRELS, {"t1": ["d3", "d1", "d9"]})
+    assert _group(scores).metrics["judged@10"] == pytest.approx(2 / 3)
+
+
+def test_judged_looks_at_the_top_ten_only():
+    run = {"t2": [f"x{i}" for i in range(10)] + ["d5"]}
+    assert judged_at_k(["t2"], QRELS, run) == 0.0
+
+
+def test_ci95_brackets_the_mean():
+    lo, hi = ci95([0.0, 1.0, 0.0, 1.0])
+    # sd = 0.57735, half-width = 1.96 * 0.57735 / 2 = 0.5658
+    assert (lo, hi) == (
+        pytest.approx(0.5 - 0.5658, abs=1e-3),
+        pytest.approx(0.5 + 0.5658, abs=1e-3),
+    )
+    assert ci95([0.4]) == (0.4, 0.4)
+
+
+def test_per_task_ndcg_matches_the_group_mean():
+    tasks = [_task("t1"), _task("t2")]
+    run = {"t1": ["d3", "d1", "d9"]}
+    per_task = per_task_ndcg(tasks, QRELS, run)
+    assert per_task == {"t1": pytest.approx(0.47962, abs=1e-4), "t2": 0.0}
+    overall = _group(score_relevance(tasks, QRELS, run))
+    assert sum(per_task.values()) / 2 == pytest.approx(overall.metrics["ndcg@10"])
+    lo, hi = overall.ndcg_ci95
+    assert lo < overall.metrics["ndcg@10"] < hi
