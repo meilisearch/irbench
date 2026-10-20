@@ -23,15 +23,23 @@ default:
       `sort` strict on both bases. Requests without `sort` are unaffected: the
       rule is inactive without a sort parameter (checked on v1.54.3 for keyword,
       semantic and hybrid queries).
+# tuned: the best settings found by a sweep of the engine's documented search settings,
+# scored on nDCG@10 per scenario and retrieval base (2026-10-20). Typo tolerance, prefix
+# search and stemming stay at the engine's defaults; hybrid stays the engine's native
+# fusion.
 tuned:
   search:
-    keyword: {matchingStrategy: frequency}
-    hybrid: {matchingStrategy: frequency}
+    keyword:
+      matchingStrategy: frequency
+    hybrid:
+      matchingStrategy: frequency
+      hybrid:
+        semanticRatio: 0.45
   justification:
-    matchingStrategy: >-
-      With the default `last`, Meilisearch drops words from the end of the query
-      until something matches, so the product type (usually the last word) goes
-      first and an unknown leading brand or modifier is kept. `frequency` drops
-      the most frequent words first. Measured on WANDS (v1.54.3): keyword nDCG@10
-      0.481 -> 0.508, zero-result queries 87 -> 14. A documented, supported
-      search parameter; no ranking-rule change.
+    matchingStrategy: With the default `last`, Meilisearch drops words from the end of the query
+      until something matches, so the last word goes first. `frequency` drops the most frequent
+      words first. A documented search parameter. Keyword nDCG@10 0.481 -> 0.508 (also the best
+      for hybrid here).
+    hybrid.semanticRatio: '`semanticRatio` 0.45 (default 0.5) weights the keyword side slightly more
+      in Meilisearch''s native hybrid search; the sweep tried 0.2 to 0.95. Hybrid nDCG@10 0.616
+      -> 0.622.'

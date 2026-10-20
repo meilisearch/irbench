@@ -12,6 +12,16 @@ Image: `qdrant/qdrant:v1.19.2` (host port 16333). Adapter: `adapter.py`.
 | Numeric filterable / sortable fields | `float` payload indexes |
 | Document IDs | numeric IDs become integer point IDs, others UUIDv5; the original ID stays in the payload and is what results report |
 
+## What the tuned track changes
+
+Found by a sweep scored on nDCG@10 per scenario and base; each value is justified in `configs/<scenario>.yaml`.
+
+- keyword, every scenario: `keyword_pool: 1000`, each per-field BM25 prefetch keeps 1000 candidates instead of the request depth.
+- index, the three knowledge-base scenarios: `bm25_avg_len: corpus` (each field's BM25 `avg_len` is its mean word count in the corpus, instead of Qdrant's 256 for every field), plus `bm25_options` `k: 1.5` (web-questions, community-qa) or `b: 0.5` (covid-papers). WANDS keeps Qdrant's BM25 defaults.
+- hybrid: distribution-based score fusion (`fusion: {fusion: dbsf}`) on the knowledge-base scenarios; on WANDS, RRF with the vector side weighted 3x (`{rrf: {k: 60, weights: [1, 3]}}`).
+
+Config keys the adapter applies itself: `index.bm25_avg_len`, `index.bm25_options` (sent with every document's BM25 inference), `search.<base>.fusion` (the hybrid query, default `{fusion: rrf}`) and `search.<base>.keyword_pool` (the per-field prefetch limit).
+
 ## Modes
 
 - semantic: Query API `query: <vector>, using: dense`.
@@ -26,7 +36,7 @@ Image: `qdrant/qdrant:v1.19.2` (host port 16333). Adapter: `adapter.py`.
 
 - BM25 scoring uses `qdrant/bm25` with Qdrant's built-in options as shipped (term-frequency saturation, length normalization and the average document length are Qdrant's defaults, not computed per field by the adapter). The IDF modifier is enabled on every sparse vector.
 - Unsorted keyword and hybrid prefetch `depth` documents per field (`top_k` for relevance, the page size for speed): a document outside every field's top `depth` cannot be returned, which can cost a little recall against engines that rank all matches.
-- A tuned track that wants different BM25 options or prefetch limits edits `adapter.py` (spec section 7's contribution flow allows it): the `prefetch` lists are built in code and are not deep-merged from the YAML `search` block, which only merges top-level query-body keys.
+- The `prefetch` lists are built in code and are not deep-merged from the YAML `search` block, which only merges top-level query-body keys; BM25 options, the keyword pool and the fusion are set through the keys listed under the tuned track.
 
 ## Changing this configuration
 

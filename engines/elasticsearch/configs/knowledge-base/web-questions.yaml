@@ -17,3 +17,28 @@ default:
   index: {}
   search: {}
   unsupported: {}
+# tuned: the best settings found by a sweep of the engine's documented search settings,
+# scored on nDCG@10 per scenario and retrieval base (2026-10-20). Typo tolerance, prefix
+# search and stemming stay at the engine's defaults, except where turning on typo tolerance
+# the engine ships off is allowed by the parity rules; hybrid stays the engine's native
+# fusion.
+tuned:
+  search:
+    hybrid:
+      multi_match:
+        type: most_fields
+        fuzziness: AUTO
+      fusion:
+        method: linear
+        weights:
+        - 1
+        - 2.5
+  justification:
+    hybrid.multi_match: 'The keyword side of hybrid: `most_fields` adds the scores of every matching
+      field, so a document matching in several fields ranks higher. `fuzziness: AUTO` turns on
+      Elasticsearch''s typo tolerance (off by default; the parity rules allow settings that only
+      turn a feature on): 1 edit for words of 3-5 characters, 2 above. Hybrid nDCG@10 0.491 ->
+      0.565.'
+    fusion: 'The native `linear` retriever: min-max normalized scores, the vector side weighted
+      2.5x. On these question queries keyword matching is weak, so the best fusion leans on the
+      vector side.'

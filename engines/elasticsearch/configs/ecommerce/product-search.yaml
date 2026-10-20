@@ -17,3 +17,32 @@ default:
   index: {}
   search: {}
   unsupported: {}
+# tuned: the best settings found by a sweep of the engine's documented search settings,
+# scored on nDCG@10 per scenario and retrieval base (2026-10-20). Typo tolerance, prefix
+# search and stemming stay at the engine's defaults, except where turning on typo tolerance
+# the engine ships off is allowed by the parity rules; hybrid stays the engine's native
+# fusion.
+tuned:
+  search:
+    keyword:
+      multi_match:
+        tie_breaker: 0.3
+        fuzziness: AUTO
+    hybrid:
+      multi_match:
+        tie_breaker: 0.3
+        fuzziness: AUTO
+      fusion:
+        weights:
+        - 2
+        - 1
+  justification:
+    keyword.multi_match: '`tie_breaker: 0.3` adds 0.3 times the other matching fields'' scores
+      to the best field''s. `fuzziness: AUTO` turns on Elasticsearch''s typo tolerance (off by
+      default; the parity rules allow settings that only turn a feature on): 1 edit for words
+      of 3-5 characters, 2 above. Keyword nDCG@10 0.531 -> 0.612.'
+    hybrid.multi_match: 'The keyword side of hybrid: `tie_breaker: 0.3` adds 0.3 times the other
+      matching fields'' scores to the best field''s. `fuzziness: AUTO` turns on Elasticsearch''s
+      typo tolerance (off by default; the parity rules allow settings that only turn a feature
+      on): 1 edit for words of 3-5 characters, 2 above. Hybrid nDCG@10 0.609 -> 0.652.'
+    fusion: Native RRF (k = 60) with the keyword ranking weighted 2x (`weights` on the `rrf` retriever).

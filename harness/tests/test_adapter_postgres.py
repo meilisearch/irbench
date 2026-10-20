@@ -257,3 +257,32 @@ def test_load_documents_strips_nul_bytes(adapter):
     values = [x for v in client.rows[0] for x in (v if isinstance(v, list) else [v])]
     assert not any(isinstance(v, str) and "\x00" in v for v in values)
     assert "ab" in values and "xy" in values
+
+
+def test_keyword_options_and_weighted_rrf():
+    from adapter_helpers import make_adapter, make_task
+
+    track = {
+        "search": {
+            b: {"match": "any", "rank": "ts_rank_cd", "normalization": 1}
+            for b in ("keyword", "hybrid")
+        }
+    }
+    track["search"]["hybrid"]["rrf"] = {"k": 20, "weights": [1, 2]}
+    a = make_adapter("postgres", track)
+    sql = a.render(make_task("keyword"), None, 10).sql
+    assert "replace(websearch_to_tsquery(" in sql and "::text, ' & ', ' | ')::tsquery" in sql
+    assert "ts_rank_cd(tsv, " in sql and ", 1) AS score" in sql
+    hybrid = a.render(make_task("hybrid"), [0.1, 0.2, 0.3], 10).sql
+    assert "coalesce(1.0 / (20 + kw.r), 0) + coalesce(2.0 / (20 + vec.r), 0)" in hybrid
+
+
+def test_unknown_search_setting_is_refused():
+    import pytest
+
+    from adapter_helpers import make_adapter, make_task
+
+    with pytest.raises(ValueError, match="not supported"):
+        make_adapter("postgres", {"search": {"keyword": {"fuzzy": 1}}}).render(
+            make_task("keyword"), None, 10
+        )

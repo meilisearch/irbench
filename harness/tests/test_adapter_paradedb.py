@@ -87,3 +87,9 @@ def test_no_synonyms_matches_the_default_setup():
         make_adapter("postgres-paradedb", synonyms=[]).setup_ddl()
         == make_adapter("postgres-paradedb").setup_ddl()
     )
+
+
+def test_conjunction_and_fuzzy_options():
+    a = make_adapter("postgres-paradedb", {"search": {"keyword": {"match": "all", "fuzzy": 1}}})
+    sql = a.render(make_task("keyword"), None, 10).sql
+    assert "name &&& $1::text::pdb.fuzzy(1)::pdb.boost(5)" in sql

@@ -13,13 +13,22 @@ default:
   index: {}
   search: {}
   unsupported: {}
+# tuned: the best settings found by a sweep of the engine's documented search settings,
+# scored on nDCG@10 per scenario and retrieval base (2026-10-20). Typo tolerance, prefix
+# search and stemming stay at the engine's defaults; hybrid stays the engine's native
+# fusion.
 tuned:
   search:
-    keyword: {matchingStrategy: frequency}
-    hybrid: {matchingStrategy: frequency}
+    keyword:
+      matchingStrategy: frequency
+    hybrid:
+      hybrid:
+        semanticRatio: 0.55
   justification:
-    matchingStrategy: >-
-      Carries the WANDS finding (keyword nDCG@10 0.481 -> 0.508 with `frequency`)
-      over to question-style queries, where `last` drops the final words of a
-      question first. A documented, supported search parameter; no ranking-rule
-      change. The tuned run measures whether the finding holds here.
+    matchingStrategy: With the default `last`, Meilisearch drops words from the end of the query
+      until something matches, so the last word goes first. `frequency` drops the most frequent
+      words first. A documented search parameter. Keyword nDCG@10 0.107 -> 0.190; hybrid keeps
+      `last`.
+    hybrid.semanticRatio: '`semanticRatio` 0.55 (default 0.5): on these question queries keyword matching
+      is weak, and every ratio above 0.5 gives about the same ranking, led by the vector side
+      (0.55 to 0.95 within 0.002). Hybrid nDCG@10 0.459 -> 0.555.'

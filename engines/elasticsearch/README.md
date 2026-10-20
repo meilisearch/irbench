@@ -16,6 +16,21 @@ Image: `elasticsearch:9.5.5`, single node, security disabled (host port 19200), 
 
 Not enabled by default (allowed in `tuned` with a visible setting): `fuzziness`, prefix matching, stemming analyzers, the `linear` retriever.
 
+## What the tuned track changes
+
+Found by a sweep scored on nDCG@10 per scenario and base; each value is justified in `configs/<scenario>.yaml`.
+
+| Scenario | keyword `multi_match` | hybrid `multi_match` | hybrid fusion |
+|---|---|---|---|
+| WANDS | `tie_breaker: 0.3`, `fuzziness: AUTO` | same | RRF k = 60, keyword weighted 2x |
+| web-questions | as shipped | `most_fields`, `fuzziness: AUTO` | `linear`, min-max, vector weighted 2.5x |
+| covid-papers | `most_fields`, `fuzziness: AUTO` | same | RRF k = 60 |
+| community-qa | `cross_fields` | `cross_fields` | `linear`, min-max, vector weighted 1.5x |
+
+`fuzziness: AUTO` turns on the typo tolerance Elasticsearch ships off, which the parity rules allow. Stemming stays off (the standard analyzer).
+
+Config keys the adapter applies itself (`search.<base>`): `multi_match` (merged into every `multi_match`, plain, filtered and hybrid alike) and `fusion` (`{method: rrf | linear, rank_constant, weights: [keyword, vector], normalizer}`, hybrid).
+
 ## Modes
 
 - keyword: `multi_match`.
@@ -33,7 +48,7 @@ The `rrf` retriever is Elasticsearch's documented hybrid search, but it is a pai
 
 ## Config override caveat
 
-`search.<base>` is deep-merged into the request body, so an override that targets `query.multi_match` reaches only unfiltered keyword requests (filtered ones wrap the query in `bool`). Use `adapter.py` for changes that must reach every request shape.
+`search.<base>` is deep-merged into the request body, so an override that targets `query.multi_match` reaches only unfiltered keyword requests (filtered ones wrap the query in `bool`). Use the `multi_match` key above, which reaches every request shape.
 
 ## Changing this configuration
 

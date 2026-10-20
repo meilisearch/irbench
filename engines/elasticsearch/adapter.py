@@ -24,6 +24,11 @@ SEARCH_ANALYZER = "irbench_search"
 BATCH_SIZE = 1000
 # Reciprocal rank fusion constant, the same k = 60 as Qdrant and the two Postgres engines.
 RRF_RANK_CONSTANT = 60
+# Config keys under search.<base> that the adapter applies itself instead of merging them into
+# the body: options for every `multi_match` (plain, filtered and hybrid shapes alike), and the
+# hybrid fusion: {method: rrf | linear, rank_constant, weights: [keyword, vector], normalizer}.
+MULTI_MATCH = "multi_match"
+FUSION = "fusion"
 
 
 class Adapter(EngineAdapter):
@@ -117,11 +122,41 @@ class Adapter(EngineAdapter):
 
         poll(ready, timeout_s, f"{idx} to hold {n_docs} documents")
 
-    def _text_query(self, text: str) -> dict[str, Any]:
+    def _text_query(self, text: str, options: dict[str, Any]) -> dict[str, Any]:
         fields = self.ctx.scenario.index_fields.searchable
         n = len(fields)
         boosted = [f"{name}^{n - i}" for i, name in enumerate(fields)]
-        return {"multi_match": {"query": text, "fields": boosted}}
+        return {"multi_match": {"query": text, "fields": boosted, **options}}
+
+    @staticmethod
+    def _fusion(
+        retrievers: list[dict[str, Any]], window: int, fusion: dict[str, Any]
+    ) -> dict[str, Any]:
+        """The hybrid retriever: RRF (k = 60, equal weights) unless the config says otherwise."""
+        method = fusion.get("method", "rrf")
+        weights = fusion.get("weights")
+        if method == "rrf":
+            entries: list[dict[str, Any]] = (
+                [{"retriever": r, "weight": w} for r, w in zip(retrievers, weights)]
+                if weights
+                else retrievers
+            )
+            rank_constant = fusion.get("rank_constant", RRF_RANK_CONSTANT)
+            return {
+                "rrf": {
+                    "retrievers": entries,
+                    "rank_constant": rank_constant,
+                    "rank_window_size": window,
+                }
+            }
+        if method == "linear":
+            normalizer = fusion.get("normalizer", "minmax")
+            entries = [
+                {"retriever": r, "weight": w, "normalizer": normalizer}
+                for r, w in zip(retrievers, weights or [1.0, 1.0])
+            ]
+            return {"linear": {"retrievers": entries, "rank_window_size": window}}
+        raise ValueError(f"unknown fusion method {method!r}")
 
     def _filter_clause(self, f: Filter) -> dict[str, Any]:
         if f.op == "eq":
@@ -155,10 +190,12 @@ class Adapter(EngineAdapter):
     ) -> Request:
         scenario = self.ctx.scenario
         depth = self.pool_depth(depth)
+        params = dict(self.search_params(task))
+        mm, fusion = params.pop(MULTI_MATCH, {}), params.pop(FUSION, {})
         body: dict[str, Any] = {"size": limit, "_source": False}
         filters = [self._filter_clause(task.filter)] if task.filter is not None else []
         if task.base == "keyword":
-            query = self._text_query(task.text)
+            query = self._text_query(task.text, mm)
             body["query"] = {"bool": {"must": [query], "filter": filters}} if filters else query
         if task.base == "semantic":
             body["knn"] = self._knn(task, vector, depth, filters)
@@ -166,19 +203,11 @@ class Adapter(EngineAdapter):
             # Native rank fusion of the BM25 top `depth` and the vector top `depth`. Adding the
             # two scores (`query` + `knn`) lets BM25, whose scores are unbounded, drown the
             # cosine score in [0, 1].
-            standard: dict[str, Any] = {"query": self._text_query(task.text)}
+            standard: dict[str, Any] = {"query": self._text_query(task.text, mm)}
             if filters:
                 standard["filter"] = filters
-            body["retriever"] = {
-                "rrf": {
-                    "retrievers": [
-                        {"standard": standard},
-                        {"knn": self._knn(task, vector, depth, filters)},
-                    ],
-                    "rank_constant": RRF_RANK_CONSTANT,
-                    "rank_window_size": max(depth, limit),
-                }
-            }
+            retrievers = [{"standard": standard}, {"knn": self._knn(task, vector, depth, filters)}]
+            body["retriever"] = self._fusion(retrievers, max(depth, limit), fusion)
         if task.sort is not None:
             body["sort"] = [{task.sort.field: {"order": task.sort.direction}}]
         if facets and task.facets:
@@ -188,7 +217,7 @@ class Adapter(EngineAdapter):
                 }
                 for name in task.facets
             }
-        body = deep_merge(body, self.search_params(task))
+        body = deep_merge(body, params)
         return Request("POST", f"/{self.ctx.index}/_search", body=body)
 
     def parse(self, task: QueryTask, payload: Any) -> SearchResult:

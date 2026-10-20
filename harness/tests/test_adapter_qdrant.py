@@ -248,3 +248,24 @@ def test_no_synonyms_matches_the_default_collection():
         make_adapter("qdrant", synonyms=[]).collection_body()
         == make_adapter("qdrant").collection_body()
     )
+
+
+def test_hybrid_fusion_and_keyword_pool_come_from_the_config():
+    track = {"search": {"hybrid": {"fusion": {"rrf": {"k": 20}}, "keyword_pool": 1000}}}
+    body = make_adapter("qdrant", track).render(make_task("hybrid"), V, 10).body
+    assert body["query"] == {"rrf": {"k": 20}}
+    assert {leaf["limit"] for leaf in body["prefetch"][0]["prefetch"]} == {1000}
+    assert "keyword_pool" not in body and "fusion" not in body
+
+
+def test_bm25_options_and_corpus_average_length():
+    track = {"index": {"bm25_avg_len": "corpus", "bm25_options": {"k": 0.9}}}
+    adapter = make_adapter("qdrant", track)
+    assert "bm25_avg_len" not in adapter.collection_body()
+    docs = [{"name": "grey sofa", "description": "a b c d"}, {"name": "bed", "description": None}]
+    assert adapter._corpus_avg_len(docs)["name"] == 1.5
+    adapter._avg_len = adapter._corpus_avg_len(docs)
+    sparse = adapter._sparse_vectors(docs[0])
+    assert sparse["name"]["options"] == {"k": 0.9, "avg_len": 1.5}
+    assert sparse["description"]["options"]["avg_len"] == 4.0
+    assert "options" not in make_adapter("qdrant")._sparse_vectors(docs[0])["name"]

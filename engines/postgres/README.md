@@ -14,6 +14,15 @@ Image: `pgvector/pgvector:0.8.7-pg17` (Postgres 17 + pgvector 0.8, host port 154
 | Document loading | `COPY ... FROM STDIN`, 2000 rows per batch; indexes are built after the load, then `ANALYZE` |
 | `hnsw.ef_search = 100`, `hnsw.iterative_scan = relaxed_order` | set per database (and in the loading session); each carries a `justification:` in the config (`ef_search = 100` is the smallest value that returns `top_k` rows from one scan without relying on iterative scans; the other engines' pools differ: the Elasticsearch adapter sets only `k` = the request depth (100 for relevance, the page size for speed), so `num_candidates` defaults to 1.5 × k: 150 at 100, 30 at 20, and the Qdrant adapter sets no `ef`, so it defaults to the collection's `ef_construct` of 100; build parameters differ too: HNSW `m` is 16 for all, `ef_construction` is 64 in pgvector against 100 in Elasticsearch and Qdrant; iterative scans let filtered vector queries keep scanning until `top_k` rows pass the filter) |
 
+## What the tuned track changes
+
+Found by a sweep scored on nDCG@10 per scenario and base; each value is justified in `configs/<scenario>.yaml`.
+
+- keyword, every scenario: `match: any`, the words of `websearch_to_tsquery` OR-ed instead of AND-ed (same parsing, stemming and thesaurus): `replace(websearch_to_tsquery(...)::text, ' & ', ' | ')::tsquery`. On web-questions also `normalization: 1` (`ts_rank` divided by 1 + log(document length)). Every matching document is ranked, so keyword requests are slower than with AND.
+- hybrid: on WANDS, OR matching with the keyword side weighted 2x in the RRF; on the knowledge-base scenarios, AND matching with the vector side weighted 2x. Weights scale each side's `1 / (60 + rank)` inside the same SQL statement.
+
+Config keys (`search.<base>`): `match` (`all` | `any`), `rank` (`ts_rank` | `ts_rank_cd`), `normalization` (the rank functions' integer flags) and `rrf` (`{k, weights: [keyword, vector]}`, hybrid). Any other key is refused.
+
 ## Modes
 
 Every mode is one SQL statement. Placeholders are `$n::text` plus a cast; the query text is always a parameter.

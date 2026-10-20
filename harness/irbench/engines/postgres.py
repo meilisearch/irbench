@@ -3,7 +3,7 @@
 import re
 from abc import abstractmethod
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 
@@ -36,6 +36,9 @@ class PostgresAdapter(EngineAdapter):
     protocol = "postgres"
     health_path = ""
     data_dir = "/var/lib/postgresql/data"
+    # search.<base> keys this engine understands; `rrf` ({k, weights: [keyword, vector]})
+    # sets the hybrid fusion, the others are passed to `keyword_match`.
+    search_keys: ClassVar[frozenset[str]] = frozenset({"rrf"})
 
     # --- schema ---------------------------------------------------------------
     @property
@@ -140,8 +143,9 @@ class PostgresAdapter(EngineAdapter):
     def text_index_ddl(self) -> str: ...
 
     @abstractmethod
-    def keyword_match(self, q: Sql, text: str) -> tuple[str, str]:
-        """(WHERE predicate, score expression where higher is better)."""
+    def keyword_match(self, q: Sql, text: str, options: dict[str, Any]) -> tuple[str, str]:
+        """(WHERE predicate, score expression where higher is better). `options` is the
+        task base's search config."""
 
     # --- queries --------------------------------------------------------------
     def _filter(self, q: Sql, f: Filter | None) -> str:
@@ -153,11 +157,20 @@ class PostgresAdapter(EngineAdapter):
         op = {"gte": ">=", "lte": "<="}[f.op]
         return f"{field} {op} {q.p(float(f.value), 'float8')}"
 
+    def _options(self, task: QueryTask) -> dict[str, Any]:
+        options = dict(self.search_params(task))
+        unknown = sorted(set(options) - self.search_keys)
+        if unknown:
+            raise ValueError(
+                f"{self.name}: search.{task.base} settings are not supported: {unknown}"
+            )
+        return options
+
     def _parts(self, q: Sql, task: QueryTask, vector: list[float] | None) -> "_Parts":
         """Placeholders for the task's values, allocated once in order: text, vector, filter."""
         pred = score = vec = None
         if task.base in ("keyword", "hybrid"):
-            pred, score = self.keyword_match(q, task.text)
+            pred, score = self.keyword_match(q, task.text, self._options(task))
         if task.base in ("semantic", "hybrid"):
             vec = q.p(require_vector(task, vector), "vector")
         return _Parts(pred, score, vec, self._filter(q, task.filter))
@@ -198,11 +211,14 @@ class PostgresAdapter(EngineAdapter):
                 f"ORDER BY embedding <=> {p.vec}, id LIMIT {q.p(k_limit, 'int')}"
             )
         # hybrid: RRF over the keyword and vector top `depth` (spec §7 amendment)
+        rrf = self._options(task).get("rrf") or {}
+        k = int(rrf.get("k", RRF_K))
+        w_kw, w_vec = (repr(float(w)) for w in rrf.get("weights", (1, 1)))
         side = q.p(depth, "int")
         tb = self.keyword_tiebreak()
         fused = (
-            f"SELECT coalesce(kw.id, vec.id) AS id, coalesce(1.0 / ({RRF_K} + kw.r), 0) "
-            f"+ coalesce(1.0 / ({RRF_K} + vec.r), 0) AS score "
+            f"SELECT coalesce(kw.id, vec.id) AS id, coalesce({w_kw} / ({k} + kw.r), 0) "
+            f"+ coalesce({w_vec} / ({k} + vec.r), 0) AS score "
             f"FROM (SELECT id, row_number() OVER (ORDER BY {p.score} DESC{tb}) AS r FROM {t} "
             f"WHERE {p.pred} AND {p.where} ORDER BY {p.score} DESC{tb} LIMIT {side}) kw "
             f"FULL OUTER JOIN (SELECT id, row_number() OVER (ORDER BY embedding <=> {p.vec}, id) AS r "
@@ -273,11 +289,7 @@ class PostgresAdapter(EngineAdapter):
         else:
             tb = self.keyword_tiebreak() if task.base == "keyword" else ", id"
             sql = f"SELECT id FROM ({self._ranked(q, task, p, limit, depth)}) m ORDER BY score DESC{tb}"
-        extra = self.search_params(task)
-        if extra:
-            raise ValueError(
-                f"{self.name}: search.{task.base} settings are not supported: {sorted(extra)}"
-            )
+        self._options(task)
         return SqlRequest(sql=sql, params=q.params)
 
     def parse(self, task: QueryTask, payload: Any) -> SearchResult:

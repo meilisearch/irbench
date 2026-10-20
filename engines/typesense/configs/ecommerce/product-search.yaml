@@ -31,8 +31,8 @@ tuned:
       Typesense's default (1) drops query words only when nothing matches all of them, so
       a long or partly-off query returns few or no results. Dropping words until 250 documents match, the first words of the
       query first (`drop_tokens_mode: left_to_right`; the default drops the last ones), is
-      the best keyword setting of the sweep on average over the four scenarios, at most
-      0.013 below any one scenario's best. A documented search parameter.
+      the best keyword setting of the sweep here: keyword nDCG@10 0.432 -> 0.641. A documented
+      search parameter.
     drop_tokens_mode: See drop_tokens_threshold.
     text_match_type: >-
       `max_weight` ranks by the best-weighted matching field instead of the raw best field

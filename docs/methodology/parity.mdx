@@ -40,7 +40,9 @@ the Postgres wire protocol with SQL. The same rules apply:
 
 - Hybrid is Reciprocal Rank Fusion (k = 60, each side the request's depth: `top_k` for relevance, the page size for speed) written as one
   SQL statement that runs inside the database. The statement is visible in
-  every rendered request and described in the engine's README.
+  every rendered request and described in the engine's README. A tuned track
+  may weight the two sides or change k (`search.hybrid.rrf`), still inside
+  that one statement.
 - Field priority maps onto each engine's closest native mechanism:
   `setweight` classes A to D for `postgres` (five fields onto four classes),
   per-field BM25 boosts for `postgres-paradedb`.
@@ -62,6 +64,18 @@ the Postgres wire protocol with SQL. The same rules apply:
   setting departs from the engine's own defaults without a reason.
 - **tuned** — changes within the parity rules above, contributed through a
   PR, and credited in the report.
+
+The published report shows each engine's tuned track only. Every engine's
+tuned settings were found the same way: a sweep of the engine's documented
+search settings (and a few index settings, such as Qdrant's BM25 options),
+scored on nDCG@10 for each scenario and retrieval base, keeping the best
+variant. The sweeps use the benchmark's own queries, so every engine is fitted
+to the query set to the same degree; a setting is always a parameter, never a
+per-query rule (`query-leak` rejects those). Each setting carries its
+justification with the measured gain, and the report's *Engine
+configurations* page lists them. Turning on typo tolerance where the engine
+ships it off (`fuzziness` in Elasticsearch, `fuzzy` in ParadeDB) is allowed,
+as the rule above says.
 
 ## Rules `irbench lint` enforces
 

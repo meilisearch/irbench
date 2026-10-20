@@ -17,6 +17,15 @@ Image: `paradedb/paradedb:0.26.1-pg17` (Postgres 17, pg_search 0.26.1 BM25, pgve
 | `hnsw.ef_search = 100`, `hnsw.iterative_scan = relaxed_order` | Same pgvector settings and justifications as the `postgres` engine, set per database |
 | `plan_cache_mode = force_custom_plan` | Set per database. The boost cast on a bound parameter (`$1::text::pdb.boost(n)`) only works in a custom plan; once Postgres switches a prepared statement to a generic plan (psycopg after 5 executions, the loadgen always prepares) pg_search fails with "The right-hand side of the `\|\|\|` operator must be a text or text array value" |
 
+## What the tuned track changes
+
+Found by a sweep scored on nDCG@10 per scenario and base; each value is justified in `configs/<scenario>.yaml`.
+
+- WANDS: `fuzzy: 1` on keyword and hybrid (`field ||| $1::text::pdb.fuzzy(1)::pdb.boost(n)`), pg_search's typo tolerance, off by default. It lowers relevance on the knowledge-base scenarios, which keep exact matching.
+- hybrid on the knowledge-base scenarios: RRF with the vector side weighted 3x (web-questions, covid-papers) or k = 20 (community-qa), inside the same SQL statement.
+
+Config keys (`search.<base>`): `match` (`any`, the default `|||`, or `all`, `&&&`), `fuzzy` (edit distance) and `rrf` (`{k, weights: [keyword, vector]}`, hybrid). Any other key is refused.
+
 ## Modes
 
 Every mode is one SQL statement. Placeholders are `$n::text` plus a cast; the query text is always a parameter.

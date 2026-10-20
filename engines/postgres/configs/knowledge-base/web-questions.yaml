@@ -31,3 +31,29 @@ default:
       vector query keeps only the ef_search nearest rows before filtering and
       can return fewer than top_k results. relaxed_order is pgvector's
       documented setting for filtered queries.
+# tuned: the best settings found by a sweep of the engine's documented search settings,
+# scored on nDCG@10 per scenario and retrieval base (2026-10-20). Typo tolerance, prefix
+# search and stemming stay at the engine's defaults; hybrid stays the engine's native
+# fusion.
+tuned:
+  search:
+    keyword:
+      match: any
+      normalization: 1
+    hybrid:
+      rrf:
+        weights:
+        - 1
+        - 2
+  justification:
+    match: '`match: any` ORs the words of `websearch_to_tsquery` (same parsing, stemming and thesaurus)
+      instead of requiring all of them, the way BM25 engines match: Postgres as shipped needs
+      every query word, so a long or partly-off query matches nothing. Written in the SQL the
+      engine runs, no harness-side rewriting. Costs speed: every matching document is ranked.
+      Keyword nDCG@10 0.083 -> 0.292.'
+    normalization: '`ts_rank` normalization 1 divides the rank by 1 + log(document length), so
+      long documents do not win on length alone (Postgres documented flag).'
+    rrf: Reciprocal rank fusion still runs in one SQL statement inside the database (k = 60);
+      `weights` scales each side's 1 / (k + rank) term, [keyword, vector]. Hybrid nDCG@10 0.523
+      -> 0.535 with the vector ranking weighted 2x; the hybrid keyword side keeps AND matching,
+      which scored better here.

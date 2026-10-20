@@ -18,9 +18,9 @@ Typo tolerance (`num_typos: 2`) and prefix search are on by default in Typesense
 
 ## What the tuned track changes
 
-Search parameters only, found by a sweep scored on nDCG@10 (each value is justified in `configs/<scenario>.yaml`):
+Search parameters only, found by a sweep scored on nDCG@10 per scenario and base (each value is justified in `configs/<scenario>.yaml`):
 
-- keyword, all scenarios: `drop_tokens_threshold: 250`, `drop_tokens_mode: left_to_right`, `text_match_type: max_weight`. The default (`drop_tokens_threshold: 1`) needs every query word to match, which hurts long or partly-off queries most.
+- keyword: keep dropping query words, the first ones first (`drop_tokens_mode: left_to_right`), until 250 documents match, with `text_match_type: max_weight` on WANDS and covid-papers and the default `max_score` on community-qa; on web-questions until 10 match, with `prioritize_token_position`. The default (`drop_tokens_threshold: 1`) needs every query word to match, which hurts long or partly-off queries most.
 - hybrid, per scenario: the fusion weight `alpha` (through `vector_query_options`), `rerank_hybrid_matches`, and `text_match_type`; on WANDS also word dropping. Word dropping lowers hybrid relevance on the three knowledge-base scenarios, so it stays off there.
 - Stemming and stop words stay off: the parity rules keep stemming at each engine's language default, and no other engine removes stop words.
 

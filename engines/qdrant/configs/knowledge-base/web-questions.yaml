@@ -13,3 +13,31 @@ default:
   index: {}
   search: {}
   unsupported: {}
+# tuned: the best settings found by a sweep of the engine's documented search settings,
+# scored on nDCG@10 per scenario and retrieval base (2026-10-20). Typo tolerance, prefix
+# search and stemming stay at the engine's defaults; hybrid stays the engine's native
+# fusion.
+tuned:
+  index:
+    bm25_avg_len: corpus
+    bm25_options:
+      k: 1.5
+  search:
+    keyword:
+      keyword_pool: 1000
+    hybrid:
+      fusion:
+        fusion: dbsf
+      keyword_pool: 1000
+  justification:
+    keyword_pool: Each per-field BM25 prefetch keeps 1000 candidates instead of the request depth
+      (100), so a document that is not in any single field's top 100 can still win on the weighted
+      sum of fields. Keyword nDCG@10 0.375 -> 0.393 with the settings of this track.
+    bm25_avg_len: 'Qdrant''s BM25 assumes every field averages 256 words (`avg_len`), which under-normalizes
+      short fields such as titles. `bm25_avg_len: corpus` sets each field''s avg_len to its mean
+      word count in this corpus (a corpus statistic, not a query one).'
+    bm25_options: 'BM25 term-frequency saturation k1 = 1.5 (Qdrant default 1.2): repeated query
+      words count a bit more.'
+    fusion: Distribution-based score fusion (`dbsf`, Qdrant's other native fusion) normalizes
+      each side's scores by their spread instead of using ranks, so a strong keyword or vector
+      match counts more than its rank alone. Hybrid nDCG@10 0.532 -> 0.542.

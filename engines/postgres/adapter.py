@@ -1,6 +1,7 @@
 """Postgres 17 + pgvector, built-in full-text search. Parity notes: engines/postgres/README.md."""
 
 import re
+from typing import Any
 
 from irbench.engines.postgres import PostgresAdapter, Sql, ident
 
@@ -12,6 +13,9 @@ WORD_TOKENS = "asciiword, word, asciihword, hword, hword_asciipart, hword_part"
 class Adapter(PostgresAdapter):
     name = "postgres"
     host_port = 15432
+    # rank: ts_rank (default) or ts_rank_cd; normalization: the rank functions' integer flags
+    # (default 0); match: all (websearch_to_tsquery, every word) or any (its words OR-ed).
+    search_keys = PostgresAdapter.search_keys | {"rank", "normalization", "match"}
 
     @property
     def ts_config(self) -> str:
@@ -69,6 +73,16 @@ class Adapter(PostgresAdapter):
     def text_index_ddl(self) -> str:
         return f"CREATE INDEX ON {self.table} USING gin (tsv)"
 
-    def keyword_match(self, q: Sql, text: str) -> tuple[str, str]:
+    def keyword_match(self, q: Sql, text: str, options: dict[str, Any]) -> tuple[str, str]:
         query = f"websearch_to_tsquery('{self.ts_config}', {q.p(text)})"
-        return f"tsv @@ {query}", f"ts_rank(tsv, {query})"
+        match = options.get("match", "all")
+        if match == "any":
+            # The same parsed query with its AND operators turned into OR (phrases kept).
+            query = f"replace({query}::text, ' & ', ' | ')::tsquery"
+        elif match != "all":
+            raise ValueError(f"postgres: unknown match {match!r}")
+        rank = options.get("rank", "ts_rank")
+        if rank not in ("ts_rank", "ts_rank_cd"):
+            raise ValueError(f"postgres: unknown rank function {rank!r}")
+        norm = f", {int(options['normalization'])}" if "normalization" in options else ""
+        return f"tsv @@ {query}", f"{rank}(tsv, {query}{norm})"

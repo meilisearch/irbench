@@ -74,14 +74,16 @@ response before sending the next request. From `loadgen/README.md`:
 Latency groups measure what each engine does for the same request, and the
 work isn't always the same size. Two known differences:
 
-- **Keyword match sets differ.** Vanilla `postgres` matches keyword queries
-  with AND semantics (`websearch_to_tsquery`), so its keyword, faceted and
-  sorted latencies come from much smaller match sets than the OR-matching
-  engines (Meilisearch, Elasticsearch, Qdrant, `postgres-paradedb`). They
-  aren't directly comparable. Typesense's default track also requires every
-  query word, and drops words only when nothing matches
-  (`drop_tokens_threshold: 1`); its tuned track keeps dropping words until 250
-  documents match.
+- **Keyword match sets differ.** Postgres as shipped matches keyword queries
+  with AND semantics (`websearch_to_tsquery`), and Typesense as shipped
+  requires every query word, dropping words only when nothing matches
+  (`drop_tokens_threshold: 1`). Their tuned tracks, which the report shows,
+  match more: Postgres ORs the query words (`match: any`) and ranks every
+  match, Typesense keeps dropping words until a threshold of documents match.
+  Where a tuned track keeps AND matching (the Postgres hybrid keyword side on
+  the knowledge-base scenarios), its keyword work comes from a much smaller
+  match set than the OR-matching engines'. The engine configurations page of
+  the report lists each engine's settings.
 - **Faceted on the semantic base counts different sets.** Meilisearch and
   both Postgres engines count facets over every document that passes the
   filter; Elasticsearch and Typesense count over the kNN top-k, where k is the page size at speed. That latency group

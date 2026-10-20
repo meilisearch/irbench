@@ -20,3 +20,25 @@ default:
   synonyms: >-
     Qdrant has no synonym support: its BM25 tokenizer takes no synonym list, and
     expanding queries in the harness would break the parity rules.
+# tuned: the best settings found by a sweep of the engine's documented search settings,
+# scored on nDCG@10 per scenario and retrieval base (2026-10-20). Typo tolerance, prefix
+# search and stemming stay at the engine's defaults; hybrid stays the engine's native
+# fusion.
+tuned:
+  search:
+    keyword:
+      keyword_pool: 1000
+    hybrid:
+      fusion:
+        rrf:
+          k: 60
+          weights:
+          - 1
+          - 3
+      keyword_pool: 1000
+  justification:
+    keyword_pool: Each per-field BM25 prefetch keeps 1000 candidates instead of the request depth
+      (100), so a document that is not in any single field's top 100 can still win on the weighted
+      sum of fields. Keyword nDCG@10 0.556 -> 0.567 with the settings of this track.
+    fusion: Native RRF (k = 60) with the vector ranking weighted 3x (Qdrant's weighted `rrf`).
+      Hybrid nDCG@10 0.589 -> 0.622.

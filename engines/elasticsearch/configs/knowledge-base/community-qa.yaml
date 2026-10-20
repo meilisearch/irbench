@@ -17,3 +17,30 @@ default:
   index: {}
   search: {}
   unsupported: {}
+# tuned: the best settings found by a sweep of the engine's documented search settings,
+# scored on nDCG@10 per scenario and retrieval base (2026-10-20). Typo tolerance, prefix
+# search and stemming stay at the engine's defaults, except where turning on typo tolerance
+# the engine ships off is allowed by the parity rules; hybrid stays the engine's native
+# fusion.
+tuned:
+  search:
+    keyword:
+      multi_match:
+        type: cross_fields
+    hybrid:
+      multi_match:
+        type: cross_fields
+      fusion:
+        method: linear
+        weights:
+        - 1
+        - 1.5
+  justification:
+    keyword.multi_match: '`cross_fields` scores the query words across the fields as one combined
+      field, so a document can match some words in its title and others in its body. `cross_fields`
+      takes no fuzziness. Keyword nDCG@10 0.210 -> 0.288.'
+    hybrid.multi_match: 'The keyword side of hybrid: `cross_fields` scores the query words across
+      the fields as one combined field, so a document can match some words in its title and others
+      in its body. Hybrid nDCG@10 0.315 -> 0.374.'
+    fusion: 'The native `linear` retriever: min-max normalized scores, the vector side weighted
+      1.5x.'
