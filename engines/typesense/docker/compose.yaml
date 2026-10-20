@@ -1,0 +1,19 @@
+# Pinned engine image. The resolved digest is recorded in every run manifest.
+services:
+  engine:
+    image: typesense/typesense:30.2
+    container_name: irbench-typesense
+    command: ["--data-dir", "/data", "--api-key", "irbench", "--enable-cors"]  # local benchmark only
+    ports:
+      - "18108:8108"
+    volumes:
+      - data:/data
+    healthcheck:
+      # The image has neither curl nor wget; bash's /dev/tcp asks /health directly.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8108 && printf 'GET /health HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '\"ok\":true' <&3"]
+      interval: 2s
+      timeout: 3s
+      retries: 90
+
+volumes:
+  data:

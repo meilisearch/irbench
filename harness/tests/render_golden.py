@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from adapter_helpers import make_adapter, make_task  # noqa: E402
 from irbench.models import Filter, Sort  # noqa: E402
 
-ENGINES = ["meilisearch", "elasticsearch", "qdrant", "postgres", "postgres-paradedb"]
+ENGINES = ["meilisearch", "elasticsearch", "qdrant", "postgres", "postgres-paradedb", "typesense"]
 GOLDEN_DIR = Path(__file__).parent / "fixtures" / "render_golden"
 V = [0.1, 0.2, 0.3]
 

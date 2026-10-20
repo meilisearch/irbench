@@ -23,7 +23,7 @@ from irbench.terms import load_term_groups
 
 pytestmark = pytest.mark.docker
 
-ENGINES = ["meilisearch", "elasticsearch", "qdrant", "postgres", "postgres-paradedb"]
+ENGINES = ["meilisearch", "elasticsearch", "qdrant", "postgres", "postgres-paradedb", "typesense"]
 INDEX = "irbench_contract"
 TOP_K = 100
 VERIFY_LIMIT = 1000

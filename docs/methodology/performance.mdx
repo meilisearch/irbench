@@ -78,10 +78,13 @@ work isn't always the same size. Two known differences:
   with AND semantics (`websearch_to_tsquery`), so its keyword, faceted and
   sorted latencies come from much smaller match sets than the OR-matching
   engines (Meilisearch, Elasticsearch, Qdrant, `postgres-paradedb`). They
-  aren't directly comparable.
+  aren't directly comparable. Typesense's default track also requires every
+  query word, and drops words only when nothing matches
+  (`drop_tokens_threshold: 1`); its tuned track keeps dropping words until 250
+  documents match.
 - **Faceted on the semantic base counts different sets.** Meilisearch and
   both Postgres engines count facets over every document that passes the
-  filter; Elasticsearch counts over the kNN top-k, where k is the page size at speed. That latency group
+  filter; Elasticsearch and Typesense count over the kNN top-k, where k is the page size at speed. That latency group
   compares different definitions of the match set.
 
 ## Indexing time, peak memory, and disk
