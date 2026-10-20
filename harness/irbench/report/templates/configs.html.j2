@@ -1,0 +1,47 @@
+{% extends "base.html.j2" %}
+{% block title %}Engine configurations · IRBench{% endblock %}
+{% block main %}
+<h1>Engine configurations</h1>
+<p class="lede">What each engine runs with, and why. Every engine gets the same searchable
+fields in the same priority order, the same synonyms, the same vectors and the same top-k
+(<a href="{{ docs_url }}/methodology/parity.mdx">parity rules</a>). On top of that, each
+engine runs with the settings below: the best configuration found by a sweep of its
+documented search settings, scored on nDCG@10, within the parity rules (typo tolerance,
+prefix search and stemming stay at the engine's defaults; hybrid uses the engine's native
+fusion). Anything not listed is the engine's default.</p>
+<p class="note">The sweeps ran on the benchmark's own queries, so every engine's settings are
+fitted to this query set to the same degree. The settings are search parameters, not
+per-query rules: no setting names a query.</p>
+<nav class="toc">{% for e in engines %}<a href="#{{ e.engine }}">{{ e.engine }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</nav>
+{% for e in engines %}
+<section id="{{ e.engine }}">
+<h2>{{ e.engine }}</h2>
+<p class="meta">{% if e.image %}Image <code>{{ e.image }}</code>{% endif %}{% if e.readme %} · <a href="{{ e.readme }}">how the adapter maps the scenario schema</a>{% endif %}</p>
+{% if e.rows %}
+<div class="scroll"><table class="config">
+  <thead><tr><th>Setting</th>{% for c in e.columns %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for row in e.rows %}
+    <tr>
+      <th scope="row"><code>{{ row.path }}</code></th>
+      {% if row.same %}<td colspan="{{ e.columns|length }}"><code>{{ row["values"][0] }}</code> <span class="note">(every scenario)</span></td>
+      {% else %}{% for v in row["values"] %}<td><code>{{ v }}</code></td>{% endfor %}{% endif %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+<h3>Why</h3>
+<dl class="why">
+{% for row in e.rows if row.why %}
+  <dt><code>{{ row.path }}</code></dt><dd>{{ row.why }}</dd>
+{% endfor %}
+</dl>
+{% else %}
+<p>Every setting at the engine's default.</p>
+{% endif %}
+{% if e.notes %}
+<ul class="notes">{% for n in e.notes %}<li>{{ n }}</li>{% endfor %}</ul>
+{% endif %}
+</section>
+{% endfor %}
+{% endblock %}

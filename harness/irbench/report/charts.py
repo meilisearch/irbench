@@ -102,3 +102,102 @@ def qps_chart(title: str, series: list[Series], steps: list[int]) -> Markup | No
             )
     out.append("</svg>")
     return Markup("".join(out))
+
+
+CHAR_W, LINE = 6.8, 14  # tradeoff chart: label character width and line height, in px
+
+
+@dataclass(frozen=True)
+class Dot:
+    label: str
+    slot: int
+    latency_ms: float  # x, log scale
+    score: float  # y
+    note: str  # tooltip text
+
+
+def tradeoff_chart(title: str, dots: list[Dot]) -> Markup | None:
+    """Relevance against latency, one dot per run: up is more relevant, left is faster.
+    Latency spans orders of magnitude across engines, so the x axis is logarithmic."""
+    dots = [d for d in dots if d.latency_ms > 0]
+    if not dots:
+        return None
+    lo = 10 ** math.floor(math.log10(min(d.latency_ms for d in dots)))
+    hi = 10 ** math.ceil(math.log10(max(d.latency_ms for d in dots)))
+    if hi <= lo:
+        hi = lo * 10
+    ymax = min(1.0, nice_max(max(d.score for d in dots) * 1.1))
+    pw, ph = WIDTH - LEFT - RIGHT, HEIGHT - TOP - BOTTOM
+
+    def x(v: float) -> float:
+        return LEFT + (math.log10(v) - math.log10(lo)) / (math.log10(hi) - math.log10(lo)) * pw
+
+    def y(v: float) -> float:
+        return TOP + ph - v / ymax * ph
+
+    out = [
+        f'<svg class="chart" viewBox="0 0 {WIDTH} {HEIGHT}" role="img" '
+        f'aria-label="{escape(title)}">'
+    ]
+    for i in range(5):
+        v = ymax * i / 4
+        out.append(
+            f'<line class="grid" x1="{LEFT}" x2="{LEFT + pw}" y1="{y(v):.1f}" y2="{y(v):.1f}"/>'
+        )
+        out.append(
+            f'<text class="tick" x="{LEFT - 8}" y="{y(v) + 4:.1f}" text-anchor="end">{v:.2f}</text>'
+        )
+    decade = lo
+    while decade <= hi * (1 + 1e-9):
+        out.append(
+            f'<line class="grid" x1="{x(decade):.1f}" x2="{x(decade):.1f}" y1="{TOP}" '
+            f'y2="{TOP + ph}"/>'
+        )
+        out.append(
+            f'<text class="tick" x="{x(decade):.1f}" y="{TOP + ph + 18}" '
+            f'text-anchor="middle">{decade:g}</text>'
+        )
+        decade *= 10
+    mid = TOP + ph / 2
+    out.append(
+        f'<text class="axis-label" x="{LEFT + pw / 2:.1f}" y="{HEIGHT - 6}" '
+        'text-anchor="middle">median latency, ms (log scale)</text>'
+    )
+    out.append(
+        f'<text class="axis-label" x="14" y="{mid:.1f}" transform="rotate(-90 14 '
+        f'{mid:.1f})" text-anchor="middle">nDCG@10</text>'
+    )
+    # Labels sit right of their dot, on the closest line (below, then above, alternating) where
+    # they cover no other label and no dot; a moved label gets a hairline back to its dot.
+    centers = [(x(d.latency_ms), y(d.score)) for d in dots]
+    boxes: list[tuple[float, float, float, float]] = []  # x0, y0, x1, y1 of placed labels
+
+    def free(x0: float, y0: float, x1: float, y1: float, own: tuple[float, float]) -> bool:
+        if any(x0 < bx1 and bx0 < x1 and y0 < by1 and by0 < y1 for bx0, by0, bx1, by1 in boxes):
+            return False
+        return not any(
+            (cx, cy) != own and x0 - 6 < cx < x1 + 6 and y0 - 6 < cy < y1 + 6 for cx, cy in centers
+        )
+
+    for d in sorted(dots, key=lambda d: -d.score):
+        cx, cy = x(d.latency_ms), y(d.score)
+        color = f"var(--series-{d.slot})" if d.slot else "var(--series-other)"
+        width = CHAR_W * len(d.label)
+        for k in (0, 1, -1, 2, -2, 3, -3, 4, -4, 5):
+            ly = cy + 4 + k * LINE
+            box = (cx + 10, ly - LINE + 3, cx + 10 + width, ly + 3)
+            if free(*box, own=(cx, cy)):
+                break
+        boxes.append(box)
+        if abs(ly - 4 - cy) > LINE / 2:
+            out.append(
+                f'<line class="leader" x1="{cx:.1f}" y1="{cy:.1f}" x2="{cx + 9:.1f}" '
+                f'y2="{ly - 4:.1f}"/>'
+            )
+        out.append(
+            f'<circle class="marker" cx="{cx:.1f}" cy="{cy:.1f}" r="6" '
+            f'style="--c:{color}"><title>{escape(d.label)}: {escape(d.note)}</title></circle>'
+        )
+        out.append(f'<text class="direct" x="{cx + 10:.1f}" y="{ly:.1f}">{escape(d.label)}</text>')
+    out.append("</svg>")
+    return Markup("".join(out))

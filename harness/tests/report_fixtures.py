@@ -119,6 +119,7 @@ def write_bundle(
     credits=None,
     synonyms=None,
     checks=None,
+    effective=None,
 ) -> Path:
     run_id = "__".join([scenario.replace("/", "__"), engine, model, track, hardware])
     d = results / run_id
@@ -144,6 +145,7 @@ def write_bundle(
             "diff_vs_default": config_diff or {},
             "credits": credits or [],
             "synonyms": synonyms,
+            **({"effective": effective} if effective is not None else {}),
         },
         "dataset": {"id": "wands", "version": "3b74dcf4"},
         "seed": 20261009,

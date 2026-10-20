@@ -79,3 +79,15 @@ ul.legend { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 4
 ul.legend .key { display: inline-block; width: 16px; height: 2px; background: var(--c); vertical-align: middle; margin-right: 6px; }
 ul.legend .key.dashed { background: repeating-linear-gradient(90deg, var(--c) 0 6px, transparent 6px 10px); }
 details { margin: 8px 0 24px; }
+
+/* Config page */
+.callout { font-size: 16px; }
+nav.toc { margin: 16px 0; line-height: 1.8; }
+table.config td { white-space: normal; max-width: 28ch; overflow-wrap: anywhere; }
+dl.why { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; max-width: 100%; }
+dl.why dt { color: var(--text-2); }
+dl.why dd { margin: 0; max-width: 80ch; }
+@media (max-width: 640px) {
+  dl.why { grid-template-columns: 1fr; }
+}
+.chart .leader { stroke: var(--text-2); stroke-width: 1; }

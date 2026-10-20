@@ -61,6 +61,29 @@ its nDCG@10 says: it returns documents nobody assessed.</p>
 {% endif %}
 </section>
 
+{% if view.tradeoff.charts %}
+<section>
+<h2>Relevance against speed</h2>
+<p class="note">nDCG@10 plotted over median latency at {{ view.tradeoff.size }} results per page, one
+dot per engine: up is more relevant, left is faster. Latency is plotted on a log scale.
+Hover a dot for p99.</p>
+{% for c in view.tradeoff.charts %}
+<h3>{{ c.group|group }}{% if s.models|length > 1 %} · {{ c.model }}{% endif %}</h3>
+{{ c.svg }}
+<details><summary>Numbers</summary>
+<div class="scroll"><table>
+  <thead><tr><th>Engine</th><th>nDCG@10</th><th>p50 ms</th><th>p99 ms</th></tr></thead>
+  <tbody>
+  {% for r in c.rows %}
+    <tr><th scope="row">{{ r.run.label }}</th><td class="num">{{ r.score|score }}</td><td class="num">{{ r.p50|ms }}</td><td class="num">{{ r.p99|ms }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+</details>
+{% endfor %}
+</section>
+{% endif %}
+
 <section>
 <h2>Imperfect queries</h2>
 <p class="note">nDCG@10 on the original queries, and the change when the same queries carry a

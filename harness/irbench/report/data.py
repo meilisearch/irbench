@@ -2,7 +2,7 @@
 
 import re
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, get_args
 
@@ -39,10 +39,14 @@ class RunResult:
     scores: dict[str, Any] | None = None
     perf: dict[int, dict[str, Any]] | None = None
     index: dict[str, Any] | None = None
+    # False when this is the engine's only track in its scenario: the label is then the engine.
+    show_track: bool = True
 
     @property
     def label(self) -> str:
-        return self.engine if self.track == "default" else f"{self.engine} ({self.track})"
+        if not self.show_track or self.track == "default":
+            return self.engine
+        return f"{self.engine} ({self.track})"
 
     @property
     def groups(self) -> list[str]:
@@ -172,6 +176,11 @@ def load_results(results_dir: Path) -> tuple[list[ScenarioResults], list[Unreada
     grouped: dict[tuple[str, str], list[RunResult]] = defaultdict(list)
     for run in runs:
         grouped[(run.scenario, run.hardware)].append(run)
+    for key, rs in grouped.items():
+        tracks: dict[tuple[str, str], set[str]] = defaultdict(set)
+        for r in rs:
+            tracks[(r.engine, r.model)].add(r.track)
+        grouped[key] = [replace(r, show_track=len(tracks[(r.engine, r.model)]) > 1) for r in rs]
     scenarios = [
         ScenarioResults(scenario, hardware, sorted(rs, key=lambda r: (r.model, r.engine, r.track)))
         for (scenario, hardware), rs in sorted(grouped.items())

@@ -69,7 +69,7 @@ def test_lookups(tmp_path):
         violations={"sorted:semantic": "3 order violations"},
     )
     run = load_results(tmp_path)[0][0].runs[0]
-    assert run.label == "qdrant (tuned)"
+    assert run.label == "qdrant"  # the engine's only track: no track in the label
     assert run.groups == ["semantic/semantic", "hybrid/hybrid", "sorted/semantic"]
     assert run.ndcg("semantic/semantic") == pytest.approx(0.6)
     assert run.ndcg("semantic/semantic", "typo") == pytest.approx(0.5)
@@ -313,3 +313,10 @@ def test_relevance_group_must_be_a_string(tmp_path):
     _edit_json(bundle / "scores.json", bad)
     _, unreadable = load_results(tmp_path)
     assert unreadable and "group" in str(unreadable[0])
+
+
+def test_label_names_the_track_when_an_engine_has_two(tmp_path):
+    write_bundle(tmp_path, "qdrant", track="tuned")
+    write_bundle(tmp_path, "qdrant")
+    labels = sorted(r.label for r in load_results(tmp_path)[0][0].runs)
+    assert labels == ["qdrant", "qdrant (tuned)"]

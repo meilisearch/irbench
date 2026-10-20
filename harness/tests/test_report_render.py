@@ -60,6 +60,7 @@ def test_site_pages_and_matrix(tmp_path):
     assert names == sorted(
         [
             "index.html",
+            "configs.html",
             PAGE,
             "runs/ecommerce__product-search__meilisearch__bge-small-en-v1.5__default__aws-c7i-4xlarge.html",
             "runs/ecommerce__product-search__qdrant__bge-small-en-v1.5__default__aws-c7i-4xlarge.html",
@@ -224,7 +225,7 @@ def test_cli_builds_the_site(tmp_path):
     write_bundle(results, "meilisearch")
     ok = CliRunner().invoke(app, ["report", "--results", str(results), "--out", str(out)])
     assert ok.exit_code == 0, ok.output
-    assert "3 pages" in ok.output  # index, scenario page, one run page
+    assert "4 pages" in ok.output  # index, configs, scenario page, one run page
 
 
 def test_credit_with_unsafe_scheme_is_not_a_link(tmp_path):
@@ -307,7 +308,10 @@ def test_performance_section(tmp_path):
     build_site(results, out)
     page = read(out, PAGE)
 
-    assert page.count('<svg class="chart"') == 2  # keyword, semantic for one model
+    # QPS by concurrency: keyword, semantic for one model; plus relevance against latency for
+    # the same two bases.
+    assert page.count('<svg class="chart"') == 4
+    assert page.count("against median latency") == 2
     assert "340" in page  # meilisearch keyword max QPS (85 × 4)
     assert "2.50 / 12.2" in page  # p50 / p99 latency cell
     assert "no BM25" in page  # skipped throughput is N/A with reason
@@ -565,3 +569,44 @@ def test_bundles_without_per_task_scores_get_no_tie_mark(tmp_path):
     page = read(build_site(results, out).pages[1].parent, PAGE)
     assert "<strong>0.600</strong>" in page and "≈ 0." not in page
     assert "Judged results" not in page
+
+
+def test_relevance_against_latency_charts(tmp_path):
+    results, out = site(tmp_path)
+    write_bundle(
+        results,
+        "meilisearch",
+        groups={"keyword/keyword": 0.61},
+        perf_report=perf_report({"keyword/keyword": (85.0, 4)}),
+    )
+    write_bundle(results, "elasticsearch", groups={"keyword/keyword": 0.4}, perf_report=None)
+    build_site(results, out)
+    page = read(out, PAGE)
+    assert "Relevance against speed" in page
+    assert "keyword: nDCG@10 against median latency" in page
+    assert "meilisearch: nDCG@10 0.610" in page  # dot tooltip
+    assert "elasticsearch: nDCG@10" not in page  # no perf, no dot
+
+
+def test_config_page_lists_settings_and_why(tmp_path):
+    results, out = site(tmp_path)
+    effective = {
+        "index": {"settings": {"hnsw.ef_search": 100}},
+        "search": {"hybrid": {"fusion": {"rank_constant": 20}}, "keyword": {}},
+        "unsupported": {"faceted": "no facets on query results"},
+        "justification": {
+            "settings.hnsw.ef_search": "returns top_k rows from one scan",
+            "fusion": "best hybrid setting of the sweep",
+        },
+        "synonyms": None,
+    }
+    write_bundle(results, "postgres", track="tuned", effective=effective)
+    write_bundle(results, "qdrant")  # an older bundle without `effective`
+    build_site(results, out)
+    page = read(out, "configs.html")
+    assert "index.settings.hnsw.ef_search" in page and "returns top_k rows" in page
+    assert "search.hybrid.fusion.rank_constant" in page and "best hybrid setting" in page
+    assert "N/A: faceted: no facets on query results" in page
+    assert "postgres:1" in page  # image
+    assert 'id="qdrant"' in page and "Every setting at the engine" in page
+    assert 'href="configs.html"' in read(out, "index.html")

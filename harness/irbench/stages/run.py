@@ -164,6 +164,8 @@ def _describe_inputs(ctx: RunContext, manifest: dict[str, Any]) -> None:
             "path": str(ctx.config.path.relative_to(ctx.root)),
             "hash": ctx.config.hash(ctx.spec.track),
             "diff_vs_default": ctx.config.diff(ctx.spec.track),
+            # The whole track, with every justification: the report's config page reads it.
+            "effective": ctx.config.track(ctx.spec.track).model_dump(),
             "synonyms": ctx.config.track(ctx.spec.track).synonyms,
             # Credits belong to the tuned track (spec §11); the default track is the engine as shipped.
             "credits": [c.model_dump() for c in ctx.config.credits]

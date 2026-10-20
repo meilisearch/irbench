@@ -1,6 +1,7 @@
 """Static HTML report (spec §11). One page per scenario × hardware profile (results are
 only compared within a profile, §8) and one per run. Plain HTML, no JavaScript."""
 
+import json
 import shutil
 from collections import defaultdict
 from dataclasses import dataclass, replace
@@ -11,7 +12,7 @@ from typing import Any
 import jinja2
 
 from irbench.publish import UNPUBLISHABLE_PROFILES as UNPUBLISHED_PROFILES
-from irbench.report.charts import Point, Series, qps_chart
+from irbench.report.charts import Dot, Point, Series, qps_chart, tradeoff_chart
 from irbench.report.data import (
     PERTURBATIONS,
     RunResult,
@@ -281,7 +282,8 @@ def _series(run: RunResult, size: int, group: str, slots: dict[str, int]) -> Ser
         )
         for st in perf["throughput"][group]["steps"]
     ]
-    return Series(run.label, slots.get(run.engine, 0), run.track != "default", points)
+    dashed = run.show_track and run.track != "default"
+    return Series(run.label, slots.get(run.engine, 0), dashed, points)
 
 
 def _perf_size_view(
@@ -358,6 +360,144 @@ def perf_view(s: ScenarioResults, slots: dict[str, int]) -> dict[str, Any]:
     }
 
 
+def tradeoff_view(s: ScenarioResults, slots: dict[str, int]) -> dict[str, Any]:
+    """nDCG@10 against median latency per retrieval base, at the smallest measured page size
+    (a search results page). One dot per run with both numbers."""
+    runs = [r for r in s.runs if r.perf and not r.failure]
+    sizes = sorted({n for r in runs for n in (r.perf or {})})
+    if not sizes:
+        return {"size": None, "charts": []}
+    size = sizes[0]
+    charts = []
+    for model in s.models:
+        for group in BASE_GROUPS:
+            rows = []
+            for r in runs:
+                if r.model != model or r.violation(group):
+                    continue
+                score = r.ndcg(group)
+                lat = ((_perf(r, size) or {}).get("latency") or {}).get(group)
+                if score is None or not lat or lat.get("p50_ms") is None:
+                    continue
+                rows.append((r, score, lat["p50_ms"], lat.get("p99_ms")))
+            dots = [
+                Dot(
+                    r.label,
+                    slots.get(r.engine, 0),
+                    p50,
+                    score,
+                    f"nDCG@10 {score:.3f}, p50 {fmt_ms(p50)} ms, p99 {fmt_ms(p99)} ms",
+                )
+                for r, score, p50, p99 in rows
+            ]
+            svg = tradeoff_chart(
+                f"{fmt_group(group)}: nDCG@10 against median latency at {size} results, {model}",
+                dots,
+            )
+            if svg is None:
+                continue
+            charts.append(
+                {
+                    "group": group,
+                    "model": model,
+                    "svg": svg,
+                    "rows": [
+                        {"run": r, "score": score, "p50": p50, "p99": p99}
+                        for r, score, p50, p99 in sorted(rows, key=lambda t: -t[1])
+                    ],
+                }
+            )
+    return {"size": size, "charts": charts}
+
+
+def _flatten(prefix: str, value: Any) -> list[tuple[str, Any]]:
+    if isinstance(value, dict) and value:
+        return [kv for k, v in value.items() for kv in _flatten(f"{prefix}.{k}", v)]
+    return [(prefix, value)]
+
+
+def _justification(path: str, justifications: dict[str, str]) -> str | None:
+    """The justification whose key is the longest dotted suffix of the setting's path or of
+    one of its prefixes (`search.hybrid.vector_query_options.alpha` → `vector_query_options`)."""
+    parts = path.split(".")
+    for end in range(len(parts), 0, -1):
+        for start in range(end):
+            key = ".".join(parts[start:end])
+            if key in justifications:
+                return justifications[key]
+    return None
+
+
+def configs_view(scenarios: list[ScenarioResults], repo_url: str) -> list[dict[str, Any]]:
+    """Per engine: every setting the published runs send beyond the adapter's schema mapping,
+    its value per scenario, and why it is set."""
+    by_engine: dict[str, list[RunResult]] = defaultdict(list)
+    for s in scenarios:
+        for r in s.runs:
+            if not r.failure:
+                by_engine[r.engine].append(r)
+    engines = []
+    for engine, runs in sorted(by_engine.items()):
+        runs = sorted(runs, key=lambda r: (r.scenario, r.track))
+        columns = [r.scenario if not r.show_track else f"{r.scenario} ({r.track})" for r in runs]
+        values: dict[str, list[Any]] = {}
+        why: dict[str, str] = {}
+        notes: dict[str, set[str]] = defaultdict(set)
+        for i, r in enumerate(runs):
+            eff = (r.manifest.get("config") or {}).get("effective") or {}
+            justifications = eff.get("justification") or {}
+            for section in ("index", "search"):
+                for path, value in _flatten(section, eff.get(section) or {}):
+                    if value in ({}, None):
+                        continue
+                    values.setdefault(path, [None] * len(runs))[i] = value
+                    text = _justification(path, justifications)
+                    if text:
+                        why.setdefault(path, text)
+            for mode, reason in (eff.get("unsupported") or {}).items():
+                notes[f"N/A: {mode}: {reason}"].add(r.scenario)
+            if eff.get("synonyms"):
+                notes[f"Synonyms not loaded: {eff['synonyms']}"].add(r.scenario)
+        image = next(
+            (
+                (r.manifest.get("engine_image") or {}).get("image")
+                for r in runs
+                if (r.manifest.get("engine_image") or {}).get("image")
+            ),
+            None,
+        )
+        rows = []
+        for path, vals in sorted(values.items()):
+            shown = [_fmt_setting(v) for v in vals]
+            rows.append(
+                {
+                    "path": path,
+                    "values": shown,
+                    "same": len(set(shown)) == 1,
+                    "why": why.get(path),
+                }
+            )
+        engines.append(
+            {
+                "engine": engine,
+                "image": image,
+                "readme": f"{repo_url}/blob/main/engines/{engine}/README.md" if repo_url else None,
+                "columns": columns,
+                "rows": rows,
+                "notes": sorted(notes),
+            }
+        )
+    return engines
+
+
+def _fmt_setting(value: Any) -> str:
+    if value is None:
+        return "—"
+    if isinstance(value, (list, dict)):
+        return json.dumps(value)
+    return str(value)
+
+
 def scenario_view(s: ScenarioResults, slots: dict[str, int]) -> dict[str, Any]:
     return {
         "columns": s.groups,
@@ -377,6 +517,7 @@ def scenario_view(s: ScenarioResults, slots: dict[str, int]) -> dict[str, Any]:
         "models": model_comparison(s),
         "comparable": s.hardware not in UNPUBLISHED_PROFILES,
         "perf": perf_view(s, slots),
+        "tradeoff": tradeoff_view(s, slots),
     }
 
 
@@ -487,7 +628,9 @@ def build_site(results_dir: Path, out: Path, docs_url: str = DEFAULT_DOCS_URL) -
         path.write_text(html, encoding="utf-8")
         pages.append(path)
 
+    repo_url = docs_url.removesuffix("/").removesuffix("/docs").removesuffix("/tree/main")
     write("index.html", "index.html.j2", scenarios=scenarios, unreadable=unreadable)
+    write("configs.html", "configs.html.j2", engines=configs_view(scenarios, repo_url))
     for s in scenarios:
         write(f"{s.slug}.html", "scenario.html.j2", s=s, view=scenario_view(s, slots))
         for run in s.runs:
