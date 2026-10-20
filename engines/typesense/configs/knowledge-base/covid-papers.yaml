@@ -15,3 +15,33 @@ default:
   index: {}
   search: {}
   unsupported: {}
+tuned:
+  search:
+    keyword:
+      drop_tokens_threshold: 250
+      drop_tokens_mode: left_to_right
+      text_match_type: max_weight
+    hybrid:
+      text_match_type: sum_score
+      rerank_hybrid_matches: true
+      vector_query_options: {alpha: 0.5}
+  justification:
+    drop_tokens_threshold: >-
+      Typesense's default (1) drops query words only when nothing matches all of them, so
+      a long or partly-off query returns few or no results. Dropping words until 250 documents match, the first words of the
+      query first (`drop_tokens_mode: left_to_right`; the default drops the last ones), is
+      the best keyword setting of the sweep on average over the four scenarios, at most
+      0.013 below any one scenario's best. A documented search parameter.
+    drop_tokens_mode: See drop_tokens_threshold.
+    text_match_type: >-
+      `max_weight` ranks by the best-weighted matching field instead of the raw best field
+      score, so field priority counts more; best keyword setting of the sweep with the
+      threshold above. Hybrid uses `sum_score` (adds the field scores), the best hybrid setting of the sweep here. A documented search parameter.
+    rerank_hybrid_matches: >-
+      Scores the documents found by only one side on the other side too before fusion,
+      instead of giving them no score there. A documented hybrid search parameter.
+    vector_query_options: >-
+      `alpha` 0.5 (default 0.3) is the vector side's weight in Typesense's native rank
+      fusion; hybrid nDCG@10 0.507 -> 0.602 in the sweep; dropping words lowers hybrid here.
+  # Stemming and stop words stay off: the parity rules keep stemming at each engine's
+  # language default, and no other engine removes stop words.
