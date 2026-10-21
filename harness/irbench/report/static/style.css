@@ -9,7 +9,7 @@
   --alert-bg: #fdf3e1;
   --alert-border: #e5b45c;
   --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100;
-  --series-5: #e87ba4; --series-6: #008300; --series-7: #6250d6; --series-8: #e34948;
+  --series-5: #e87ba4; --series-6: #6250d6; --series-7: #008300; --series-8: #e34948;
   --series-other: #8a8984;
 }
 @media (prefers-color-scheme: dark) {
@@ -19,7 +19,7 @@
     --text: #f0efec; --text-2: #c3c2b7; --link: #86b6ef;
     --alert-bg: #33290f; --alert-border: #c98500;
     --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
-    --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-8: #e66767;
+    --series-5: #d55181; --series-6: #9085e9; --series-7: #008300; --series-8: #e66767;
     --series-other: #8f8e88;
   }
 }
@@ -29,7 +29,7 @@
   --text: #f0efec; --text-2: #c3c2b7; --link: #86b6ef;
   --alert-bg: #33290f; --alert-border: #c98500;
   --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
-  --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-8: #e66767;
+  --series-5: #d55181; --series-6: #9085e9; --series-7: #008300; --series-8: #e66767;
   --series-other: #8f8e88;
 }
 
