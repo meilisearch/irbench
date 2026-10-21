@@ -47,7 +47,7 @@ def prepare(root: Path, scenario_id: str, client: httpx.Client | None = None) ->
     spec = load_dataset_spec(root, scenario.dataset)
 
     raw = fetch_dataset(spec, ws.raw_dir(spec.id), client)
-    normalized = NORMALIZERS[spec.id](raw, ws.dataset_dir(spec.id))
+    normalized = NORMALIZERS[spec.id](raw, ws.dataset_dir(spec.id), **spec.params)
 
     docs_by_id = {d[scenario.id_field]: d for d in read_jsonl(normalized.docs)}
     check_sort_precision(scenario.index_fields.sortable, docs_by_id)

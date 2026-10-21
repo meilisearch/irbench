@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 import httpx
@@ -21,6 +22,9 @@ class DatasetSpec(BaseModel):
     license: str
     source: str
     files: dict[str, FileSpec]
+    # Extra keyword arguments passed to the normalizer (e.g. `corpus: full|pool`); a loader
+    # parameter baked into the dataset's definition, not a run setting.
+    params: dict[str, Any] = {}
 
 
 def load_dataset_spec(root: Path, dataset_id: str) -> DatasetSpec:
