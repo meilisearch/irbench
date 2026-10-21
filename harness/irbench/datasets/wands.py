@@ -1,6 +1,6 @@
 import csv
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +19,8 @@ class NormalizedDataset:
     qrels: Path
     n_docs: int
     n_queries: int
+    # Rows removed while normalizing: keys `docs` and `judgments`.
+    dropped: dict[str, int] = field(default_factory=dict)
 
 
 def _read_tsv(path: Path) -> Iterator[dict[str, str]]:
@@ -76,4 +78,11 @@ def normalize_wands(raw: dict[str, Path], out_dir: Path) -> NormalizedDataset:
         qrels.setdefault(r["query_id"].strip(), {})[r["product_id"].strip()] = GRADES[label]
     write_qrels(qrels_path, qrels)
 
-    return NormalizedDataset(docs_path, queries_path, qrels_path, n_docs, n_queries)
+    return NormalizedDataset(
+        docs_path,
+        queries_path,
+        qrels_path,
+        n_docs,
+        n_queries,
+        dropped={"docs": 0, "judgments": 0},
+    )

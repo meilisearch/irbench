@@ -1,0 +1,44 @@
+# Elasticsearch on knowledge-base/covid-papers.
+#
+# default: Elasticsearch as shipped. adapter.py generates only what the
+#   scenario schema requires (mapping, field boosts
+#   from the scenario's priority order, dense_vector).
+#   Not enabled by default: fuzziness, prefix matching, stemming. Hybrid uses
+#   the rrf retriever (trial license, see README).
+# tuned: changes within the parity rules. Add a `tuned:` block here; it is
+#   deep-merged over `default`. Example: fuzziness on keyword queries:
+#     tuned:
+#       search:
+#         keyword: {query: {multi_match: {fuzziness: AUTO}}}
+#
+# Keys: index (merged into the create-index body), search.<keyword|semantic|hybrid>
+# (merged into search bodies of that base), unsupported, justification.
+default:
+  index: {}
+  search: {}
+  unsupported: {}
+# tuned: the best settings found by a sweep of the engine's documented search settings,
+# scored on nDCG@10 per scenario and retrieval base (2026-10-20). Typo tolerance, prefix
+# search and stemming stay at the engine's defaults, except where turning on typo tolerance
+# the engine ships off is allowed by the parity rules; hybrid stays the engine's native
+# fusion.
+tuned:
+  search:
+    keyword:
+      multi_match:
+        type: most_fields
+        fuzziness: AUTO
+    hybrid:
+      multi_match:
+        type: most_fields
+        fuzziness: AUTO
+  justification:
+    keyword.multi_match: '`most_fields` adds the scores of every matching field, so a document
+      matching in several fields ranks higher. `fuzziness: AUTO` turns on Elasticsearch''s typo
+      tolerance (off by default; the parity rules allow settings that only turn a feature on):
+      1 edit for words of 3-5 characters, 2 above. Keyword nDCG@10 0.320 -> 0.499.'
+    hybrid.multi_match: 'The keyword side of hybrid: `most_fields` adds the scores of every matching
+      field, so a document matching in several fields ranks higher. `fuzziness: AUTO` turns on
+      Elasticsearch''s typo tolerance (off by default; the parity rules allow settings that only
+      turn a feature on): 1 edit for words of 3-5 characters, 2 above. The fusion stays RRF (k
+      = 60). Hybrid nDCG@10 0.527 -> 0.635.'

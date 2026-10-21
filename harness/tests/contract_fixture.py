@@ -32,7 +32,8 @@ def contract_docs() -> tuple[list[dict], np.ndarray]:
                 "name": f"{color} {item}",
                 "product_class": product_class(i),
                 "category": ["Furniture", item.title()],
-                "description": f"a {color} {item} for the home",
+                # doc 99 has an empty text field (names still carry color and item)
+                "description": "" if i == 99 else f"a {color} {item} for the home",
                 "features": [f"color : {color}"],
                 "rating_count": review_count(i),
                 "average_rating": rating(i),

@@ -2,7 +2,7 @@ from pydantic import BaseModel, ConfigDict
 
 from irbench.paths import slug
 
-STAGES = ("prepare", "embed", "up", "index", "render", "relevance", "score", "down")
+STAGES = ("prepare", "embed", "up", "index", "render", "relevance", "perf", "score", "down")
 
 
 class RunSpec(BaseModel):

@@ -1,0 +1,20 @@
+# Pinned engine image. The resolved digest is recorded in every run manifest.
+services:
+  engine:
+    image: paradedb/paradedb:0.26.1-pg17
+    container_name: irbench-postgres-paradedb
+    ports:
+      - "15433:5432"
+    environment:
+      POSTGRES_PASSWORD: irbench   # local benchmark only
+      POSTGRES_DB: irbench
+    volumes:
+      - data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d irbench"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+
+volumes:
+  data:

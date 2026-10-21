@@ -12,7 +12,22 @@ from irbench.paths import Workspace
 from irbench.perturb.variants import make_variants
 from irbench.scenario import load_scenario
 from irbench.tasks import build_tasks
-from irbench.terms import load_term_groups
+from irbench.terms import scenario_term_groups
+
+FLOAT32_EXACT = 2**24
+
+
+def check_sort_precision(fields: list[str], docs_by_id: dict[str, dict]) -> None:
+    """Engines that sort on float32 (Elasticsearch `float`, Qdrant formula scores) tie or swap
+    integers above 2**24, so the order checks would flag them for the dataset's encoding."""
+    for name in fields:
+        for doc_id, doc in docs_by_id.items():
+            v = doc.get(name)
+            if isinstance(v, int) and abs(v) > FLOAT32_EXACT:
+                raise ValueError(
+                    f"sortable field {name!r} of doc {doc_id!r} is {v}, above 2**24: "
+                    "float32 engines cannot order it exactly; re-encode it (e.g. days, not YYYYMMDD)"
+                )
 
 
 @dataclass(frozen=True)
@@ -23,6 +38,7 @@ class PrepareResult:
     n_variants: int
     n_tasks: int
     skipped_queries: list[str]
+    dropped: dict[str, int]
 
 
 def prepare(root: Path, scenario_id: str, client: httpx.Client | None = None) -> PrepareResult:
@@ -34,20 +50,29 @@ def prepare(root: Path, scenario_id: str, client: httpx.Client | None = None) ->
     normalized = NORMALIZERS[spec.id](raw, ws.dataset_dir(spec.id))
 
     docs_by_id = {d[scenario.id_field]: d for d in read_jsonl(normalized.docs)}
+    check_sort_precision(scenario.index_fields.sortable, docs_by_id)
     queries = [
-        Query(qid=r["qid"], text=r["text"], variant_of=r["qid"], perturbation="original")
+        Query(
+            qid=r["qid"],
+            text=r["text"],
+            variant_of=r["qid"],
+            perturbation="original",
+            group=r.get("group"),
+        )
         for r in read_jsonl(normalized.queries)
     ]
     qrels = read_qrels(normalized.qrels)
 
     p = scenario.perturbations
-    vocabulary = load_term_groups(scenario.vocabulary_path)
+    vocabulary = scenario_term_groups(scenario.vocabulary_path)
     variants = make_variants(queries, p.seed, list(p.kinds), vocabulary)
     task_set = build_tasks(scenario, variants, qrels, docs_by_id)
 
     out = ws.scenario_dir(scenario.id)
-    write_jsonl(out / "queries.variants.jsonl", (v.model_dump() for v in variants))
-    write_jsonl(out / "tasks.jsonl", (t.model_dump(mode="json") for t in task_set.tasks))
+    write_jsonl(out / "queries.variants.jsonl", (v.model_dump(exclude_none=True) for v in variants))
+    write_jsonl(
+        out / "tasks.jsonl", (t.model_dump(mode="json", exclude_none=True) for t in task_set.tasks)
+    )
     write_qrels(out / "qrels.tasks.tsv", task_set.qrels)
 
     result = PrepareResult(
@@ -57,6 +82,7 @@ def prepare(root: Path, scenario_id: str, client: httpx.Client | None = None) ->
         n_variants=len(variants),
         n_tasks=len(task_set.tasks),
         skipped_queries=task_set.skipped_queries,
+        dropped=normalized.dropped,
     )
     write_manifest(
         out / "prepare.manifest.json",
@@ -75,6 +101,8 @@ def prepare(root: Path, scenario_id: str, client: httpx.Client | None = None) ->
                 "variants": result.n_variants,
                 "tasks": result.n_tasks,
                 "skipped_queries": len(result.skipped_queries),
+                "dropped_docs": result.dropped.get("docs", 0),
+                "dropped_judgments": result.dropped.get("judgments", 0),
             },
             "skipped_queries": result.skipped_queries,
         },

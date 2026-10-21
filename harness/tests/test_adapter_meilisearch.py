@@ -90,3 +90,18 @@ def test_parse_ids_and_facets():
     }
     result = adapter.parse(make_task("faceted", "keyword", facets=["product_class"]), payload)
     assert result.ids == ["7", "3"] and result.facets == {"product_class": {"Beds": 2}}
+
+
+def test_tuned_track_uses_frequency_matching_on_keyword_and_hybrid():
+    config = load_engine_config(REPO_ROOT, "meilisearch", SCENARIO).track("tuned")
+    track = config.model_dump()
+    for base in ("keyword", "hybrid"):
+        body = _body(make_task(base), V, 100, track=track)
+        assert body["matchingStrategy"] == "frequency"
+    sem = _body(make_task("semantic"), V, 100, track=track)
+    assert "matchingStrategy" not in sem
+    assert "matchingStrategy" in config.justification
+
+
+def test_no_synonyms_creates_no_synonym_setting():
+    assert make_adapter("meilisearch", synonyms=[]).index_settings()["synonyms"] == {}

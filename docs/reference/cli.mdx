@@ -1,0 +1,126 @@
+---
+title: CLI reference
+description: Every irbench command and its flags, transcribed from --help
+---
+
+All commands accept `--root <path>` (repository root; defaults to the
+current repository) unless noted otherwise. Flags marked **required** have
+no default.
+
+## `irbench`
+
+```
+irbench [OPTIONS] COMMAND [ARGS]...
+```
+
+IRBench: information retrieval benchmark harness.
+
+Commands: `version`, `prepare`, `embed`, `score`, `lint`, `run`, `publish`,
+`report`, `vectors`.
+
+## `irbench prepare`
+
+Download the dataset, generate query variants and per-mode tasks.
+
+| Flag | Description |
+|---|---|
+| `--scenario <str>` **required** | Scenario id, e.g. `ecommerce/product-search`. |
+| `--root <path>` | Repository root. |
+
+## `irbench embed`
+
+Embed docs and query variants with one model: reuse local vectors that
+already match the prepared data (ids and text fingerprint), otherwise download its published vectors,
+otherwise compute them.
+
+| Flag | Description |
+|---|---|
+| `--scenario <str>` **required** | |
+| `--model <str>` **required** | Model id from the embedding registry. |
+| `--compute` | Embed locally even when published vectors exist. |
+| `--root <path>` | Repository root. |
+
+## `irbench run`
+
+Run the pipeline for one scenario × engine × model × track.
+
+| Flag | Description |
+|---|---|
+| `--scenario <str>` **required** | |
+| `--engine <str>` **required** | Folder name under `engines/`. |
+| `--model <str>` **required** | |
+| `--track <str>` | `default` or `tuned`. Default: `default`. |
+| `--hardware <str>` | Profile under `hardware/`. Default: `local`. |
+| `--host <str>` | Host publishing the engine port. Default: `localhost`. |
+| `--stages <str>` | Comma-separated stages. Default: `prepare,embed,up,index,render,relevance,perf,score,down`. |
+| `--root <path>` | Repository root. |
+
+## `irbench score`
+
+Score a TREC run file against the scenario's task qrels.
+
+| Flag | Description |
+|---|---|
+| `--scenario <str>` **required** | |
+| `--run <file>` **required** | TREC run file. |
+| `--out <path>` **required** | Where to write the JSON score report. |
+| `--root <path>` | Repository root. |
+
+## `irbench lint`
+
+Check engine configs against the machine-checkable parity rules (spec §7).
+See [Parity rules](/methodology/parity) for the rules it enforces.
+
+| Flag | Description |
+|---|---|
+| `--root <path>` | Repository root. |
+
+## `irbench publish`
+
+Copy finished runs into `results/` (reference hardware profiles only).
+
+```
+irbench publish [OPTIONS] RUN_IDS...
+```
+
+| Argument / Flag | Description |
+|---|---|
+| `RUN_IDS...` **required** | Run ids (folder names under `.irbench/runs`). |
+| `--results <path>` | Default: `<root>/results`. |
+| `--root <path>` | Repository root. |
+
+Refuses to publish any run whose manifest records the `local` hardware
+profile.
+
+## `irbench report`
+
+Build the static HTML report from run bundles.
+
+| Flag | Description |
+|---|---|
+| `--results <path>` **required** | `results/` or `.irbench/runs` for a preview. |
+| `--out <path>` **required** | Output directory (replaced on every build). |
+| `--docs-url <str>` | Default: `https://github.com/meilisearch/irbench/tree/main/docs`. |
+
+## `irbench vectors pack`
+
+Copy computed vectors into release assets and record them in
+`embeddings/published.yaml`.
+
+| Flag | Description |
+|---|---|
+| `--scenario <str>` **required** | |
+| `--model <str>` **required** | |
+| `--release <str>` | GitHub release tag. Default: `vectors`. |
+| `--out <path>` | Default: `dist/vectors`. |
+| `--root <path>` | Repository root. |
+
+## `irbench version`
+
+Print the harness version.
+
+```
+irbench version
+```
+
+No flags beyond `--help`.

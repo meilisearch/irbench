@@ -21,6 +21,13 @@ Everything else is Meilisearch's default: typo tolerance, prefix search, matchin
 
 With the shipped ranking rules, `sort` comes after `words`, `typo`, `proximity` and `attributeRank`, and vector search ranks by similarity before any rule. A `sort` parameter then only breaks ties: on WANDS, 1,272 of 1,540 sorted keyword queries returned results out of order. Moving `sort` first makes it strict. Queries without a `sort` parameter return identical results either way, because the rule is inactive without one (checked on v1.54.3 for keyword, semantic and hybrid queries).
 
+## What the tuned track changes
+
+Found by a sweep scored on nDCG@10 per scenario and base; each value is justified in `configs/<scenario>.yaml`.
+
+- keyword, every scenario: `matchingStrategy: frequency` (drop the most frequent query words first, instead of the last ones).
+- hybrid: `semanticRatio` 0.45 with `frequency` on WANDS, 0.55 on web-questions, 0.95 on covid-papers, and the default 0.5 with `frequency` on community-qa. Above 0.5, every ratio ranks about the same on the knowledge-base scenarios (the vector side leads).
+
 ## Modes
 
 - keyword: `q`.

@@ -1,0 +1,36 @@
+{% extends "base.html.j2" %}
+{% block main %}
+<h1>IRBench results</h1>
+<p class="lede">Relevance and performance of search engines on realistic, imperfect queries.
+Results are compared only within one hardware profile.</p>
+<p class="callout"><a href="configs.html">Engine configurations</a>: the settings each engine
+runs with, and why.</p>
+{% if unreadable %}
+<section class="alert">
+  <h2>Unreadable result bundles</h2>
+  <ul>
+  {% for u in unreadable %}
+    <li><code>{{ u.path }}</code>: {{ u.error }}</li>
+  {% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% if scenarios %}
+<div class="scroll"><table>
+  <thead><tr><th>Scenario</th><th>Hardware profile</th><th>Runs</th><th>Engines</th><th>Models</th></tr></thead>
+  <tbody>
+  {% for s in scenarios %}
+    <tr>
+      <th scope="row"><a href="{{ s.slug }}.html">{{ s.scenario }}</a></th>
+      <td><code>{{ s.hardware }}</code></td>
+      <td class="num">{{ s.runs|length }}</td>
+      <td>{{ s.runs|map(attribute="engine")|unique|join(", ") }}</td>
+      <td>{{ s.models|join(", ") }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}
+<p class="empty">No published results yet.</p>
+{% endif %}
+{% endblock %}

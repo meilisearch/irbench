@@ -2,6 +2,7 @@
 
 import json
 import shutil
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -12,6 +13,7 @@ from irbench.engines.base import EngineAdapter, Request, SearchResult, call, pol
 from irbench.runs import RunSpec
 from irbench.score.constraints import expected_facets
 from irbench.stages.embed import embed_scenario
+from irbench.stages.perf import LOADGEN_PATH
 from irbench.stages.prepare import prepare
 from test_embed_cache import FakeEmbedder
 from test_prepare import fixture_client, make_root
@@ -42,13 +44,14 @@ class FakeAdapter(EngineAdapter):
 
         poll(ready, timeout_s, "fake indexing", interval_s=0)
 
-    def render(self, task, vector, limit, facets=True):
+    def render(self, task, vector, limit, facets=True, *, depth=None):
         body = {
             "task_id": task.task_id,
             "limit": limit,
             "facets": facets and bool(task.facets),
             "check": bool(task.facets) and not facets,
             "has_vector": vector is not None,
+            "depth": self.pool_depth(depth),
             **self.search_params(task),
         }
         return Request("POST", f"/indexes/{self.ctx.index}/search", body=body)
@@ -145,6 +148,9 @@ def fake_root(tmp_path, wands_raw, config=None):
         yaml.safe_dump(config or FAKE_CONFIG)
     )
     shutil.copytree(REPO_ROOT / "hardware", root / "hardware")
+    binary = root / LOADGEN_PATH
+    binary.parent.mkdir(parents=True)
+    binary.write_text("")
     return root
 
 
@@ -167,3 +173,51 @@ def perfect_answers(ctx):
                 name: expected_facets(ids, name, ctx.docs_by_id) for name in task.facets
             }
     return answers, facets
+
+
+SAMPLE_PERF = {
+    "base_url": "http://localhost:9999",
+    "requests": 10,
+    "limits": {"p99_ms": 100.0, "max_error_rate": 0.001},
+    "warmup": {"requests": 10, "errors": 0, "seconds": 0.1},
+    "latency": {
+        "keyword/keyword": {
+            "count": 5,
+            "errors": 0,
+            "mean_ms": 2.0,
+            "p50_ms": 1.5,
+            "p95_ms": 3.0,
+            "p99_ms": 4.0,
+            "max_ms": 4.0,
+        },
+        "all": {
+            "count": 10,
+            "errors": 0,
+            "mean_ms": 2.5,
+            "p50_ms": 2.0,
+            "p95_ms": 4.0,
+            "p99_ms": 5.0,
+            "max_ms": 6.0,
+        },
+    },
+    "throughput": {
+        "keyword/keyword": {"steps": [], "max_qps": 812.5, "max_qps_concurrency": 16},
+    },
+    "skipped_groups": ["hybrid/hybrid"],
+}
+
+
+def fake_loadgen(report=None, calls=None):
+    """A Runner standing in for the Rust binary: writes perf.json where --out points."""
+
+    def run(cmd):
+        if calls is not None:
+            calls.append(cmd)
+        if cmd[0] == "cargo":
+            return ""
+        out = Path(cmd[cmd.index("--out") + 1])
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(report or SAMPLE_PERF))
+        return ""
+
+    return run

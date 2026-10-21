@@ -1,0 +1,22 @@
+# Pinned engine image. The resolved digest is recorded in every run manifest.
+services:
+  engine:
+    image: pgvector/pgvector:0.8.7-pg17
+    container_name: irbench-postgres
+    ports:
+      - "15432:5432"
+    environment:
+      POSTGRES_PASSWORD: irbench   # local benchmark only
+      POSTGRES_DB: irbench
+    volumes:
+      - data:/var/lib/postgresql/data
+      # synonyms.txt as a Postgres thesaurus dictionary (generated; see README)
+      - ./tsearch/irbench_ecommerce_product_search.ths:/usr/share/postgresql/17/tsearch_data/irbench_ecommerce_product_search.ths:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d irbench"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+
+volumes:
+  data:

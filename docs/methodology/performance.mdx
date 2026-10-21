@@ -1,0 +1,123 @@
+---
+title: Performance methodology
+description: How latency, throughput, indexing cost and memory are measured, and why
+---
+
+Performance is measured by `irbench-loadgen`, a Rust binary that replays
+rendered request files against one running engine. The page-100 requests
+(`top_k`) are exactly the ones the relevance stage executed, same requests and
+same order; other page sizes replay the same queries rendered with
+`limit = depth = N`, and their relevance is not measured.
+
+## Warm-up, latency, and stepped throughput
+
+From the scenario's `perf:` block (`scenario.yaml`):
+
+1. **Warm-up** — one full pass over every request, discarded.
+2. **Latency** — concurrency 1, one pass per `<mode>/<base>` group. Reports
+   p50/p95/p99/mean/max of successful requests, plus the error count.
+3. **Throughput** — for each of the scenario's `throughput_groups`
+   (`keyword/keyword`, `semantic/semantic`, `hybrid/hybrid`), closed-loop
+   steps at concurrency 1, 2, 4, 8, 16, 32, 64, each for `step_seconds`
+   (20s). A step is valid when p99 latency is ≤ `p99_limit_ms` (100ms) and
+   the error rate is ≤ `max_error_rate` (0.1%). Stepping stops at the first
+   invalid step; max QPS is the highest-QPS step among the leading run of
+   valid steps, which is not necessarily the last one — a dip at one
+   concurrency level followed by a higher QPS at the next must not hide the
+   earlier peak.
+
+A request counts as an error when the connection fails, it times out, the
+status isn't 2xx, or the body can't be read; the response body is always
+read before the clock stops.
+
+## Page sizes
+
+Speed is measured at each `perf.page_sizes` entry with the same protocol. For
+product search these are 20 (the headline, a results page) and 100 (deep
+retrieval, as used for reranking and RAG). Each request returns that many hits.
+
+Retrieval pools that the adapter sets per request follow the page size:
+Elasticsearch kNN `k`, Qdrant prefetch limits and Postgres RRF sides. Engine-level
+settings do not. Elasticsearch's `num_candidates` is left at its default of
+1.5 × `k`, so it is 150 at page size 100 and 30 at 20, while pgvector
+`hnsw.ef_search` and Qdrant's `ef` stay the same at both sizes. Relevance always
+uses `top_k = 100`.
+
+Both sizes exist because some engines' cost grows with the result count.
+
+## Closed-loop measurement and its limits
+
+The load generator is closed-loop: each simulated client waits for its
+response before sending the next request. From `loadgen/README.md`:
+
+- **Throughput is closed-loop.** During an engine stall (garbage collection,
+  segment merge), a closed loop records at most one slow sample per client,
+  where an open-loop client sending at a fixed rate would record every
+  request that queued behind the stall. Throughput-step p99 is therefore
+  closed-loop service time, and it understates tail latency under load —
+  more so for engines with intermittent pauses. The concurrency-1 latency
+  pass isn't affected by this.
+- **One trial per step.** Each concurrency step runs once for
+  `step_seconds`; a single noisy step can end stepping early. Max QPS is the
+  best step within the leading run of valid steps.
+- **Same query order every step.** Every engine replays the same requests in
+  the same order, so engine-side result caches behave the same way for all
+  of them.
+- **A broken engine fails the run.** If the warm-up, a latency pass, or the
+  lowest throughput step answers nothing or errors above the error-rate
+  limit, the run's `failures` list records it and the loadgen exits with
+  status 2. Latencies computed with no successful request are `null`, never
+  0.
+
+## Reading latencies across engines
+
+Latency groups measure what each engine does for the same request, and the
+work isn't always the same size. Two known differences:
+
+- **Keyword match sets differ.** Postgres as shipped matches keyword queries
+  with AND semantics (`websearch_to_tsquery`), and Typesense as shipped
+  requires every query word, dropping words only when nothing matches
+  (`drop_tokens_threshold: 1`). Their tuned tracks, which the report shows,
+  match more: Postgres ORs the query words (`match: any`) and ranks every
+  match, Typesense keeps dropping words until a threshold of documents match.
+  Where a tuned track keeps AND matching (the Postgres hybrid keyword side on
+  the knowledge-base scenarios), its keyword work comes from a much smaller
+  match set than the OR-matching engines'. The engine configurations page of
+  the report lists each engine's settings.
+- **Faceted on the semantic base counts different sets.** Meilisearch and
+  both Postgres engines count facets over every document that passes the
+  filter; Elasticsearch and Typesense count over the kNN top-k, where k is the page size at speed. That latency group
+  compares different definitions of the match set.
+
+## Indexing time, peak memory, and disk
+
+During the `index` stage the harness records:
+
+- **Indexing time** — wall-clock seconds from starting index/collection
+  creation through the adapter reporting all documents indexed and
+  searchable.
+- **Peak memory** — the engine container's `memory.peak` cgroup value.
+- **Disk** — the size of the engine's data directory on disk after
+  indexing.
+
+## Reference hardware and pinning
+
+v0.1's reference profile, `hardware/aws-c7i-4xlarge.yaml`:
+
+- AWS **c7i.4xlarge** (16 vCPU, 32 GB), gp3 SSD.
+- The engine container is pinned to an 8-vCPU / 16 GB cpuset (`0-7`) and
+  memory limit.
+- The load generator runs on a disjoint 4-vCPU cpuset (`8-11`), so it never
+  competes with the engine for CPU.
+- The profile id is recorded in every run's manifest.
+
+A `local` profile (`hardware/local.yaml`) exists for development: it has no
+CPU or memory pinning, and its results are never published or compared.
+
+## Why results are only compared within a profile
+
+Additional hardware profiles can be added later, but performance numbers
+from different profiles are never compared to each other: a faster or
+slower machine, or a different cpuset split between engine and load
+generator, would make the comparison meaningless. `irbench publish` enforces
+this at the boundary by refusing to publish any run on the `local` profile.

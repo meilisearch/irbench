@@ -1,0 +1,41 @@
+# Typesense on knowledge-base/community-qa.
+#
+# default: Typesense as shipped. adapter.py generates only what the scenario
+#   schema requires (optional string*/float fields, facet flags, a float[] vector
+#   field, the synonyms.txt synonym set, field weights n - i from the scenario's
+#   priority order). Typo tolerance and prefix search are on by default.
+# tuned: changes within the parity rules; a `tuned:` block is deep-merged over
+#   `default`.
+#
+# Keys: index (merged into the create-collection body; `searchable_fields` is
+# merged into every searchable field, `fields.<name>` into one field,
+# `stopwords.<set>` creates a stopword set), search.<keyword|semantic|hybrid>
+# (merged into each search of that base), unsupported, justification.
+default:
+  index: {}
+  search: {}
+  unsupported: {}
+tuned:
+  search:
+    keyword:
+      drop_tokens_threshold: 250
+      drop_tokens_mode: left_to_right
+    hybrid:
+      rerank_hybrid_matches: true
+      vector_query_options: {alpha: 0.5}
+  justification:
+    drop_tokens_threshold: >-
+      Typesense's default (1) drops query words only when nothing matches all of them, so
+      a long or partly-off query returns few or no results. Dropping words until 250 documents match, the first words of the
+      query first (`drop_tokens_mode: left_to_right`; the default drops the last ones), is
+      the best keyword setting of the sweep here: keyword nDCG@10 0.213 -> 0.244, with the
+      default `text_match_type` (`max_score`). A documented search parameter.
+    drop_tokens_mode: See drop_tokens_threshold.
+    rerank_hybrid_matches: >-
+      Scores the documents found by only one side on the other side too before fusion,
+      instead of giving them no score there. A documented hybrid search parameter.
+    vector_query_options: >-
+      `alpha` 0.5 (default 0.3) is the vector side's weight in Typesense's native rank
+      fusion; hybrid nDCG@10 0.334 -> 0.366 in the sweep; dropping words lowers hybrid here.
+  # Stemming and stop words stay off: the parity rules keep stemming at each engine's
+  # language default, and no other engine removes stop words.

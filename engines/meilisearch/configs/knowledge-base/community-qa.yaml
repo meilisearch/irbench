@@ -1,0 +1,30 @@
+# Meilisearch on knowledge-base/community-qa.
+#
+# default: Meilisearch as shipped. adapter.py generates only what the scenario
+#   schema requires (searchable order, filterable/sortable/facet fields,
+#   userProvided embedder, facet value limit).
+# tuned: changes within the parity rules (docs/methodology/parity). Add a
+#   `tuned:` block here; it is deep-merged over `default`.
+#
+# Keys: index (merged into index settings), search.<keyword|semantic|hybrid>
+# (merged into search bodies of that base), unsupported (key -> reason),
+# justification (key -> why a non-default ANN or ranking parameter is set).
+default:
+  index: {}
+  search: {}
+  unsupported: {}
+# tuned: the best settings found by a sweep of the engine's documented search settings,
+# scored on nDCG@10 per scenario and retrieval base (2026-10-20). Typo tolerance, prefix
+# search and stemming stay at the engine's defaults; hybrid stays the engine's native
+# fusion.
+tuned:
+  search:
+    keyword:
+      matchingStrategy: frequency
+    hybrid:
+      matchingStrategy: frequency
+  justification:
+    matchingStrategy: With the default `last`, Meilisearch drops words from the end of the query
+      until something matches, so the last word goes first. `frequency` drops the most frequent
+      words first. A documented search parameter. Keyword nDCG@10 0.227 -> 0.245 (also the best
+      for hybrid here). Hybrid nDCG@10 0.369 -> 0.370.

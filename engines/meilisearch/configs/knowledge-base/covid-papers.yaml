@@ -1,0 +1,43 @@
+# Meilisearch on knowledge-base/covid-papers.
+#
+# default: Meilisearch as shipped. adapter.py generates only what the scenario
+#   schema requires (searchable order, filterable/sortable/facet fields,
+#   userProvided embedder, facet value limit).
+# tuned: changes within the parity rules (docs/methodology/parity). Add a
+#   `tuned:` block here; it is deep-merged over `default`.
+#
+# Keys: index (merged into index settings), search.<keyword|semantic|hybrid>
+# (merged into search bodies of that base), unsupported (key -> reason),
+# justification (key -> why a non-default ANN or ranking parameter is set).
+default:
+  index:
+    # Default rules with `sort` moved first (see justification).
+    rankingRules: [sort, words, typo, proximity, attributeRank, wordPosition, exactness]
+  search: {}
+  unsupported: {}
+  justification:
+    rankingRules: >-
+      The scenario's sorted mode requires results ordered by `publish_date`.
+      With the shipped order, `sort` ranks after words/typo/proximity/attributeRank
+      (and after vector similarity), so it only breaks ties. Moving it first makes
+      `sort` strict on both bases. Requests without `sort` are unaffected: the
+      rule is inactive without a sort parameter (checked on v1.54.3 for keyword,
+      semantic and hybrid queries).
+# tuned: the best settings found by a sweep of the engine's documented search settings,
+# scored on nDCG@10 per scenario and retrieval base (2026-10-20). Typo tolerance, prefix
+# search and stemming stay at the engine's defaults; hybrid stays the engine's native
+# fusion.
+tuned:
+  search:
+    keyword:
+      matchingStrategy: frequency
+    hybrid:
+      hybrid:
+        semanticRatio: 0.95
+  justification:
+    matchingStrategy: With the default `last`, Meilisearch drops words from the end of the query
+      until something matches, so the last word goes first. `frequency` drops the most frequent
+      words first. A documented search parameter. Keyword nDCG@10 0.310 -> 0.336; hybrid keeps
+      `last`.
+    hybrid.semanticRatio: '`semanticRatio` 0.95 (default 0.5): the vector side leads; every ratio from
+      0.55 up ranks within 0.001 of this one. Hybrid nDCG@10 0.532 -> 0.575.'

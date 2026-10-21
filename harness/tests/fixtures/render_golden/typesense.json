@@ -1,0 +1,279 @@
+{
+ "faceted-keyword/check": {
+  "body": {
+   "searches": [
+    {
+     "collection": "idx",
+     "include_fields": "id",
+     "page": 1,
+     "per_page": 250,
+     "q": "grey sofa",
+     "query_by": "name,product_class,category,features,description",
+     "query_by_weights": "5,4,3,2,1"
+    },
+    {
+     "collection": "idx",
+     "include_fields": "id",
+     "page": 2,
+     "per_page": 250,
+     "q": "grey sofa",
+     "query_by": "name,product_class,category,features,description",
+     "query_by_weights": "5,4,3,2,1"
+    },
+    {
+     "collection": "idx",
+     "include_fields": "id",
+     "page": 3,
+     "per_page": 250,
+     "q": "grey sofa",
+     "query_by": "name,product_class,category,features,description",
+     "query_by_weights": "5,4,3,2,1"
+    },
+    {
+     "collection": "idx",
+     "include_fields": "id",
+     "page": 4,
+     "per_page": 250,
+     "q": "grey sofa",
+     "query_by": "name,product_class,category,features,description",
+     "query_by_weights": "5,4,3,2,1"
+    }
+   ]
+  },
+  "headers": {
+   "X-TYPESENSE-API-KEY": "irbench"
+  },
+  "method": "POST",
+  "path": "/multi_search",
+  "protocol": "http"
+ },
+ "faceted-keyword/main": {
+  "body": {
+   "searches": [
+    {
+     "collection": "idx",
+     "facet_by": "product_class",
+     "include_fields": "id",
+     "max_facet_values": 1000,
+     "per_page": 100,
+     "q": "grey sofa",
+     "query_by": "name,product_class,category,features,description",
+     "query_by_weights": "5,4,3,2,1"
+    }
+   ]
+  },
+  "headers": {
+   "X-TYPESENSE-API-KEY": "irbench"
+  },
+  "method": "POST",
+  "path": "/multi_search",
+  "protocol": "http"
+ },
+ "faceted-semantic/check": {
+  "body": {
+   "searches": [
+    {
+     "collection": "idx",
+     "include_fields": "id",
+     "page": 1,
+     "per_page": 250,
+     "q": "*",
+     "vector_query": "vector:([0.1,0.2,0.3], k:100)"
+    },
+    {
+     "collection": "idx",
+     "include_fields": "id",
+     "page": 2,
+     "per_page": 250,
+     "q": "*",
+     "vector_query": "vector:([0.1,0.2,0.3], k:100)"
+    },
+    {
+     "collection": "idx",
+     "include_fields": "id",
+     "page": 3,
+     "per_page": 250,
+     "q": "*",
+     "vector_query": "vector:([0.1,0.2,0.3], k:100)"
+    },
+    {
+     "collection": "idx",
+     "include_fields": "id",
+     "page": 4,
+     "per_page": 250,
+     "q": "*",
+     "vector_query": "vector:([0.1,0.2,0.3], k:100)"
+    }
+   ]
+  },
+  "headers": {
+   "X-TYPESENSE-API-KEY": "irbench"
+  },
+  "method": "POST",
+  "path": "/multi_search",
+  "protocol": "http"
+ },
+ "faceted-semantic/main": {
+  "body": {
+   "searches": [
+    {
+     "collection": "idx",
+     "facet_by": "product_class",
+     "include_fields": "id",
+     "max_facet_values": 1000,
+     "per_page": 100,
+     "q": "*",
+     "vector_query": "vector:([0.1,0.2,0.3], k:100)"
+    }
+   ]
+  },
+  "headers": {
+   "X-TYPESENSE-API-KEY": "irbench"
+  },
+  "method": "POST",
+  "path": "/multi_search",
+  "protocol": "http"
+ },
+ "filtered-keyword/main": {
+  "body": {
+   "searches": [
+    {
+     "collection": "idx",
+     "filter_by": "product_class:=`Beds`",
+     "include_fields": "id",
+     "per_page": 100,
+     "q": "grey sofa",
+     "query_by": "name,product_class,category,features,description",
+     "query_by_weights": "5,4,3,2,1"
+    }
+   ]
+  },
+  "headers": {
+   "X-TYPESENSE-API-KEY": "irbench"
+  },
+  "method": "POST",
+  "path": "/multi_search",
+  "protocol": "http"
+ },
+ "filtered-semantic/main": {
+  "body": {
+   "searches": [
+    {
+     "collection": "idx",
+     "filter_by": "product_class:=`Beds`",
+     "include_fields": "id",
+     "per_page": 100,
+     "q": "*",
+     "vector_query": "vector:([0.1,0.2,0.3], k:100)"
+    }
+   ]
+  },
+  "headers": {
+   "X-TYPESENSE-API-KEY": "irbench"
+  },
+  "method": "POST",
+  "path": "/multi_search",
+  "protocol": "http"
+ },
+ "hybrid/main": {
+  "body": {
+   "searches": [
+    {
+     "collection": "idx",
+     "include_fields": "id",
+     "per_page": 100,
+     "q": "grey sofa",
+     "query_by": "name,product_class,category,features,description",
+     "query_by_weights": "5,4,3,2,1",
+     "vector_query": "vector:([0.1,0.2,0.3], k:100)"
+    }
+   ]
+  },
+  "headers": {
+   "X-TYPESENSE-API-KEY": "irbench"
+  },
+  "method": "POST",
+  "path": "/multi_search",
+  "protocol": "http"
+ },
+ "keyword/main": {
+  "body": {
+   "searches": [
+    {
+     "collection": "idx",
+     "include_fields": "id",
+     "per_page": 100,
+     "q": "grey sofa",
+     "query_by": "name,product_class,category,features,description",
+     "query_by_weights": "5,4,3,2,1"
+    }
+   ]
+  },
+  "headers": {
+   "X-TYPESENSE-API-KEY": "irbench"
+  },
+  "method": "POST",
+  "path": "/multi_search",
+  "protocol": "http"
+ },
+ "semantic/main": {
+  "body": {
+   "searches": [
+    {
+     "collection": "idx",
+     "include_fields": "id",
+     "per_page": 100,
+     "q": "*",
+     "vector_query": "vector:([0.1,0.2,0.3], k:100)"
+    }
+   ]
+  },
+  "headers": {
+   "X-TYPESENSE-API-KEY": "irbench"
+  },
+  "method": "POST",
+  "path": "/multi_search",
+  "protocol": "http"
+ },
+ "sorted-keyword/main": {
+  "body": {
+   "searches": [
+    {
+     "collection": "idx",
+     "include_fields": "id",
+     "per_page": 100,
+     "q": "grey sofa",
+     "query_by": "name,product_class,category,features,description",
+     "query_by_weights": "5,4,3,2,1",
+     "sort_by": "average_rating(missing_values: last):desc"
+    }
+   ]
+  },
+  "headers": {
+   "X-TYPESENSE-API-KEY": "irbench"
+  },
+  "method": "POST",
+  "path": "/multi_search",
+  "protocol": "http"
+ },
+ "sorted-semantic/main": {
+  "body": {
+   "searches": [
+    {
+     "collection": "idx",
+     "include_fields": "id",
+     "per_page": 100,
+     "q": "*",
+     "sort_by": "average_rating(missing_values: last):desc",
+     "vector_query": "vector:([0.1,0.2,0.3], k:100)"
+    }
+   ]
+  },
+  "headers": {
+   "X-TYPESENSE-API-KEY": "irbench"
+  },
+  "method": "POST",
+  "path": "/multi_search",
+  "protocol": "http"
+ }
+}

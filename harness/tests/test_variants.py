@@ -31,3 +31,12 @@ def test_seed_changes_output():
     q = [_q("1", "upholstered platform nightstand")]
     texts = {make_variants(q, s, ["typo"], VOCAB)[1].text for s in range(20)}
     assert len(texts) > 1
+
+
+def test_variants_keep_the_query_group():
+    q = Query(
+        qid="1", text="coronavirus origin", variant_of="1", perturbation="original", group="keyword"
+    )
+    variants = make_variants([q], 7, ["typo", "prefix"], [])
+    assert len(variants) > 1
+    assert {v.group for v in variants} == {"keyword"}

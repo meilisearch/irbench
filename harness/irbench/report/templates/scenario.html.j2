@@ -1,0 +1,158 @@
+{% extends "base.html.j2" %}
+{% block title %}{{ s.scenario }} · {{ s.hardware }} · IRBench{% endblock %}
+{% block main %}
+<h1>{{ s.scenario }}</h1>
+<p class="meta">Hardware profile <code>{{ s.hardware }}</code> · {{ s.runs|length }} runs ·
+<a href="{{ docs_url }}">how this is measured</a></p>
+{% if not view.comparable %}
+<p class="alert">Profile <code>{{ s.hardware }}</code> is a developer machine. These numbers check
+the method; they are not comparable with published results.</p>
+{% endif %}
+
+<section>
+<h2>Relevance: nDCG@10 by mode</h2>
+<p class="note">Bold marks the best score of each column (per embedding model); ≈ marks a score
+not significantly below it (paired randomization test over the same tasks, p ≥ 0.05). ± is the
+half-width of the 95% confidence interval. N/A marks a mode the engine does not support (reasons
+below). ⚠ marks a score whose results broke the mode's contract (filter or order violations); it
+does not measure that mode.</p>
+<div class="scroll"><table class="matrix">
+  <thead><tr><th>Engine</th><th>Model</th>{% for g in view.columns %}<th>{{ g|group }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for row in view.matrix %}
+    <tr>
+      <th scope="row"><a href="runs/{{ row.run.run_id }}.html">{{ row.run.label }}</a></th>
+      <td>{{ row.run.model }}</td>
+      {% if row.run.failure %}
+      <td class="failed" colspan="{{ view.columns|length }}">{{ row.run.status }}: {{ row.run.failure }}</td>
+      {% else %}
+      {% for c in row.cells %}
+      <td class="num {{ c.kind }}{% if c.best %} best{% endif %}"{% if c.note %} title="{{ c.note }}"{% endif %}>{% if c.kind == "violated" %}⚠ {% endif %}{% if c.tied %}≈ {% endif %}{% if c.best %}<strong>{{ c.text }}</strong>{% else %}{{ c.text }}{% endif %}{% if c.ci %} <small class="ci">{{ c.ci }}</small>{% endif %}</td>
+      {% endfor %}
+      {% endif %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% if view.judged %}
+<h3>Judged results: judged@10</h3>
+<p class="note">Share of each query's top 10 results that carry a relevance judgment (relevant or
+not). Unjudged documents count as non-relevant, so a run with low judged@10 may be better than
+its nDCG@10 says: it returns documents nobody assessed.</p>
+<div class="scroll"><table>
+  <thead><tr><th>Engine</th><th>Model</th>{% for g in view.judged_groups %}<th>{{ g|group }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for r in view.judged %}
+    <tr>
+      <th scope="row">{{ r.run.label }}</th><td>{{ r.run.model }}</td>
+      {% for v in r.cells %}<td class="num">{{ v|score }}</td>{% endfor %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% endif %}
+{% if view.na_notes %}
+<h3>Not applicable</h3>
+<ul class="notes">
+{% for n in view.na_notes %}
+  <li><strong>{{ n.label }}</strong> — {{ n.groups|map("group")|join(", ") }}: {{ n.reason }}</li>
+{% endfor %}
+</ul>
+{% endif %}
+</section>
+
+{% if view.tradeoff.charts %}
+<section>
+<h2>Relevance against speed</h2>
+<p class="note">nDCG@10 plotted over median latency at {{ view.tradeoff.size }} results per page, one
+dot per engine: up is more relevant, left is faster. Latency is plotted on a log scale.
+Hover a dot for p99.</p>
+{% for c in view.tradeoff.charts %}
+<h3>{{ c.group|group }}{% if s.models|length > 1 %} · {{ c.model }}{% endif %}</h3>
+{{ c.svg }}
+<details><summary>Numbers</summary>
+<div class="scroll"><table>
+  <thead><tr><th>Engine</th><th>nDCG@10</th><th>p50 ms</th><th>p99 ms</th></tr></thead>
+  <tbody>
+  {% for r in c.rows %}
+    <tr><th scope="row">{{ r.run.label }}</th><td class="num">{{ r.score|score }}</td><td class="num">{{ r.p50|ms }}</td><td class="num">{{ r.p99|ms }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+</details>
+{% endfor %}
+</section>
+{% endif %}
+
+<section>
+<h2>Imperfect queries</h2>
+<p class="note">nDCG@10 on the original queries, and the change when the same queries carry a
+typo, are cut short (search as you type){% if "synonym" in view.perturbation_kinds %} or use a synonym{% endif %}. Perturbation rules are in the methodology.</p>
+<div class="scroll"><table>
+  <thead><tr><th>Engine</th><th>Model</th><th>Mode</th><th>original</th>{% for p in view.perturbation_kinds %}<th>{{ p }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for r in view.perturbations %}
+    <tr>
+      <th scope="row">{{ r.run.label }}</th><td>{{ r.run.model }}</td><td>{{ r.group|group }}</td>
+      <td class="num">{{ r.original|score }}</td>
+      {% for p in view.perturbation_kinds %}
+      <td class="num delta">{{ r.deltas[p]|delta }}{% if p == "synonym" and r.synonyms_note %} <span title="synonyms.txt not loaded: {{ r.synonyms_note }}">&dagger;</span>{% endif %}</td>
+      {% endfor %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% if "synonym" in view.perturbation_kinds and view.perturbations|selectattr("synonyms_note")|list %}
+<p class="note">&dagger; This engine does not load the shared <code>synonyms.txt</code>; its synonym column does not measure synonym support (reason on hover and on its run page).</p>
+{% endif %}
+</section>
+
+{% if view.query_groups %}
+<section>
+<h2>By query group</h2>
+<p class="note">nDCG@10 for each group of queries (for example question vs keyword form), over the original queries and their perturbed variants (typo, prefix); n is the number of tasks behind each column (each query plus its typo and prefix variants).</p>
+{% for t in view.query_groups %}
+<h3>{{ t.group|group }}: nDCG@10</h3>
+<div class="scroll"><table>
+  <thead><tr><th>Engine</th><th>Model</th>{% for n in t.names %}<th>{{ n }}{% if t.ns[loop.index0] is not none %}<br><small>n={{ t.ns[loop.index0] }}</small>{% endif %}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for r in t.rows %}
+    <tr>
+      <th scope="row">{{ r.run.label }}</th><td>{{ r.run.model }}</td>
+      {% for c in r.cells %}<td class="num">{{ c|score }}</td>{% endfor %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% endfor %}
+</section>
+{% endif %}
+
+{% if view.models %}
+<section>
+<h2>Embedding models</h2>
+{% for t in view.models %}
+<h3>{{ t.group|group }}: nDCG@10</h3>
+<div class="scroll"><table>
+  <thead><tr><th>Engine</th>{% for m in s.models %}<th>{{ m }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for row in t.rows %}
+    <tr><th scope="row">{{ row.label }}</th>{% for c in row.cells %}<td class="num {{ c.kind }}"{% if c.note %} title="{{ c.note }}"{% endif %}>{{ c.text }}</td>{% endfor %}</tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% endfor %}
+</section>
+{% endif %}
+
+{% include "perf.html.j2" %}
+
+<section>
+<h2>Runs</h2>
+<ul class="runs">
+{% for r in s.runs %}
+  <li><a href="runs/{{ r.run_id }}.html">{{ r.label }} · {{ r.model }}</a> — {{ r.status }}</li>
+{% endfor %}
+</ul>
+</section>
+{% endblock %}

@@ -1,0 +1,302 @@
+{
+ "faceted-keyword/check": {
+  "body": {
+   "_source": false,
+   "query": {
+    "multi_match": {
+     "fields": [
+      "name^5",
+      "product_class^4",
+      "category^3",
+      "features^2",
+      "description^1"
+     ],
+     "query": "grey sofa"
+    }
+   },
+   "size": 1000
+  },
+  "headers": {},
+  "method": "POST",
+  "path": "/idx/_search",
+  "protocol": "http"
+ },
+ "faceted-keyword/main": {
+  "body": {
+   "_source": false,
+   "aggs": {
+    "product_class": {
+     "terms": {
+      "field": "product_class.raw",
+      "size": 1000
+     }
+    }
+   },
+   "query": {
+    "multi_match": {
+     "fields": [
+      "name^5",
+      "product_class^4",
+      "category^3",
+      "features^2",
+      "description^1"
+     ],
+     "query": "grey sofa"
+    }
+   },
+   "size": 100
+  },
+  "headers": {},
+  "method": "POST",
+  "path": "/idx/_search",
+  "protocol": "http"
+ },
+ "faceted-semantic/check": {
+  "body": {
+   "_source": false,
+   "knn": {
+    "field": "vector",
+    "k": 100,
+    "query_vector": [
+     0.1,
+     0.2,
+     0.3
+    ]
+   },
+   "size": 1000
+  },
+  "headers": {},
+  "method": "POST",
+  "path": "/idx/_search",
+  "protocol": "http"
+ },
+ "faceted-semantic/main": {
+  "body": {
+   "_source": false,
+   "aggs": {
+    "product_class": {
+     "terms": {
+      "field": "product_class.raw",
+      "size": 1000
+     }
+    }
+   },
+   "knn": {
+    "field": "vector",
+    "k": 100,
+    "query_vector": [
+     0.1,
+     0.2,
+     0.3
+    ]
+   },
+   "size": 100
+  },
+  "headers": {},
+  "method": "POST",
+  "path": "/idx/_search",
+  "protocol": "http"
+ },
+ "filtered-keyword/main": {
+  "body": {
+   "_source": false,
+   "query": {
+    "bool": {
+     "filter": [
+      {
+       "term": {
+        "product_class.raw": "Beds"
+       }
+      }
+     ],
+     "must": [
+      {
+       "multi_match": {
+        "fields": [
+         "name^5",
+         "product_class^4",
+         "category^3",
+         "features^2",
+         "description^1"
+        ],
+        "query": "grey sofa"
+       }
+      }
+     ]
+    }
+   },
+   "size": 100
+  },
+  "headers": {},
+  "method": "POST",
+  "path": "/idx/_search",
+  "protocol": "http"
+ },
+ "filtered-semantic/main": {
+  "body": {
+   "_source": false,
+   "knn": {
+    "field": "vector",
+    "filter": [
+     {
+      "term": {
+       "product_class.raw": "Beds"
+      }
+     }
+    ],
+    "k": 100,
+    "query_vector": [
+     0.1,
+     0.2,
+     0.3
+    ]
+   },
+   "size": 100
+  },
+  "headers": {},
+  "method": "POST",
+  "path": "/idx/_search",
+  "protocol": "http"
+ },
+ "hybrid/main": {
+  "body": {
+   "_source": false,
+   "retriever": {
+    "rrf": {
+     "rank_constant": 60,
+     "rank_window_size": 100,
+     "retrievers": [
+      {
+       "standard": {
+        "query": {
+         "multi_match": {
+          "fields": [
+           "name^5",
+           "product_class^4",
+           "category^3",
+           "features^2",
+           "description^1"
+          ],
+          "query": "grey sofa"
+         }
+        }
+       }
+      },
+      {
+       "knn": {
+        "field": "vector",
+        "k": 100,
+        "query_vector": [
+         0.1,
+         0.2,
+         0.3
+        ]
+       }
+      }
+     ]
+    }
+   },
+   "size": 100
+  },
+  "headers": {},
+  "method": "POST",
+  "path": "/idx/_search",
+  "protocol": "http"
+ },
+ "keyword/main": {
+  "body": {
+   "_source": false,
+   "query": {
+    "multi_match": {
+     "fields": [
+      "name^5",
+      "product_class^4",
+      "category^3",
+      "features^2",
+      "description^1"
+     ],
+     "query": "grey sofa"
+    }
+   },
+   "size": 100
+  },
+  "headers": {},
+  "method": "POST",
+  "path": "/idx/_search",
+  "protocol": "http"
+ },
+ "semantic/main": {
+  "body": {
+   "_source": false,
+   "knn": {
+    "field": "vector",
+    "k": 100,
+    "query_vector": [
+     0.1,
+     0.2,
+     0.3
+    ]
+   },
+   "size": 100
+  },
+  "headers": {},
+  "method": "POST",
+  "path": "/idx/_search",
+  "protocol": "http"
+ },
+ "sorted-keyword/main": {
+  "body": {
+   "_source": false,
+   "query": {
+    "multi_match": {
+     "fields": [
+      "name^5",
+      "product_class^4",
+      "category^3",
+      "features^2",
+      "description^1"
+     ],
+     "query": "grey sofa"
+    }
+   },
+   "size": 100,
+   "sort": [
+    {
+     "average_rating": {
+      "order": "desc"
+     }
+    }
+   ]
+  },
+  "headers": {},
+  "method": "POST",
+  "path": "/idx/_search",
+  "protocol": "http"
+ },
+ "sorted-semantic/main": {
+  "body": {
+   "_source": false,
+   "knn": {
+    "field": "vector",
+    "k": 100,
+    "query_vector": [
+     0.1,
+     0.2,
+     0.3
+    ]
+   },
+   "size": 100,
+   "sort": [
+    {
+     "average_rating": {
+      "order": "desc"
+     }
+    }
+   ]
+  },
+  "headers": {},
+  "method": "POST",
+  "path": "/idx/_search",
+  "protocol": "http"
+ }
+}

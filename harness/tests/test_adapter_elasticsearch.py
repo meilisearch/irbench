@@ -1,3 +1,5 @@
+import json
+
 from adapter_helpers import SCENARIO, make_adapter, make_task
 from conftest import REPO_ROOT
 from irbench.engines.config import load_engine_config
@@ -53,7 +55,25 @@ def test_keyword_semantic_hybrid_requests():
     assert "query" not in sem
     assert sem["knn"] == {"field": "vector", "query_vector": V, "k": 100}
     hyb = _body(make_task("hybrid"), V)
-    assert hyb["query"]["multi_match"]["query"] == "grey sofa" and hyb["knn"]["k"] == 100
+    assert "query" not in hyb and "knn" not in hyb
+    assert hyb["retriever"] == {
+        "rrf": {
+            "retrievers": [
+                {"standard": {"query": {"multi_match": {"query": "grey sofa", "fields": FIELDS}}}},
+                {"knn": {"field": "vector", "query_vector": V, "k": 100}},
+            ],
+            "rank_constant": 60,
+            "rank_window_size": 100,
+        }
+    }
+
+
+def test_hybrid_rrf_window_follows_the_request_depth():
+    adapter = make_adapter("elasticsearch")
+    body = adapter.render(make_task("hybrid"), V, 20, depth=20).body
+    rrf = body["retriever"]["rrf"]
+    assert body["size"] == 20 and rrf["rank_window_size"] == 20
+    assert rrf["retrievers"][1]["knn"]["k"] == 20
 
 
 def test_filters_on_keyword_and_vector_bases():
@@ -87,3 +107,44 @@ def test_parse_ids_and_aggregations():
     result = adapter.parse(make_task("faceted", "keyword", facets=["product_class"]), payload)
     assert result.ids == ["9", "2"] and result.facets == {"product_class": {"Beds": 3}}
     assert adapter.parse(make_task("keyword"), {"hits": {"hits": []}}).facets is None
+
+
+def test_no_synonyms_creates_no_synonym_filter():
+    body = make_adapter("elasticsearch", synonyms=[]).index_body()
+    assert "irbench_synonyms" not in json.dumps(body)
+
+
+def test_multi_match_options_reach_every_request_shape():
+    track = {"search": {b: {"multi_match": {"fuzziness": "AUTO"}} for b in ("keyword", "hybrid")}}
+    plain = _body(make_task("keyword"), track=track)
+    assert plain["query"]["multi_match"]["fuzziness"] == "AUTO"
+    assert "multi_match" not in {k for k in plain if k != "query"}
+    filtered = _body(
+        make_task(
+            "filtered", "keyword", filter=Filter(field="product_class", op="eq", value="Beds")
+        ),
+        track=track,
+    )
+    assert filtered["query"]["bool"]["must"][0]["multi_match"]["fuzziness"] == "AUTO"
+    hybrid = _body(make_task("hybrid"), V, track=track)
+    standard = hybrid["retriever"]["rrf"]["retrievers"][0]["standard"]
+    assert standard["query"]["multi_match"]["fuzziness"] == "AUTO"
+    assert "multi_match" not in hybrid
+
+
+def test_hybrid_fusion_options():
+    def retriever(fusion):
+        return _body(make_task("hybrid"), V, track={"search": {"hybrid": {"fusion": fusion}}})[
+            "retriever"
+        ]
+
+    rrf = retriever({"rank_constant": 20, "weights": [1, 2]})["rrf"]
+    assert rrf["rank_constant"] == 20
+    assert [r["weight"] for r in rrf["retrievers"]] == [1, 2]
+    assert "standard" in rrf["retrievers"][0]["retriever"]
+    linear = retriever({"method": "linear", "weights": [1, 3]})["linear"]
+    assert [(r["weight"], r["normalizer"]) for r in linear["retrievers"]] == [
+        (1, "minmax"),
+        (3, "minmax"),
+    ]
+    assert linear["rank_window_size"] == 100

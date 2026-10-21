@@ -2,7 +2,7 @@ import json
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 import httpx
 import yaml
@@ -26,7 +26,7 @@ def run_command(cmd: list[str]) -> str:
     try:
         out = subprocess.run(cmd, capture_output=True, text=True, check=True)
     except FileNotFoundError as e:
-        raise RuntimeError(f"{cmd[0]} not found: is Docker installed and on PATH?") from e
+        raise RuntimeError(f"{cmd[0]} not found: is it installed and on PATH?") from e
     except subprocess.CalledProcessError as e:
         raise RuntimeError(
             f"{' '.join(cmd)} failed ({e.returncode}): {e.stderr.strip()[-2000:]}"
@@ -126,3 +126,14 @@ def wait_healthy(
             return False
 
     poll(ok, timeout_s, f"{client.base_url}{path} to answer 200", interval_s)
+
+
+def wait_ready(client: Any, health_path: str, timeout_s: float, interval_s: float = 1.0) -> None:
+    """HTTP engines: GET health_path until 200. Postgres engines: SELECT 1 until it answers."""
+    from irbench.engines.pg import PostgresClient
+
+    if isinstance(client, PostgresClient):
+        target = f"{client.dsn.rsplit('@', 1)[-1]} to accept queries"
+        poll(client.ping, timeout_s, target, interval_s)
+    else:
+        wait_healthy(client, health_path, timeout_s, interval_s)
