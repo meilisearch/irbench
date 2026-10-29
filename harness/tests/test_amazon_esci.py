@@ -154,9 +154,7 @@ def test_pool_and_sample(tmp_path):
         {"query_id": i, "query": f"query {i}", "product_id": "P0", "esci_label": "E"}
         for i in range(n)
     ]
-    qac = [
-        {"final_search_term": f"query {i}", "prefixes": [f"query {i}"]} for i in range(n)
-    ]
+    qac = [{"final_search_term": f"query {i}", "prefixes": [f"query {i}"]} for i in range(n)]
     sources = {i: "generated" for i in range(n)}
     raw = _raw(tmp_path / "a", products, examples, qac=qac, sources=sources)
 

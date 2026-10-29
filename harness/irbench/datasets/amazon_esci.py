@@ -219,7 +219,9 @@ def normalize_amazon_esci(
             if key in pool_keys:
                 sessions_by_key.setdefault(key, []).append(list(row["prefixes"] or []))
 
-    eligible = [qid for qid in deduped if sessions_by_key.get(_normalize_key(queries_by_id[qid]["text"]))]
+    eligible = [
+        qid for qid in deduped if sessions_by_key.get(_normalize_key(queries_by_id[qid]["text"]))
+    ]
 
     rng = random.Random(SEED)
     sorted_eligible = sorted(eligible, key=qid_sort_key)
