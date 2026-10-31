@@ -65,7 +65,9 @@ the Postgres wire protocol with SQL. The same rules apply:
 - **tuned** — changes within the parity rules above, contributed through a
   PR, and credited in the report.
 
-The published report shows each engine's tuned track only. Every engine's
+For `ecommerce/amazon-search-ja` and `ecommerce/amazon-search-es`, the default runs are published too, shown only in a default-vs-tuned table on their scenario pages, because how much setup a language needs is part of the result.
+
+Rankings in the published report show each engine's tuned track only. Every engine's
 tuned settings were found the same way: a sweep of the engine's documented
 search settings (and a few index settings, such as Qdrant's BM25 options),
 scored on nDCG@10 for each scenario and retrieval base, keeping the best
