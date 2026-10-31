@@ -9,10 +9,12 @@ from typing import Any, get_args
 
 import yaml
 
+from irbench.engines.base import load_adapter_class
 from irbench.engines.config import TRACKS, TrackConfig, load_engine_config
 from irbench.io import read_jsonl
 from irbench.models import BASE_MODES, Mode
 from irbench.paths import Workspace
+from irbench.scenario import load_scenario
 
 MODES = get_args(Mode)
 REQUIRED_FILES = ("adapter.py", "README.md", "docker/compose.yaml")
@@ -223,6 +225,7 @@ def _check_config(
                         f"[{name}] {key!r} is not `<mode>`, `<mode>:<base>` or `*:<base>`",
                     )
                 )
+    out += _check_language(root, engine, scenario_id, rel, config.track("default"))
     try:
         query_set = load(scenario_id)
     except FileNotFoundError as e:
@@ -240,6 +243,45 @@ def _check_config(
                     )
                 )
     return out
+
+
+def _check_language(
+    root: Path, engine: str, scenario_id: str, rel: str, default: TrackConfig
+) -> list[Finding]:
+    """A non-English scenario needs the default track to set the engine's language."""
+    try:
+        language = load_scenario(root, scenario_id).language
+    except FileNotFoundError:
+        return []  # no scenario to read a language from
+    except (ValueError, yaml.YAMLError) as e:
+        return [Finding(rel, "scenario-load", f"{scenario_id}: {e}")]
+    if language == "en":
+        return []
+    try:
+        keys = load_adapter_class(root, engine).language_keys
+    except (OSError, ImportError, TypeError, ValueError, SyntaxError) as e:
+        return [Finding(rel, "language-setting", f"cannot read language_keys of {engine}: {e}")]
+    tree = {"index": default.index, "search": default.search}
+    if any(_has_path(tree, key) for key in keys):
+        return []
+    wanted = ", ".join(keys) or "none: the adapter declares no language_keys"
+    return [
+        Finding(
+            rel,
+            "language-setting",
+            f"[default] {engine} must set its language for a `language: {language}` scenario; "
+            f"set one of: {wanted}",
+        )
+    ]
+
+
+def _has_path(tree: dict[str, Any], path: str) -> bool:
+    node: Any = tree
+    for part in path.split("."):
+        if not isinstance(node, dict) or part not in node:
+            return False
+        node = node[part]
+    return True
 
 
 def _settings(track: TrackConfig) -> Iterator[str]:

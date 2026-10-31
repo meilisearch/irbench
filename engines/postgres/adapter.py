@@ -6,6 +6,12 @@ from typing import Any
 from irbench.engines.postgres import PostgresAdapter, Sql, ident
 
 WEIGHTS = "ABCD"
+# Built-in snowball dictionaries (`<language>_stem`); any other configuration copies
+# `simple`, and its thesaurus falls back to the `simple` dictionary.
+STEM_LANGUAGES = frozenset(
+    "danish dutch english finnish french german hungarian italian norwegian portuguese "
+    "romanian russian spanish swedish turkish".split()
+)
 # Token types english maps to english_stem (hyphenated words included).
 WORD_TOKENS = "asciiword, word, asciihword, hword, hword_asciipart, hword_part"
 
@@ -13,9 +19,20 @@ WORD_TOKENS = "asciiword, word, asciihword, hword, hword_asciipart, hword_part"
 class Adapter(PostgresAdapter):
     name = "postgres"
     host_port = 15432
+    language_keys = ("index.text_search_config",)
     # rank: ts_rank (default) or ts_rank_cd; normalization: the rank functions' integer flags
     # (default 0); match: all (websearch_to_tsquery, every word) or any (its words OR-ed).
     search_keys = PostgresAdapter.search_keys | {"rank", "normalization", "match"}
+
+    @property
+    def base_config(self) -> str:
+        """The built-in configuration the scenario's is copied from (index.text_search_config)."""
+        return ident(str(self.ctx.config.index.get("text_search_config", "english")))
+
+    @property
+    def stem_dictionary(self) -> str:
+        base = self.base_config
+        return f"{base}_stem" if base in STEM_LANGUAGES else "simple"
 
     @property
     def ts_config(self) -> str:
@@ -37,7 +54,7 @@ class Adapter(PostgresAdapter):
     def thesaurus_file(self) -> str:
         """`member : first member` for every member of every kept group.
 
-        A thesaurus dictionary runs both sides through its sub-dictionary (english_stem), so
+        A thesaurus dictionary runs both sides through its sub-dictionary (the stemmer), so
         `kids` and `children` meet on the same lexeme; a plain synonym dictionary does not.
         """
         return "".join(f"{w} : {words[0]}\n" for words in self.thesaurus_groups() for w in words)
@@ -49,9 +66,9 @@ class Adapter(PostgresAdapter):
             if self.ctx.config.synonyms or not self.thesaurus_groups()
             else (
                 f"CREATE TEXT SEARCH DICTIONARY {cfg}_ths "
-                f"(TEMPLATE = thesaurus, DictFile = {cfg}, Dictionary = english_stem);\n"
+                f"(TEMPLATE = thesaurus, DictFile = {cfg}, Dictionary = {self.stem_dictionary});\n"
                 f"ALTER TEXT SEARCH CONFIGURATION {cfg} ALTER MAPPING FOR {WORD_TOKENS} "
-                f"WITH {cfg}_ths, english_stem;"
+                f"WITH {cfg}_ths, {self.stem_dictionary};"
             )
         )
         return (
@@ -59,7 +76,7 @@ class Adapter(PostgresAdapter):
             f"DROP TABLE IF EXISTS {self.table};\n"
             f"DROP TEXT SEARCH CONFIGURATION IF EXISTS {cfg};\n"
             f"DROP TEXT SEARCH DICTIONARY IF EXISTS {cfg}_ths;\n"
-            f"CREATE TEXT SEARCH CONFIGURATION {cfg} (COPY = english);\n{ths}"
+            f"CREATE TEXT SEARCH CONFIGURATION {cfg} (COPY = {self.base_config});\n{ths}"
         )
 
     def extra_columns(self) -> list[tuple[str, str]]:

@@ -1,13 +1,20 @@
 """ParadeDB: pg_search (BM25) + pgvector. Parity notes: engines/postgres-paradedb/README.md."""
 
+import re
 from typing import Any
 
 from irbench.engines.postgres import PostgresAdapter, Sql
+
+# `pdb.<name>` or `pdb.<name>(<args>)`: arguments are bare words, numbers and single-quoted
+# strings: no `;`, `-` or inner `)`, so the value can neither end the statement nor start
+# a comment.
+TOKENIZER_RE = re.compile(r"pdb\.[a-z_]+(\([\w\s,='.]*\))?")
 
 
 class Adapter(PostgresAdapter):
     name = "postgres-paradedb"
     host_port = 15433
+    language_keys = ("index.tokenizer",)
     # match: any (default, `|||`, a document matches if any word does) or all (`&&&`);
     # fuzzy: the edit distance of pg_search's fuzzy matching (off by default).
     search_keys = PostgresAdapter.search_keys | {"match", "fuzzy"}
@@ -15,9 +22,22 @@ class Adapter(PostgresAdapter):
     def setup_ddl(self) -> str:
         return "CREATE EXTENSION IF NOT EXISTS pg_search;\nCREATE EXTENSION IF NOT EXISTS vector;"
 
+    @property
+    def tokenizer(self) -> str | None:
+        """index.tokenizer: a pg_search tokenizer expression such as `pdb.lindera(japanese)` or
+        `pdb.simple('stemmer=spanish')`, cast onto every searchable column."""
+        expr = self.ctx.config.index.get("tokenizer")
+        if expr is None:
+            return None
+        if not isinstance(expr, str) or not TOKENIZER_RE.fullmatch(expr):
+            raise ValueError(f"postgres-paradedb: index.tokenizer {expr!r} is not pdb.<name>(...)")
+        return expr
+
     def text_index_ddl(self) -> str:
         # No key_field: deprecated no-op in pg_search 0.26 (the primary key is used).
-        return f"CREATE INDEX ON {self.table} USING bm25 (id, {', '.join(self.searchable)})"
+        tokenizer = self.tokenizer
+        fields = [f"({f}::{tokenizer})" if tokenizer else f for f in self.searchable]
+        return f"CREATE INDEX ON {self.table} USING bm25 (id, {', '.join(fields)})"
 
     def keyword_tiebreak(self) -> str:
         # pg_search pushes a Top-K order down to the BM25 index only when the whole ORDER BY
