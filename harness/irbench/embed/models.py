@@ -6,16 +6,25 @@ from irbench.embed.base import Embedder, TextKind
 
 
 class SentenceTransformerEmbedder:
-    def __init__(self, model_id: str, hf_name: str, dim: int, query_prefix: str = ""):
+    def __init__(
+        self,
+        model_id: str,
+        hf_name: str,
+        dim: int,
+        query_prefix: str = "",
+        doc_prefix: str = "",
+    ):
         from sentence_transformers import SentenceTransformer  # optional extra: embed-local
 
         self.model_id = model_id
         self.dim = dim
         self.query_prefix = query_prefix
+        self.doc_prefix = doc_prefix
         self._model = SentenceTransformer(hf_name)
 
     def embed(self, texts: list[str], kind: TextKind) -> np.ndarray:
-        inputs = [self.query_prefix + t for t in texts] if kind == "query" else texts
+        prefix = self.query_prefix if kind == "query" else self.doc_prefix
+        inputs = [prefix + t for t in texts] if prefix else texts
         vectors = self._model.encode(inputs, normalize_embeddings=True, batch_size=64)
         return np.asarray(vectors, dtype=np.float32)
 
@@ -41,6 +50,13 @@ MODELS: dict[str, Callable[[], Embedder]] = {
         "BAAI/bge-small-en-v1.5",
         384,
         query_prefix="Represent this sentence for searching relevant passages: ",
+    ),
+    "multilingual-e5-small": lambda: SentenceTransformerEmbedder(
+        "multilingual-e5-small",
+        "intfloat/multilingual-e5-small",
+        384,
+        query_prefix="query: ",
+        doc_prefix="passage: ",
     ),
     "text-embedding-3-small": lambda: OpenAIEmbedder("text-embedding-3-small", 1536),
 }
