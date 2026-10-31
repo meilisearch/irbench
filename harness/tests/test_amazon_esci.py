@@ -1,5 +1,6 @@
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pytest
 import yaml
 
 from irbench.datasets import NORMALIZERS
@@ -66,15 +67,17 @@ def _sources(path, mapping):
     return path
 
 
-def _raw(tmp_path, products, examples, qac=(), sources=None):
+def _raw(tmp_path, products, examples, qac=(), sources=None, with_qac=True):
     d = tmp_path / "raw"
     d.mkdir(parents=True, exist_ok=True)
-    return {
+    raw = {
         "products": _products(d / "products.parquet", products),
         "examples": _examples(d / "examples.parquet", examples),
-        "qac": _qac(d / "qac.parquet", qac),
         "sources": _sources(d / "sources.csv", sources or {}),
     }
+    if with_qac:
+        raw["qac"] = _qac(d / "qac.parquet", qac)
+    return raw
 
 
 def test_us_only_and_full_corpus(tmp_path):
@@ -264,3 +267,88 @@ def test_spec_params(tmp_path, wands_raw, monkeypatch):
     monkeypatch.setitem(NORMALIZERS, "wands", fake)
     prepare(root, "ecommerce/product-search", client=fixture_client(wands_raw))
     assert received == {"corpus": "pool"}
+
+
+def _multi_locale_fixture():
+    products = [
+        {"product_id": "PU", "title": "Phone case", "locale": "us"},
+        {"product_id": "PE", "title": "Funda de telefono", "locale": "es"},
+        {"product_id": "PJ", "title": "腕時計 メンズ", "locale": "jp"},
+    ]
+    examples = [
+        {"query_id": 1, "query": "phone case", "product_id": "PU", "esci_label": "E"},
+        {
+            "query_id": 2,
+            "query": "funda",
+            "product_id": "PE",
+            "esci_label": "E",
+            "locale": "es",
+        },
+        {
+            "query_id": 3,
+            "query": "腕時計",
+            "product_id": "PJ",
+            "esci_label": "S",
+            "locale": "jp",
+        },
+    ]
+    return products, examples
+
+
+def test_locale_jp_keeps_only_jp(tmp_path):
+    products, examples = _multi_locale_fixture()
+    raw = _raw(tmp_path, products, examples, with_qac=False)
+    result = normalize_amazon_esci(raw, tmp_path / "out", locale="jp")
+
+    assert {d["id"] for d in read_jsonl(result.docs)} == {"PJ"}
+    assert {q["qid"] for q in read_jsonl(result.queries)} == {"esci-3"}
+    assert read_qrels(result.qrels) == {"esci-3": {"PJ": 1}}
+
+
+def test_non_us_needs_no_qac(tmp_path):
+    products, examples = _multi_locale_fixture()
+    raw = _raw(tmp_path, products, examples, sources={2: "generated"}, with_qac=False)
+    assert "qac" not in raw
+    result = normalize_amazon_esci(raw, tmp_path / "out", locale="es")
+
+    assert [q["qid"] for q in read_jsonl(result.queries)] == ["esci-2"]
+    assert result.query_sets == {}
+    assert not (tmp_path / "out" / "queries.prefixes.jsonl").exists()
+    assert not (tmp_path / "out" / "qrels.prefixes.tsv").exists()
+
+
+def test_us_still_requires_qac(tmp_path):
+    products, examples = _multi_locale_fixture()
+    raw = _raw(tmp_path, products, examples, with_qac=False)
+    with pytest.raises(KeyError):
+        normalize_amazon_esci(raw, tmp_path / "out", locale="us")
+
+
+def test_text_not_width_folded(tmp_path):
+    products = [{"product_id": "PJ", "title": "時計", "locale": "jp"}]
+    examples = [
+        {
+            "query_id": 1,
+            "query": "ＡＢＣ\u3000時計",
+            "product_id": "PJ",
+            "esci_label": "E",
+            "locale": "jp",
+        },
+    ]
+    raw = _raw(tmp_path, products, examples, with_qac=False)
+    result = normalize_amazon_esci(raw, tmp_path / "out", locale="jp")
+
+    (query,) = list(read_jsonl(result.queries))
+    assert query["text"] == "ａｂｃ 時計"
+    assert not query["text"].isascii()
+    assert all(ord(c) > 127 or c == " " for c in query["text"])
+
+
+def test_group_from_sources_for_es(tmp_path):
+    products, examples = _multi_locale_fixture()
+    raw = _raw(tmp_path, products, examples, sources={1: "wrong", 2: "tail"}, with_qac=False)
+    result = normalize_amazon_esci(raw, tmp_path / "out", locale="es")
+
+    (query,) = list(read_jsonl(result.queries))
+    assert query["qid"] == "esci-2"
+    assert query["group"] == "tail"

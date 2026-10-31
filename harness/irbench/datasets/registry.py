@@ -25,6 +25,9 @@ class DatasetSpec(BaseModel):
     # Extra keyword arguments passed to the normalizer (e.g. `corpus: full|pool`); a loader
     # parameter baked into the dataset's definition, not a run setting.
     params: dict[str, Any] = {}
+    # A dataset id whose raw directory is reused, so datasets cut from the same source files
+    # (e.g. ESCI locales) download them once.
+    raw_from: str | None = None
 
 
 def load_dataset_spec(root: Path, dataset_id: str) -> DatasetSpec:
