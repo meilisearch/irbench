@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+import yaml
 
 from irbench.embed.models import MODELS, get_embedder
 from irbench.embed.vectors import read_vectors
@@ -74,3 +75,14 @@ def test_vectors_land_at_workspace_paths(prepared_root):
     ws = Workspace(prepared_root)
     assert result.docs_path == ws.doc_vectors_path("wands", "fake")
     assert result.queries_path == ws.query_vectors_path(SCENARIO, "fake")
+
+
+def test_embed_rejects_other_model(prepared_root):
+    path = prepared_root / "scenarios" / SCENARIO / "scenario.yaml"
+    raw = yaml.safe_load(path.read_text())
+    raw["embedding_model"] = "multilingual-e5-small"
+    path.write_text(yaml.safe_dump(raw))
+    embedder = FakeEmbedder()
+    with pytest.raises(ValueError, match="multilingual-e5-small.*bge-small-en-v1.5"):
+        embed_scenario(prepared_root, SCENARIO, "bge-small-en-v1.5", embedder=embedder)
+    assert embedder.calls == []

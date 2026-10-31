@@ -10,6 +10,7 @@ from fake_engine import (
     fake_loadgen,
     fake_root,
     perfect_answers,
+    set_scenario,
 )
 from irbench.cli import app
 from irbench.io import read_json
@@ -92,6 +93,25 @@ def test_unknown_stage_is_rejected_before_anything_runs(tmp_path, wands_raw):
             runtime_factory=lambda *a: runtime,
         )
     assert runtime.calls == []
+
+
+def test_run_rejects_other_model(tmp_path, wands_raw):
+    root = fake_root(tmp_path, wands_raw)
+    set_scenario(root, embedding_model="multilingual-e5-small")
+    runtime, embedder = FakeRuntime(), FakeEmbedder()
+    spec = RunSpec(scenario=SCENARIO, engine="fake", model="bge-small-en-v1.5")
+    with pytest.raises(ValueError, match="multilingual-e5-small.*bge-small-en-v1.5"):
+        run_pipeline(
+            root,
+            spec,
+            list(STAGES),
+            runtime_factory=lambda *a: runtime,
+            client_factory=_server(root).client_factory,
+            prepare_client=fixture_client(wands_raw),
+            embedder=embedder,
+        )
+    assert runtime.calls == []
+    assert embedder.calls == []
 
 
 def test_tuned_track_records_its_diff(tmp_path, wands_raw):

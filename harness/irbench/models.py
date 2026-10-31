@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-Perturbation = Literal["original", "typo", "prefix", "synonym"]
+Perturbation = Literal["original", "typo", "prefix", "synonym", "accents"]
 Mode = Literal["keyword", "semantic", "hybrid", "filtered", "sorted", "faceted"]
 BaseMode = Literal["keyword", "semantic", "hybrid"]
 BASE_MODES: tuple[BaseMode, ...] = ("keyword", "semantic", "hybrid")
