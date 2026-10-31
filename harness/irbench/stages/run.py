@@ -24,7 +24,8 @@ from irbench.stages.relevance import relevance_stage
 from irbench.stages.render import render_stage
 from irbench.stages.score_run import score_stage
 
-RuntimeFactory = Callable[[Path, str, HardwareProfile], Runtime]
+# (root, engine, hardware profile, compose file name in the engine's docker/ folder)
+RuntimeFactory = Callable[[Path, str, HardwareProfile, str], Runtime]
 GENERATED_KEYS = ("irbench_version", "git_sha", "created_at")
 # Files each stage writes in the run dir; re-running a stage invalidates its own
 # outputs and those of every later stage.
@@ -60,7 +61,10 @@ def run_pipeline(
 
     ctx = RunContext(root, spec, client_factory or default_client)
     profile = load_hardware(root, spec.hardware)
-    runtime = (runtime_factory or DockerRuntime)(root, spec.engine, profile)
+    # prepare and embed never touch the engine: they must not need its config to exist.
+    needs_engine = any(s not in ("prepare", "embed") for s in ordered)
+    compose = (ctx.track.compose if needs_engine else None) or "compose.yaml"
+    runtime = (runtime_factory or DockerRuntime)(root, spec.engine, profile, compose)
 
     manifest_path = ctx.run_dir / "manifest.json"
     manifest: dict[str, Any] = read_json(manifest_path) if manifest_path.exists() else {}

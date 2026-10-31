@@ -320,3 +320,11 @@ def test_label_names_the_track_when_an_engine_has_two(tmp_path):
     write_bundle(tmp_path, "qdrant")
     labels = sorted(r.label for r in load_results(tmp_path)[0][0].runs)
     assert labels == ["qdrant", "qdrant (tuned)"]
+
+
+def test_null_digest_accepted(tmp_path):
+    image = {"image": "irbench-es-kuromoji:9.5.5", "digest": None}
+    write_bundle(tmp_path, "elasticsearch", engine_image=image)
+    scenarios, unreadable = load_results(tmp_path)
+    assert unreadable == []
+    assert scenarios[0].runs[0].manifest["engine_image"] == image

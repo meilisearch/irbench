@@ -177,3 +177,30 @@ def test_hash_changes_when_synonyms_is_set(tmp_path):
     _write(tmp_path / "other", "e", {"default": {"synonyms": "no support"}})
     other = load_engine_config(tmp_path / "other", "e", SCENARIO).hash("default")
     assert plain != other
+
+
+def test_compose_defaults_to_none_and_keeps_old_hashes(tmp_path):
+    _write(tmp_path, "e", {"default": {"index": {"a": 1}}, "tuned": {}})
+    config = load_engine_config(tmp_path, "e", SCENARIO)
+    assert config.track("tuned").compose is None
+    canonical = json.dumps(
+        {"index": {"a": 1}, "search": {}, "unsupported": {}, "justification": {}}, sort_keys=True
+    )
+    assert config.hash("default") == hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def test_compose_is_part_of_the_hash_and_the_diff(tmp_path):
+    _write(tmp_path, "e", {"default": {}, "tuned": {"compose": "compose.kuromoji.yaml"}})
+    config = load_engine_config(tmp_path, "e", SCENARIO)
+    assert config.track("tuned").compose == "compose.kuromoji.yaml"
+    assert config.hash("default") != config.hash("tuned")
+    assert config.diff("tuned") == {
+        "compose": {"default": None, "effective": "compose.kuromoji.yaml"}
+    }
+
+
+@pytest.mark.parametrize("name", ["../x.yaml", "a/b.yaml", "/abs.yaml", "a\\b.yaml", "", "..", "."])
+def test_compose_rejects_paths(tmp_path, name):
+    _write(tmp_path, "e", {"default": {}, "tuned": {"compose": name}})
+    with pytest.raises(ValueError, match="compose"):
+        load_engine_config(tmp_path, "e", SCENARIO)

@@ -121,3 +121,12 @@ def test_republishing_cleans_up_tmp_and_old_files(tmp_path):
     assert RUN_ID in siblings
     assert not any(p.endswith(".tmp") or p.endswith(".old") for p in siblings)
     assert sorted(p.name for p in dest.iterdir()) == ["manifest.json", "scores.json"]
+
+
+def test_null_digest_publishes(tmp_path):
+    d = make_run(tmp_path)
+    manifest = json.loads((d / "manifest.json").read_text())
+    manifest["engine_image"] = {"image": "irbench-es-kuromoji:9.5.5", "digest": None}
+    (d / "manifest.json").write_text(json.dumps(manifest))
+    dest = publish_run(tmp_path, RUN_ID)
+    assert json.loads((dest / "manifest.json").read_text())["engine_image"]["digest"] is None
