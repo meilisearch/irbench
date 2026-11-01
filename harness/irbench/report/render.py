@@ -97,11 +97,24 @@ def engine_slots(scenarios: list[ScenarioResults]) -> dict[str, int]:
     return {e: i + 1 if i < MAX_SLOTS else 0 for i, e in enumerate(engines)}
 
 
-def relevance_cell(run: RunResult, group: str) -> Cell:
+# Display names of the metrics a scores.json carries (report headings and table columns).
+METRIC_LABELS = {
+    "ndcg@10": "nDCG@10",
+    "mrr@10": "MRR@10",
+    "success@1": "success@1",
+    "recall@10": "recall@10",
+    "recall@100": "recall@100",
+}
+# The second table of a scenario whose headline is not nDCG@10 (spec 2026-10-31 Chinese title
+# search §6.3): the other metrics, each with its interval.
+OTHER_METRICS = ("success@1", "recall@10", "recall@100", "ndcg@10")
+
+
+def relevance_cell(run: RunResult, group: str, metric: str = "ndcg@10") -> Cell:
     reason = run.na_reason(group)
     if reason:
         return Cell("N/A", "na", reason)
-    value = run.ndcg(group)
+    value = run.score(group, metric)
     if value is None:
         return Cell("—", "missing", "not run")
     violation = run.violation(group)
@@ -111,28 +124,30 @@ def relevance_cell(run: RunResult, group: str) -> Cell:
             "violated",
             f"constraint violated: {violation}; this score does not measure the mode",
         )
-    ci = run.ndcg_ci95(group)
+    ci = run.ci95(group, metric)
     half = f"±{(ci[1] - ci[0]) / 2:.3f}" if ci else ""
     note = f"95% CI {ci[0]:.3f}–{ci[1]:.3f}" if ci else ""
     return Cell(fmt_score(value), "score", note, half)
 
 
-def mark_winners(runs: list[RunResult], groups: list[str]) -> list[list[Cell]]:
+def mark_winners(
+    runs: list[RunResult], groups: list[str], metric: str = "ndcg@10"
+) -> list[list[Cell]]:
     """Relevance cells per run, with each column's best score (per embedding model) marked,
     and the runs whose gap to it is not significant (paired randomization test, p ≥ ALPHA)
     marked as tied. Bundles without per-task scores get no tie mark."""
-    cells = [[relevance_cell(r, g) for g in groups] for r in runs]
+    cells = [[relevance_cell(r, g, metric) for g in groups] for r in runs]
     for j, group in enumerate(groups):
         by_model: dict[str, list[int]] = defaultdict(list)
         for i, run in enumerate(runs):
             if not run.failure and cells[i][j].kind == "score":
                 by_model[run.model].append(i)
         for indexes in by_model.values():
-            best = max(indexes, key=lambda i: runs[i].ndcg(group) or 0.0)
+            best = max(indexes, key=lambda i: runs[i].score(group, metric) or 0.0)
             cells[best][j] = replace(cells[best][j], best=True)
-            best_tasks = runs[best].per_task(group)
+            best_tasks = runs[best].per_task(group, metric)
             for i in indexes:
-                other = runs[i].per_task(group)
+                other = runs[i].per_task(group, metric)
                 if i == best or best_tasks is None or other is None:
                     continue
                 p = paired_randomization_p(best_tasks, other)
@@ -145,8 +160,32 @@ def mark_winners(runs: list[RunResult], groups: list[str]) -> list[list[Cell]]:
     return cells
 
 
+def metrics_rows(s: ScenarioResults) -> list[dict[str, Any]]:
+    """OTHER_METRICS per run and retrieval base, each with its interval; empty when the
+    scenario headlines nDCG@10 (its matrix already is the nDCG table)."""
+    if s.headline_metric == "ndcg@10":
+        return []
+    rows = []
+    for r in s.ranked_runs:
+        if r.failure:
+            continue
+        for g in BASE_GROUPS:
+            if g in r.groups and not r.na_reason(g):
+                rows.append(
+                    {
+                        "run": r,
+                        "group": g,
+                        "cells": [relevance_cell(r, g, m) for m in OTHER_METRICS],
+                    }
+                )
+    return rows
+
+
 def judged_rows(s: ScenarioResults) -> list[dict[str, Any]]:
-    """judged@10 per run on the retrieval bases (empty for bundles scored before it existed)."""
+    """judged@10 per run on the retrieval bases (empty for bundles scored before it existed,
+    and for one-judgment scenarios, where judged@10 is capped at 0.1)."""
+    if s.single_judgment:
+        return []
     rows = [
         {"run": r, "cells": [r.judged(g) for g in BASE_GROUPS]}
         for r in s.ranked_runs
@@ -581,10 +620,16 @@ def scenario_view(
         "perturbation_phrase": perturbation_phrase(kinds),
         "track_comparison": track_comparison_view(s, root),
         "columns": s.groups,
+        "headline": METRIC_LABELS[s.headline_metric],
         "matrix": [
             {"run": r, "cells": cells}
-            for r, cells in zip(s.ranked_runs, mark_winners(s.ranked_runs, s.groups))
+            for r, cells in zip(
+                s.ranked_runs, mark_winners(s.ranked_runs, s.groups, s.headline_metric)
+            )
         ],
+        "metrics": metrics_rows(s),
+        "metric_labels": [METRIC_LABELS[m] for m in OTHER_METRICS],
+        "single_judgment": s.single_judgment,
         "judged": judged_rows(s),
         "judged_groups": BASE_GROUPS,
         "na_notes": na_notes(s),

@@ -860,3 +860,80 @@ def test_non_bge_model_renders(tmp_path):
     header = page.split("</h1>")[1].split("</p>")[0]
     assert "multilingual-e5-small" in header
     assert "multilingual-e5-small" in read(out, "index.html")
+
+
+def _headline(bundle, metric="mrr@10", single=True, per_task=None, group="keyword/keyword"):
+    """Mark a bundle as scored with a headline metric (spec 2026-10-31 Chinese title search §6.3),
+    with per-task values of that metric for one group and intervals for every metric."""
+    path = bundle / "scores.json"
+    scores = json.loads(path.read_text())
+    scores["headline_metric"] = metric
+    scores["single_judgment"] = single
+    mode, base = group.split("/")
+    if per_task is not None:
+        scores.setdefault("per_task", {"ndcg@10": {}})[metric] = {
+            f"q{i}:{mode}:{base}": v for i, v in enumerate(per_task)
+        }
+    for row in scores["relevance"]:
+        if row["perturbation"] == "all" and "group" not in row:
+            if per_task is not None and (row["mode"], row["base"]) == (mode, base):
+                row["metrics"][metric] = sum(per_task) / len(per_task)
+            row["ci95"] = {
+                m: [row["metrics"][m] - 0.02, row["metrics"][m] + 0.02]
+                for m in ("ndcg@10", "mrr@10", "success@1", "recall@10", "recall@100")
+            }
+    path.write_text(json.dumps(scores))
+
+
+def test_matrix_uses_mrr_when_headline(tmp_path):
+    results, out = site(tmp_path)
+    g = "keyword/keyword"
+    # meilisearch: better nDCG@10, worse MRR@10; qdrant the reverse.
+    a = write_bundle(results, "meilisearch", groups={g: 0.70})
+    b = write_bundle(results, "qdrant", groups={g: 0.60})
+    _headline(a, per_task=[0.3] * 100)
+    _headline(b, per_task=[0.9] * 100)
+    page = read(build_site(results, out).pages[1].parent, PAGE)
+    assert "Relevance: MRR@10 by mode" in page
+    assert "<strong>0.900</strong>" in page and "<strong>0.700</strong>" not in page
+
+
+def test_old_bundle_renders_ndcg(tmp_path):
+    results, out = site(tmp_path)
+    write_bundle(results, "meilisearch", groups={"keyword/keyword": 0.6})
+    page = read(build_site(results, out).pages[1].parent, PAGE)
+    assert "Relevance: nDCG@10 by mode" in page and "<strong>0.600</strong>" in page
+    assert "Other metrics" not in page
+
+
+def test_mixed_headline_uses_majority(tmp_path):
+    results, out = site(tmp_path)
+    g = "keyword/keyword"
+    for engine, value in (("meilisearch", 0.5), ("qdrant", 0.4)):
+        _headline(write_bundle(results, engine, groups={g: value}))
+    write_bundle(results, "elasticsearch", groups={g: 0.3})  # an older bundle: nDCG
+    page = read(build_site(results, out).pages[1].parent, PAGE)
+    assert "Relevance: MRR@10 by mode" in page
+
+
+def test_metrics_table_on_headline_pages(tmp_path):
+    results, out = site(tmp_path)
+    _headline(write_bundle(results, "meilisearch", groups={"keyword/keyword": 0.6}))
+    page = read(build_site(results, out).pages[1].parent, PAGE)
+    assert "Other metrics" in page
+    for label in ("success@1", "recall@10", "recall@100", "nDCG@10"):
+        assert f"<th>{label}</th>" in page
+    assert '<small class="ci">±0.020</small>' in page
+
+
+def test_judged_hidden_for_single_judgment(tmp_path):
+    results, out = site(tmp_path)
+    bundle = write_bundle(results, "meilisearch")
+    _add_per_task(bundle, "keyword/keyword", [0.5] * 10, judged=0.08)
+    _headline(bundle)
+    page = read(build_site(results, out).pages[1].parent, PAGE)
+    assert "Judged results" not in page
+    assert (
+        "Each query has one judged document, so judged@10 is at most 0.1 and is not shown."
+        in page
+    )

@@ -10,7 +10,7 @@ the method; they are not comparable with published results.</p>
 {% endif %}
 
 <section>
-<h2>Relevance: nDCG@10 by mode</h2>
+<h2>Relevance: {{ view.headline }} by mode</h2>
 <p class="note">Bold marks the best score of each column (per embedding model); ≈ marks a score
 not significantly below it (paired randomization test over the same tasks, p ≥ 0.05). ± is the
 half-width of the 95% confidence interval. N/A marks a mode the engine does not support (reasons
@@ -34,6 +34,25 @@ does not measure that mode.</p>
   {% endfor %}
   </tbody>
 </table></div>
+{% if view.metrics %}
+<h3>Other metrics</h3>
+<p class="note">The same runs on the other relevance metrics, each with the half-width of its 95%
+confidence interval.</p>
+<div class="scroll"><table>
+  <thead><tr><th>Engine</th><th>Model</th><th>Mode</th>{% for m in view.metric_labels %}<th>{{ m }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for r in view.metrics %}
+    <tr>
+      <th scope="row">{{ r.run.label }}</th><td>{{ r.run.model }}</td><td>{{ r.group|group }}</td>
+      {% for c in r.cells %}<td class="num {{ c.kind }}"{% if c.note %} title="{{ c.note }}"{% endif %}>{{ c.text }}{% if c.ci %} <small class="ci">{{ c.ci }}</small>{% endif %}</td>{% endfor %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% endif %}
+{% if view.single_judgment %}
+<p class="note">Each query has one judged document, so judged@10 is at most 0.1 and is not shown.</p>
+{% endif %}
 {% if view.judged %}
 <h3>Judged results: judged@10</h3>
 <p class="note">Share of each query's top 10 results that carry a relevance judgment (relevant or

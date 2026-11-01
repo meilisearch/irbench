@@ -1,7 +1,7 @@
 """Load run bundles (results/<run-id>/ or .irbench/runs/<run-id>/) for the report."""
 
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, get_args
@@ -56,7 +56,16 @@ class RunResult:
         found |= {key.replace(":", "/") for key in self.scores["not_applicable"]}
         return sorted(found, key=group_key)
 
-    def ndcg(self, group: str, perturbation: str = "all") -> float | None:
+    @property
+    def headline_metric(self) -> str:
+        """The metric this run was scored to headline (nDCG@10 for bundles that predate it)."""
+        return (self.scores or {}).get("headline_metric", "ndcg@10")
+
+    @property
+    def single_judgment(self) -> bool:
+        return bool((self.scores or {}).get("single_judgment"))
+
+    def score(self, group: str, metric: str = "ndcg@10", perturbation: str = "all") -> float | None:
         if self.scores is None:
             return None
         mode, _, base = group.partition("/")
@@ -64,8 +73,11 @@ class RunResult:
             if "group" in g:
                 continue
             if (g["mode"], g["base"], g["perturbation"]) == (mode, base, perturbation):
-                return g["metrics"]["ndcg@10"]
+                return g["metrics"].get(metric)
         return None
+
+    def ndcg(self, group: str, perturbation: str = "all") -> float | None:
+        return self.score(group, "ndcg@10", perturbation)
 
     def _all_row(self, group: str) -> dict[str, Any] | None:
         if self.scores is None:
@@ -81,22 +93,29 @@ class RunResult:
         return None
 
     def ndcg_ci95(self, group: str) -> tuple[float, float] | None:
+        return self.ci95(group, "ndcg@10")
+
+    def ci95(self, group: str, metric: str) -> tuple[float, float] | None:
         row = self._all_row(group)
-        ci = row.get("ndcg_ci95") if row else None
+        if row is None:
+            return None
+        ci = (row.get("ci95") or {}).get(metric)
+        if ci is None and metric == "ndcg@10":
+            ci = row.get("ndcg_ci95")
         return (ci[0], ci[1]) if ci else None
 
     def judged(self, group: str) -> float | None:
         row = self._all_row(group)
         return row["metrics"].get("judged@10") if row else None
 
-    def per_task(self, group: str) -> dict[str, float] | None:
-        """nDCG@10 of each task of a mode/base group; None for bundles scored before
-        per-task scores were recorded."""
-        if self.scores is None or "per_task" not in self.scores:
+    def per_task(self, group: str, metric: str = "ndcg@10") -> dict[str, float] | None:
+        """`metric` of each task of a mode/base group; None for bundles scored before per-task
+        scores of that metric were recorded."""
+        if self.scores is None or metric not in self.scores.get("per_task", {}):
             return None
         mode, _, base = group.partition("/")
         suffix = f":{mode}:{base}"
-        return {t: v for t, v in self.scores["per_task"]["ndcg@10"].items() if t.endswith(suffix)}
+        return {t: v for t, v in self.scores["per_task"][metric].items() if t.endswith(suffix)}
 
     def group_ndcg(self, group: str, query_group: str) -> float | None:
         if self.scores is None:
@@ -148,6 +167,20 @@ class ScenarioResults:
         model also have a tuned run here (the pair is shown in a default-vs-tuned table)."""
         tuned = {(r.engine, r.model) for r in self.runs if r.track == "tuned"}
         return [r for r in self.runs if r.track != "default" or (r.engine, r.model) not in tuned]
+
+    @property
+    def headline_metric(self) -> str:
+        """The metric most of this scenario's scored runs headline; nDCG@10 on a tie."""
+        counts = Counter(r.headline_metric for r in self.runs if r.scores is not None)
+        if not counts:
+            return "ndcg@10"
+        top = max(counts.values())
+        winners = sorted(m for m, n in counts.items() if n == top)
+        return "ndcg@10" if "ndcg@10" in winners or len(winners) > 1 else winners[0]
+
+    @property
+    def single_judgment(self) -> bool:
+        return any(r.single_judgment for r in self.runs)
 
     @property
     def models(self) -> list[str]:
