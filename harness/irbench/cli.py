@@ -140,8 +140,11 @@ def lint(root: Path = ROOT_OPTION) -> None:
     n, findings = lint_repo(root)
     for finding in findings:
         typer.echo(str(finding), err=True)
-    typer.echo(f"lint: {n} configs, {len(findings)} findings")
-    if findings:
+    errors = [f for f in findings if f.severity == "error"]
+    notices = len(findings) - len(errors)
+    summary = f"lint: {n} configs, {len(errors)} findings"
+    typer.echo(summary + (f", {notices} notices" if notices else ""))
+    if errors:
         raise typer.Exit(code=1)
 
 
