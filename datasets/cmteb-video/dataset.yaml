@@ -1,0 +1,24 @@
+id: cmteb-video
+# C-MTEB VideoRetrieval at its Hugging Face revision, its qrels repo, and the Multi-CPR commit the
+# train queries come from (spec 2026-10-31-irbench-chinese-title-search §3.1).
+version: "58c2597a5943a2ba48f4668c3b90d796283c5639+faa71382b6a29cf1778d1f436b963e75cb5b927c+a4e467182a3e2c110528a1575d79b33cc449d2c3"
+license: "not specified (Multi-CPR has no licence; internal only, see the Chinese title search spec §7)"
+source: https://huggingface.co/datasets/C-MTEB/VideoRetrieval and https://github.com/Alibaba-NLP/Multi-CPR
+params:
+  domain: video
+files:
+  corpus:
+    url: https://huggingface.co/datasets/C-MTEB/VideoRetrieval/resolve/58c2597a5943a2ba48f4668c3b90d796283c5639/data/corpus-00000-of-00001-3f9eee0a3ef9663e.parquet
+    sha256: 02c3000524f7ff40c2a1d5a209f5cde9b81c7f8eadee41f6311bf2b9eeb483c0
+  queries:
+    url: https://huggingface.co/datasets/C-MTEB/VideoRetrieval/resolve/58c2597a5943a2ba48f4668c3b90d796283c5639/data/queries-00000-of-00001-718fd9848565c08f.parquet
+    sha256: 0f3df85f0550833d7f5a009b43da777edfb9a298327ee020e02d19f47a3b1173
+  qrels:
+    url: https://huggingface.co/datasets/C-MTEB/VideoRetrieval-qrels/resolve/faa71382b6a29cf1778d1f436b963e75cb5b927c/data/dev-00000-of-00001-06b3de608f2202bb.parquet
+    sha256: ce205fa71e98f9d42a7c438e762484ee167ea8a38c97ab2e6f6bdfd494336e95
+  train_queries:
+    url: https://raw.githubusercontent.com/Alibaba-NLP/Multi-CPR/a4e467182a3e2c110528a1575d79b33cc449d2c3/data/video/train.query.txt
+    sha256: bbd72d6848065ce86422b0ec5d6d5cc3d92ed5e7e2e51f04dd1344a5d1ecc4a0
+  train_qrels:
+    url: https://raw.githubusercontent.com/Alibaba-NLP/Multi-CPR/a4e467182a3e2c110528a1575d79b33cc449d2c3/data/video/qrels.train.tsv
+    sha256: 788b418dfdb1c61a635623c5c359f7530b87ca27672f8b3877da3966173e6da3

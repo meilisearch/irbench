@@ -1,0 +1,24 @@
+id: cmteb-ecom
+# C-MTEB EcomRetrieval at its Hugging Face revision, its qrels repo, and the Multi-CPR commit the
+# train queries come from (spec 2026-10-31-irbench-chinese-title-search §3.1).
+version: "687de13dc7294d6fd9be10c6945f9e8fec8166b9+39c90699b034ec22ac45b3abf5b0bbb5ffd421f9+a4e467182a3e2c110528a1575d79b33cc449d2c3"
+license: "not specified (Multi-CPR has no licence; internal only, see the Chinese title search spec §7)"
+source: https://huggingface.co/datasets/C-MTEB/EcomRetrieval and https://github.com/Alibaba-NLP/Multi-CPR
+params:
+  domain: ecom
+files:
+  corpus:
+    url: https://huggingface.co/datasets/C-MTEB/EcomRetrieval/resolve/687de13dc7294d6fd9be10c6945f9e8fec8166b9/data/corpus-00000-of-00001-7f0e87850b5c9454.parquet
+    sha256: ad50bc86e74f45ac57ad5b2f475e564a6baef4b286d0af803ac673e26ba0e059
+  queries:
+    url: https://huggingface.co/datasets/C-MTEB/EcomRetrieval/resolve/687de13dc7294d6fd9be10c6945f9e8fec8166b9/data/queries-00000-of-00001-46d6d2b2f0ad8826.parquet
+    sha256: ddf99eba426a21182755979e5c8f3b0afe93808096437779a7ab2d6a316df686
+  qrels:
+    url: https://huggingface.co/datasets/C-MTEB/EcomRetrieval-qrels/resolve/39c90699b034ec22ac45b3abf5b0bbb5ffd421f9/data/dev-00000-of-00001-42566aaf5580f662.parquet
+    sha256: 189c199c2a3c615f8ec476549039e00f8e49f18905ede786d4003237d71d2933
+  train_queries:
+    url: https://raw.githubusercontent.com/Alibaba-NLP/Multi-CPR/a4e467182a3e2c110528a1575d79b33cc449d2c3/data/ecom/train.query.txt
+    sha256: 2a36f72063a3be3dea04944fb0174ea82473d66eb585b4fa3bcacc8c94c13008
+  train_qrels:
+    url: https://raw.githubusercontent.com/Alibaba-NLP/Multi-CPR/a4e467182a3e2c110528a1575d79b33cc449d2c3/data/ecom/qrels.train.tsv
+    sha256: 2b0404478e3994f5e57ee0634239fbd89bf32faff087990bd4aac945a5e9ba04
