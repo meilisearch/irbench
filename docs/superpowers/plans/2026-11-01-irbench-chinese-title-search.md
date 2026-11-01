@@ -142,9 +142,9 @@
 - Test: `harness/tests/test_language_settings.py`
 
 **Interfaces:**
-- Produces: `index.text_search_config: zhparser` → setup DDL creates the extension and `CREATE TEXT SEARCH CONFIGURATION <cfg> (PARSER = zhparser); ALTER TEXT SEARCH CONFIGURATION <cfg> ADD MAPPING FOR n,v,a,i,e,l,j WITH simple;` (no thesaurus; a synonym list with zhparser raises `ValueError`). `index.pgroonga_tokenizer: TokenBigram | TokenNgram` → `WITH (tokenizer='<name>')` on the PGroonga index; any other value raises.
+- Produces: `index.text_search_config: zhparser` → setup DDL creates the extension and `CREATE TEXT SEARCH CONFIGURATION <cfg> (PARSER = zhparser); ALTER TEXT SEARCH CONFIGURATION <cfg> ADD MAPPING FOR n,v,a,i,e,l WITH simple;` (no thesaurus; a synonym list with zhparser raises `ValueError`). `index.pgroonga_tokenizer: TokenBigram | TokenNgram` → `WITH (tokenizer='<name>')` on the PGroonga index; any other value raises.
 
-- [ ] **Step 1: Write the failing tests**: `test_pg_zhparser_config` (DDL contains `CREATE EXTENSION IF NOT EXISTS zhparser`, `PARSER = zhparser`, `ADD MAPPING FOR n,v,a,i,e,l,j WITH simple`, no `COPY =`); `test_pg_zhparser_rejects_synonyms`; `test_pgroonga_tokenizer_option`; `test_pgroonga_tokenizer_rejects_unknown`; `test_pg_simple_config_unchanged` (`COPY = simple`).
+- [ ] **Step 1: Write the failing tests**: `test_pg_zhparser_config` (DDL contains `CREATE EXTENSION IF NOT EXISTS zhparser`, `PARSER = zhparser`, `ADD MAPPING FOR n,v,a,i,e,l WITH simple`, no `COPY =`); `test_pg_zhparser_rejects_synonyms`; `test_pgroonga_tokenizer_option`; `test_pgroonga_tokenizer_rejects_unknown`; `test_pg_simple_config_unchanged` (`COPY = simple`).
 - [ ] **Step 2: Run** `uv run pytest harness/tests/test_language_settings.py -q`. Expected: FAIL.
 - [ ] **Step 3: Implement.** Golden render fixtures for existing scenarios stay unchanged.
 - [ ] **Step 4: Run** `uv run pytest harness/tests/test_language_settings.py harness/tests/test_adapter_postgres.py harness/tests/test_render_stage.py -q`. Expected: PASS; `git status harness/tests/fixtures` clean.

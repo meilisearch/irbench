@@ -196,3 +196,44 @@ def test_pg_tsvector_is_the_default_text_search():
         assert "USING gin (tsv)" in adapter.text_index_ddl()
         assert "pgroonga" not in adapter.setup_ddl()
         assert "websearch_to_tsquery" in adapter.render(make_task("keyword"), None, 10).sql
+
+
+def test_pg_zhparser_config():
+    adapter = make_adapter("postgres", {"index": {"text_search_config": "zhparser"}}, synonyms=[])
+    ddl = adapter.setup_ddl()
+    cfg = adapter.ts_config
+    assert "CREATE EXTENSION IF NOT EXISTS zhparser;" in ddl
+    assert f"CREATE TEXT SEARCH CONFIGURATION {cfg} (PARSER = zhparser);" in ddl
+    assert f"ALTER TEXT SEARCH CONFIGURATION {cfg} ADD MAPPING FOR n,v,a,i,e,l WITH simple;" in ddl
+    assert "COPY =" not in ddl
+
+
+def test_pg_zhparser_rejects_synonyms():
+    adapter = make_adapter(
+        "postgres", {"index": {"text_search_config": "zhparser"}}, synonyms=[["沙发", "长椅"]]
+    )
+    with pytest.raises(ValueError, match="zhparser"):
+        adapter.setup_ddl()
+
+
+def test_pg_simple_config_unchanged():
+    ddl = make_adapter("postgres", {"index": {"text_search_config": "simple"}}).setup_ddl()
+    assert "COPY = simple" in ddl and "zhparser" not in ddl
+
+
+@pytest.mark.parametrize("tokenizer", ["TokenBigram", "TokenNgram"])
+def test_pgroonga_tokenizer_option(tokenizer):
+    track = {"index": {"text_search": "pgroonga", "pgroonga_tokenizer": tokenizer}}
+    ddl = make_adapter("postgres", track).text_index_ddl()
+    assert ddl.endswith(f"WITH (tokenizer='{tokenizer}')")
+
+
+def test_pgroonga_without_tokenizer_has_no_with():
+    ddl = make_adapter("postgres", {"index": {"text_search": "pgroonga"}}).text_index_ddl()
+    assert "WITH" not in ddl
+
+
+def test_pgroonga_tokenizer_rejects_unknown():
+    track = {"index": {"text_search": "pgroonga", "pgroonga_tokenizer": "x'); DROP TABLE t; --"}}
+    with pytest.raises(ValueError, match="pgroonga_tokenizer"):
+        make_adapter("postgres", track).text_index_ddl()

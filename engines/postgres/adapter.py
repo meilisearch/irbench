@@ -15,6 +15,14 @@ STEM_LANGUAGES = frozenset(
     "romanian russian spanish swedish turkish".split()
 )
 TEXT_SEARCHES = frozenset({"tsvector", "pgroonga"})
+# index.pgroonga_tokenizer: PGroonga tokenizers for Han text (TokenBigram is its default).
+PGROONGA_TOKENIZERS = frozenset({"TokenBigram", "TokenNgram"})
+# index.text_search_config: zhparser (the zhparser extension, only in the image of
+# docker/compose.zh.yaml) builds the configuration on zhparser's parser instead of copying a
+# built-in one. Its content token types (noun, verb, adjective, idiom, exclamation, temporary
+# word) map to `simple`, as zhparser's README configures it.
+ZHPARSER = "zhparser"
+ZHPARSER_TOKENS = "n,v,a,i,e,l"
 # Token types english maps to english_stem (hyphenated words included).
 WORD_TOKENS = "asciiword, word, asciihword, hword, hword_asciipart, hword_part"
 
@@ -84,6 +92,8 @@ class Adapter(PostgresAdapter):
             return (
                 "CREATE EXTENSION IF NOT EXISTS pgroonga;\nCREATE EXTENSION IF NOT EXISTS vector;"
             )
+        if self.base_config == ZHPARSER:
+            return self._zhparser_ddl()
         cfg = self.ts_config
         ths = (
             ""
@@ -103,6 +113,32 @@ class Adapter(PostgresAdapter):
             f"CREATE TEXT SEARCH CONFIGURATION {cfg} (COPY = {self.base_config});\n{ths}"
         )
 
+    def _zhparser_ddl(self) -> str:
+        if self.thesaurus_groups() and not self.ctx.config.synonyms:
+            raise ValueError(
+                "postgres: the zhparser configuration takes no thesaurus; declare a `synonyms:` "
+                "reason in the config"
+            )
+        cfg = self.ts_config
+        return (
+            "CREATE EXTENSION IF NOT EXISTS vector;\n"
+            "CREATE EXTENSION IF NOT EXISTS zhparser;\n"
+            f"DROP TABLE IF EXISTS {self.table};\n"
+            f"DROP TEXT SEARCH CONFIGURATION IF EXISTS {cfg};\n"
+            f"CREATE TEXT SEARCH CONFIGURATION {cfg} (PARSER = zhparser);\n"
+            f"ALTER TEXT SEARCH CONFIGURATION {cfg} ADD MAPPING FOR {ZHPARSER_TOKENS} WITH simple;"
+        )
+
+    @property
+    def pgroonga_tokenizer(self) -> str | None:
+        value = self.ctx.config.index.get("pgroonga_tokenizer")
+        if value is not None and value not in PGROONGA_TOKENIZERS:
+            raise ValueError(
+                f"postgres: index.pgroonga_tokenizer {value!r} must be one of "
+                f"{sorted(PGROONGA_TOKENIZERS)}"
+            )
+        return value
+
     def extra_columns(self) -> list[tuple[str, str]]:
         if self.text_search == "pgroonga":
             return []
@@ -117,9 +153,11 @@ class Adapter(PostgresAdapter):
         if self.text_search == "pgroonga":
             # One index over all searchable columns: PGroonga weights them per column at
             # query time (see keyword_match).
+            tokenizer = self.pgroonga_tokenizer
+            with_ = f" WITH (tokenizer='{tokenizer}')" if tokenizer else ""
             return (
                 f"CREATE INDEX {self.pgroonga_index} ON {self.table} USING pgroonga "
-                f"((ARRAY[{', '.join(self.searchable)}]))"
+                f"((ARRAY[{', '.join(self.searchable)}])){with_}"
             )
         return f"CREATE INDEX ON {self.table} USING gin (tsv)"
 
