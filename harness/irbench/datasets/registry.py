@@ -80,8 +80,11 @@ def fetch_dataset(
         actual = sha256_file(path)
         if actual != spec.files[name].sha256:
             raise ChecksumError(
-                f"{path}: expected sha256 {spec.files[name].sha256}, got {actual}; "
-                "download the file again (the file was left in place)"
+                f"{path}: the file's sha256 ({actual}) does not match the pinned one "
+                f"({spec.files[name].sha256}). Download the file again; the file was left in "
+                "place. The pinned checksums may not be set yet: a dataset.yaml holds "
+                "placeholders until its files are first downloaded (the Home Depot one does), "
+                "and then the pinned value is what needs replacing."
             )
 
     out: dict[str, Path] = {}

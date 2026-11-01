@@ -4,7 +4,7 @@ from pathlib import Path
 import typer
 
 from irbench import __version__
-from irbench.datasets.fetch import ManualFileMissing
+from irbench.datasets.fetch import ChecksumError, ManualFileMissing
 from irbench.embed.publish import DEFAULT_RELEASE, REGISTRY, RELEASE_REPO, pack_vectors
 from irbench.io import read_json, read_jsonl, read_qrels, read_run
 from irbench.lint import lint_repo
@@ -48,7 +48,7 @@ def prepare(
     """Download the dataset, generate query variants and per-mode tasks."""
     try:
         r = run_prepare(root, scenario)
-    except ManualFileMissing as e:
+    except (ManualFileMissing, ChecksumError) as e:
         typer.echo(str(e), err=True)
         raise typer.Exit(code=1) from e
     typer.echo(
@@ -87,7 +87,11 @@ def vectors_pack(
 ) -> None:
     """Copy computed vectors into release assets and record them in embeddings/published.yaml."""
     out_dir = out if out.is_absolute() else root / out
-    entry, files = pack_vectors(root, scenario, model, out_dir, release)
+    try:
+        entry, files = pack_vectors(root, scenario, model, out_dir, release)
+    except ValueError as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(code=1) from e
     typer.echo(
         f"packed {entry.docs.count} doc and {entry.queries.count} query vectors "
         f"(dim {entry.docs.dim}); updated {REGISTRY}"

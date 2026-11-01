@@ -679,10 +679,11 @@ def _with_misspelling_rows(bundle, *, corrected_n=30, typo_n=40):
             r for r in d["relevance"] if (r["mode"], r["perturbation"]) == ("keyword", "all")
         )
 
-        def group_row(group, perturbation, n, ndcg):
-            metrics = {**base["metrics"], "ndcg@10": ndcg}
+        def group_row(group, perturbation, n, ndcg, judged, mode="keyword"):
+            metrics = {**base["metrics"], "ndcg@10": ndcg, "judged@10": judged}
             return {
                 **base,
+                "mode": mode,
                 "group": group,
                 "perturbation": perturbation,
                 "n": n,
@@ -702,11 +703,14 @@ def _with_misspelling_rows(bundle, *, corrected_n=30, typo_n=40):
 
         return {
             **d,
-            "relevance": d["relevance"]
-            + [
-                group_row("misspelled", "original", 30, 0.271),
-                group_row("misspelled", "corrected", 30, 0.352),
-                group_row("clean", "original", 70, 0.488),
+            "relevance": [
+                # another mode over the same base, first: its n and judged@10 must not be used
+                group_row("misspelled", "original", 11, 0.9, 0.5, mode="faceted"),
+                group_row("clean", "original", 12, 0.9, 0.5, mode="faceted"),
+                *d["relevance"],
+                group_row("misspelled", "original", 30, 0.271, 0.801),
+                group_row("misspelled", "corrected", 30, 0.352, 0.823),
+                group_row("clean", "original", 70, 0.488, 0.777),
             ],
             "paired": [
                 paired("corrected", "misspelled", corrected_n, 0.081, [0.044, 0.118]),
@@ -729,12 +733,21 @@ def test_misspelling_table_values(tmp_path):
     assert "<h2>Misspellings</h2>" in page
     section = page.split("<h2>Misspellings</h2>")[1].split("</section>")[0]
     assert "n=30" in section and "n=70" in section
-    for cell in ("0.271", "0.352", "+0.081", "[+0.044, +0.118]", "−0.137", "[−0.190, −0.083]"):
+    # both costs are positive when the mistake hurts: corrected − original, original − typo
+    for cell in ("0.271", "0.352", "+0.081", "[+0.044, +0.118]", "+0.137", "[+0.083, +0.190]"):
         assert cell in section
-    assert "0.912" in section
+    assert "−0.137" not in section
+    assert "cost of real misspelling" in section and "cost of synthetic typo" in section
+    # judged@10 of the two sets whose nDCG is shown, not the base's overall judged@10
+    assert "0.801 / 0.823" in section
+    assert "0.912" not in section
+    # n comes from this table's mode and base, not from the faceted rows
+    assert "n=11" not in section and "n=12" not in section
     # the caveats are fixed copy of this scenario
     assert "speller changed the query" in section
     assert "1,086 / 415 / 100 / 39 of 1,640" in section
+    # the figures describe every training query the dictionary corrects, not the sample
+    assert "all 1,640 training queries" in section and "not the sample" in section
 
 
 def _misspelling_section(tmp_path, **n):
@@ -755,13 +768,13 @@ def test_a_single_pair_has_no_interval(tmp_path):
     # a single-query pair has a zero-width interval, which is not an interval
     section = _misspelling_section(tmp_path, typo_n=1)
     assert section.count(NA_CELL) == 1
-    assert "−0.137 " + NA_CELL in section and "[−0.190, −0.083]" not in section
+    assert "+0.137 " + NA_CELL in section and "[+0.083, +0.190]" not in section
     assert "[+0.044, +0.118]" in section
 
     section = _misspelling_section(tmp_path / "b", corrected_n=1)
     assert section.count(NA_CELL) == 1
     assert "+0.081 " + NA_CELL in section and "[+0.044, +0.118]" not in section
-    assert "[−0.190, −0.083]" in section
+    assert "[+0.083, +0.190]" in section
 
 
 def test_misspelling_copy_only_for_the_home_depot_scenario(tmp_path):
@@ -772,6 +785,7 @@ def test_misspelling_copy_only_for_the_home_depot_scenario(tmp_path):
     section = read(out, PAGE).split("<h2>Misspellings</h2>")[1].split("</section>")[0]
     assert "0.352" in section
     assert "speller" not in section and "1,086" not in section
+    assert "all 1,640" not in section
 
 
 def test_no_misspelling_table_without_corrected(tmp_path):

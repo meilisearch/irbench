@@ -213,7 +213,10 @@ def query_group_tables(s: ScenarioResults) -> list[dict[str, Any]]:
             if not r.failure and any(r.group_ndcg(group, q) is not None for q in names)
         ]
         if rows:
-            ns = [next((n for r in s.runs if (n := r.group_n(q)) is not None), None) for q in names]
+            ns = [
+                next((n for r in s.runs if (n := r.group_n(q, group=group)) is not None), None)
+                for q in names
+            ]
             tables.append({"group": group, "names": names, "ns": ns, "rows": rows})
     return tables
 
@@ -226,12 +229,15 @@ def _interval(row: dict[str, Any] | None) -> str | None:
     return f"[{fmt_delta(low)}, {fmt_delta(high)}]"
 
 
-def _paired_cell(row: dict[str, Any] | None) -> dict[str, Any]:
-    return {
-        "delta": None if row is None else row["delta"],
-        "interval": _interval(row),
-        "n": None if row is None else row["n"],
-    }
+def _cost_cell(row: dict[str, Any] | None, *, negate: bool = False) -> dict[str, Any]:
+    """A paired row as a cost in nDCG@10; `negate` turns a variant-minus-original row into
+    original-minus-variant (its interval flips with it)."""
+    if row is None:
+        return {"delta": None, "interval": None, "n": None}
+    if negate:
+        low, high = row["ci95"]
+        row = {**row, "delta": 0.0 - row["delta"], "ci95": [0.0 - high, 0.0 - low]}
+    return {"delta": row["delta"], "interval": _interval(row), "n": row["n"]}
 
 
 def misspelling_tables(s: ScenarioResults) -> list[dict[str, Any]]:
@@ -249,14 +255,19 @@ def misspelling_tables(s: ScenarioResults) -> list[dict[str, Any]]:
                     "run": run,
                     "original": run.group_ndcg(group, "misspelled", "original"),
                     "corrected_ndcg": run.group_ndcg(group, "misspelled", "corrected"),
-                    "corrected": _paired_cell(corrected),
-                    "typo": _paired_cell(run.paired(group, "typo", "clean")),
-                    "judged": run.judged(group),
+                    # the cost of each mistake in nDCG@10, positive when it hurts:
+                    # corrected − as typed on real misspellings, original − typo on clean queries
+                    "corrected": _cost_cell(corrected),
+                    "typo": _cost_cell(run.paired(group, "typo", "clean"), negate=True),
+                    "judged_original": run.group_judged(group, "misspelled", "original"),
+                    "judged_corrected": run.group_judged(group, "misspelled", "corrected"),
                 }
             )
         if rows:
             ns = [
-                next((n for r in s.runs if (n := r.group_n(q, "original")) is not None), None)
+                next(
+                    (n for r in s.runs if (n := r.group_n(q, "original", group)) is not None), None
+                )
                 for q in ("misspelled", "clean")
             ]
             tables.append({"group": group, "n_misspelled": ns[0], "n_clean": ns[1], "rows": rows})
@@ -269,7 +280,8 @@ MISSPELLING_NOTES = {
         "Misspelled means Google's speller changed the query; a few clean queries still "
         "contain mistakes, and a few corrections are wrong.",
         "Edit distance between the query and its correction, 1 / 2 / 3 / 4+: "
-        "1,086 / 415 / 100 / 39 of 1,640.",
+        "1,086 / 415 / 100 / 39 of 1,640. These figures describe all 1,640 training queries "
+        "the dictionary corrects, not the sample this scenario uses.",
     )
 }
 

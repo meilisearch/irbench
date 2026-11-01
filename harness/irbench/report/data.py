@@ -108,8 +108,15 @@ class RunResult:
         row = self._group_row(query_group, perturbation, group)
         return row["metrics"]["ndcg@10"] if row else None
 
-    def group_n(self, query_group: str, perturbation: str = "all") -> int | None:
-        row = self._group_row(query_group, perturbation)
+    def group_judged(self, group: str, query_group: str, perturbation: str = "all") -> float | None:
+        row = self._group_row(query_group, perturbation, group)
+        return row["metrics"].get("judged@10") if row else None
+
+    def group_n(
+        self, query_group: str, perturbation: str = "all", group: str | None = None
+    ) -> int | None:
+        """Tasks of a query group; `group` is a mode/base, any when None."""
+        row = self._group_row(query_group, perturbation, group)
         return row["n"] if row else None
 
     def _group_row(

@@ -417,3 +417,32 @@ def test_bundle_without_paired_is_valid(tmp_path):
 def test_malformed_paired_is_unreadable(tmp_path, bad):
     _, unreadable = _paired_run(tmp_path, bad)
     assert unreadable and "paired" in str(unreadable[0])
+
+
+def test_group_judged_and_n_follow_the_mode_and_base(tmp_path):
+    rows = relevance({"keyword/keyword": 0.5})
+    metric = lambda v, j: {  # noqa: E731
+        "ndcg@10": v,
+        "recall@10": 0,
+        "recall@100": 0,
+        "mrr@10": 0,
+        "judged@10": j,
+    }
+    faceted = {"mode": "faceted", "base": "keyword", "group": "misspelled"}
+    keyword = {"mode": "keyword", "base": "keyword", "group": "misspelled"}
+    group_rows = [  # the faceted rows come first, as a filter on the group alone would find them
+        {**faceted, "perturbation": "original", "n": 4, "metrics": metric(0.9, 0.4)},
+        {**keyword, "perturbation": "original", "n": 30, "metrics": metric(0.2, 0.81)},
+        {**keyword, "perturbation": "corrected", "n": 30, "metrics": metric(0.3, 0.83)},
+    ]
+    bundle = write_bundle(tmp_path, "meilisearch", groups={"keyword/keyword": 0.5})
+    _edit_json(bundle / "scores.json", lambda d: {**d, "relevance": rows + group_rows})
+    run = load_results(tmp_path)[0][0].runs[0]
+    assert run.group_judged("keyword/keyword", "misspelled", "original") == 0.81
+    assert run.group_judged("keyword/keyword", "misspelled", "corrected") == 0.83
+    assert run.group_judged("faceted/keyword", "misspelled", "original") == 0.4
+    assert run.group_judged("keyword/keyword", "misspelled", "typo") is None
+    assert run.group_judged("keyword/keyword", "other") is None
+    assert run.group_n("misspelled", "original", "keyword/keyword") == 30
+    assert run.group_n("misspelled", "original", "faceted/keyword") == 4
+    assert run.group_n("misspelled", "original", "hybrid/keyword") is None
