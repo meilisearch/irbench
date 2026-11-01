@@ -1,7 +1,7 @@
 # IRBench — Entity search scenario (DBpedia-Entity v2)
 
 Date: 2026-10-31
-Status: Draft, awaiting review
+Status: Approved 2026-11-01
 Parent specs: `2026-10-09-irbench-design.md`, `2026-10-14-irbench-knowledge-base-design.md` (reuses its BEIR loader path and query groups)
 
 ## 1. Goal
