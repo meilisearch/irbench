@@ -261,3 +261,18 @@ def test_pg_query_default_is_websearch():
 def test_pg_query_rejects_unknown():
     with pytest.raises(ValueError, match="query"):
         _keyword_sql({"search": {"keyword": {"query": "fuzzy"}}})
+
+
+def test_qdrant_query_uses_the_bm25_options():
+    """Documents and queries must be tokenized alike: a `multilingual` tokenizer (or a
+    language's stemmer) on documents only would leave the query as one unsplit token."""
+    options = {"tokenizer": "multilingual", "k": 1.5}
+    qdrant = make_adapter("qdrant", {"index": {"bm25_options": options}})
+    body = qdrant.render(make_task("keyword", text="宝宝护肚"), None, 10).body
+    leaves = body["prefetch"]
+    assert leaves and all(leaf["query"]["options"] == options for leaf in leaves)
+
+
+def test_qdrant_query_without_options_is_unchanged():
+    body = make_adapter("qdrant").render(make_task("keyword"), None, 10).body
+    assert all("options" not in leaf["query"] for leaf in body["prefetch"])

@@ -121,6 +121,15 @@ class Adapter(EngineAdapter):
             inference["options"] = options
         return inference
 
+    def _bm25_query(self, text: str) -> dict[str, Any]:
+        """The query side of BM25 inference, tokenized with the same options as documents
+        (tokenizer, language, ...); avg_len is a document-length setting and stays out."""
+        options = dict(self.ctx.config.index.get(BM25_OPTIONS) or {})
+        inference: dict[str, Any] = {"text": text, "model": BM25}
+        if options:
+            inference["options"] = options
+        return inference
+
     def _sparse_vectors(self, doc: dict[str, Any]) -> dict[str, Any]:
         out: dict[str, Any] = {}
         for name in self.ctx.scenario.index_fields.searchable:
@@ -164,7 +173,7 @@ class Adapter(EngineAdapter):
         leaves = []
         for name in fields:
             leaf: dict[str, Any] = {
-                "query": {"text": text, "model": BM25},
+                "query": self._bm25_query(text),
                 "using": name,
                 "limit": max(limit, depth, pool or 0),
             }
