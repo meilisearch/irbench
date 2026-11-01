@@ -25,12 +25,13 @@ Config keys (`search.<base>`): `match` (`all` | `any`), `rank` (`ts_rank` | `ts_
 
 ## Languages
 
-The non-English scenarios (`ecommerce/amazon-search-ja`, `ecommerce/amazon-search-es`) set the language in the config's `default` block. Each setting has a `justification:` entry.
+The non-English scenarios (Japanese, Spanish and Chinese) set the language in the config's `default` block. Each setting has a `justification:` entry.
 
 | Scenario | default track | tuned track |
 |---|---|---|
 | Japanese | `index.text_search_config: simple`. Postgres has no Japanese configuration, so a Japanese phrase with no spaces stays one token | may use PGroonga (`index.text_search: pgroonga` with `compose: compose.pgroonga.yaml`, justified). It is kept only if it wins on nDCG@10 |
 | Spanish | `index.text_search_config: spanish`, the built-in configuration | no plugin; usual sweep |
+| Chinese (`ecommerce/title-search-zh`, `media/video-search-zh`) | `index.text_search_config: simple`. Postgres has no Chinese configuration, so an unspaced title stays one token and keyword search finds little | may use `compose: compose.zh.yaml`: PGroonga (`index.text_search: pgroonga`, `index.pgroonga_tokenizer: TokenBigram` or `TokenNgram`) or zhparser (`index.text_search_config: zhparser`). A variant replaces `simple` only if significantly better |
 
 `index.text_search_config` names the built-in configuration that the scenario's configuration is copied from. With no key, it is `english`, as before. The stemmer in the thesaurus dictionary follows it (`spanish_stem` for `spanish`); a configuration with no built-in stemmer, such as `simple`, uses the `simple` dictionary.
 
@@ -39,6 +40,12 @@ The non-English scenarios (`ecommerce/amazon-search-ja`, `ecommerce/amazon-searc
 `docker/Dockerfile.pgroonga` builds on the same `pgvector/pgvector:0.8.7-pg17` image as `compose.yaml` (pgvector is its official `postgresql-17-pgvector` package) and installs `postgresql-17-pgdg-pgroonga=4.0.6-1` from PGroonga's official apt repository (`packages.groonga.org`, the `groonga-apt-source` package for Debian bookworm). `docker/compose.pgroonga.yaml` is `compose.yaml` with `build:` and the local tag `irbench-postgres-pgroonga:0.8.7-pg17`; ports, healthcheck and volumes are the same.
 
 `index.text_search` is `tsvector` (default) or `pgroonga`. With `pgroonga` there is no `tsv` column and no text search configuration; the text index is `USING pgroonga ((ARRAY[<searchable columns>]))`, and the keyword predicate is `ARRAY[<columns>] &@~ pgroonga_condition($1, weights => ARRAY[5,4,3,2,1], index_name => ...)`, scored by `pgroonga_score(tableoid, ctid)`. The weights are the scenario's field boosts. `&@~` is PGroonga's query syntax: every word is required, as with `websearch_to_tsquery`. The default tokenizer (`TokenBigram`) is used. `search.keyword.match: any`, `rank` and `normalization` are tsvector features and are rejected with PGroonga; the synonym thesaurus is not loaded either. PGroonga only scores rows reached through its index, so the planner must use the index; on a 20,000-row probe table it chose a bitmap index scan and the scores were non-zero, whereas a sequential scan scores every row 0.
+
+### zhparser and PGroonga (tuned Chinese track)
+
+`docker/Dockerfile.zh` builds on the same `pgvector/pgvector:0.8.7-pg17` image. It installs PGroonga as `Dockerfile.pgroonga` does, then builds SCWS (`hightman/scws`) and zhparser (`amutu/zhparser`) unmodified from pinned upstream commits, since neither has a PGDG package; SCWS's shipped dictionary is used. `docker/compose.zh.yaml` is `compose.yaml` with `build:` and the local tag `irbench-postgres-zh:0.8.7-pg17`.
+
+`index.text_search_config: zhparser` creates the extension and a configuration on zhparser's parser (`PARSER = zhparser`) instead of copying a built-in one, and maps its content token types `n,v,a,i,e,l` (noun, verb, adjective, idiom, exclamation, temporary word) to `simple`, as zhparser's README configures it. It takes no thesaurus: a scenario with synonyms must declare a `synonyms:` reason. `index.pgroonga_tokenizer` (`TokenBigram`, PGroonga's default, or `TokenNgram`) adds `WITH (tokenizer='...')` to the PGroonga index.
 
 ## Modes
 

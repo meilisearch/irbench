@@ -28,12 +28,13 @@ Config keys (`search.<base>`): `match` (`any`, the default `|||`, or `all`, `&&&
 
 ## Languages
 
-The non-English scenarios (`ecommerce/amazon-search-ja`, `ecommerce/amazon-search-es`) set the language in the config's `default` block. Each setting has a `justification:` entry.
+The non-English scenarios (Japanese, Spanish and Chinese) set the language in the config's `default` block. Each setting has a `justification:` entry.
 
 | Scenario | default track | tuned track |
 |---|---|---|
 | Japanese | `index.tokenizer: pdb.lindera(japanese)`, pg_search's built-in Japanese tokenizer | no plugin; usual sweep |
 | Spanish | `index.tokenizer: pdb.simple('stemmer=spanish')`, pg_search's Spanish stemmer | no plugin; usual sweep |
+| Chinese (`ecommerce/title-search-zh`, `media/video-search-zh`) | `index.tokenizer: pdb.jieba`, the most accurate of pg_search's three built-in Chinese tokenizers per its docs | its other built-in tokenizers, `pdb.chinese_lindera` and `pdb.chinese_compatible` |
 
 The tokenizer expression is cast onto every searchable column in the `bm25` index, as in `(title::pdb.lindera(japanese))`. The adapter accepts only `pdb.<name>` or `pdb.<name>(...)`. With no `index.tokenizer`, nothing changes (the default tokenizer, no stemming).
 

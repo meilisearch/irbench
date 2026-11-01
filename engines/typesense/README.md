@@ -26,12 +26,13 @@ Search parameters only, found by a sweep scored on nDCG@10 per scenario and base
 
 ## Languages
 
-The non-English scenarios (`ecommerce/amazon-search-ja`, `ecommerce/amazon-search-es`) set the language in the config's `default` block. Each setting has a `justification:` entry.
+The non-English scenarios (Japanese, Spanish and Chinese) set the language in the config's `default` block. Each setting has a `justification:` entry.
 
 | Scenario | default track | tuned track |
 |---|---|---|
 | Japanese | `index.searchable_fields.locale: ja` | no plugin; usual sweep |
 | Spanish | `index.searchable_fields.locale: es` | no plugin; usual sweep |
+| Chinese (`ecommerce/title-search-zh`, `media/video-search-zh`) | `index.searchable_fields.locale: zh` | no plugin; usual sweep |
 
 `searchable_fields` is merged into every searchable field (see the last section), so the locale is set on all of them. With no `locale`, nothing changes (Typesense's default tokenization, no locale).
 

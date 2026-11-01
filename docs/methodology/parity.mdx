@@ -79,6 +79,39 @@ configurations* page lists them. Turning on typo tolerance where the engine
 ships it off (`fuzziness` in Elasticsearch, `fuzzy` in ParadeDB) is allowed,
 as the rule above says.
 
+### Language plugins on the tuned track
+
+A tuned track may use a language plugin when it is official or very popular.
+Official means published by the engine's vendor (Elastic's `analysis-kuromoji`,
+`analysis-smartcn`, `analysis-icu`) or packaged by the extension's maintainers
+(PGroonga). Very popular means all four of:
+
+- it is the plugin that guides and the engine's own community most often point to
+  for that language on that engine, and its justification cites the evidence;
+- it has an open-source licence;
+- its maintainer publishes a release or tag that builds against the pinned engine
+  version;
+- it is installed unmodified, pinned by URL and sha256 or by commit, in the
+  engine's image for that language.
+
+Forks, plugins written or patched for the benchmark, and custom dictionaries are
+not allowed: every plugin uses the dictionary it ships with. The default track
+never uses a plugin. Plugins are tried in the sweep, not imposed: a plugin variant
+is kept only when it wins, and its best score is reported either way. The Chinese
+scenarios use IK (Elasticsearch) and zhparser (Postgres) under this rule.
+
+### Scenarios with one judgment per query
+
+`ecommerce/title-search-zh` and `media/video-search-zh` have one judged document
+per query, so scores are noisy and a sweep can keep a variant that won by chance.
+On these scenarios a variant replaces the default value of its setting only when
+it is significantly better: each variant is compared with the default by the
+paired randomization test, the p-values of one setting's variants are
+Holm-corrected together, and the best-scoring variant among those with corrected
+p < 0.05 is kept (`irbench.sweep.keep_variant`). Index settings (analyzers,
+tokenizers) are chosen on the keyword base. These scenarios are internal: their
+data has no licence, so `irbench publish` refuses their runs.
+
 ## Rules `irbench lint` enforces
 
 | Rule | What it catches | Example |
