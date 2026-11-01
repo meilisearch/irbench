@@ -298,10 +298,15 @@ def test_pgroonga_japanese():
     """The tuned Japanese image has PGroonga and pgvector; a Japanese query matches a document
     whose words are spaced or run together, and a field boost orders the hits."""
     cls = load_adapter_class(REPO_ROOT, ENGINE)
-    adapter = make_adapter(ENGINE, {"index": {"text_search": "pgroonga"}}, dim=3, synonyms=[])
+    # PGroonga scores only rows reached through its index; on a three-row table the planner
+    # picks a sequential scan, which scores every row 0 (ties then fall back to `id`). Turning
+    # sequential scans off for the session (index.settings) makes the index scan happen.
+    track = {"index": {"text_search": "pgroonga", "settings": {"enable_seqscan": "off"}}}
+    adapter = make_adapter(ENGINE, track, dim=3, synonyms=[])
     docs = [
-        {"id": "1", "name": "空調服 ズボン メンズ", "category": ["ファッション"]},
-        {"id": "2", "name": "作業服", "description": "涼しい空調服ズボン"},
+        # the description hit has the lower id: a tie on score would return ["1", "2"]
+        {"id": "1", "name": "作業服", "description": "涼しい空調服ズボン"},
+        {"id": "2", "name": "空調服 ズボン メンズ", "category": ["ファッション"]},
         {"id": "3", "name": "ジャケット", "category": None},
     ]
     vectors = np.eye(3, dtype=np.float32)
@@ -319,7 +324,7 @@ def test_pgroonga_japanese():
         assert {"pgroonga", "vector"} <= extensions
         task = make_task("keyword", text="ズボン")
         result = run_request(client, adapter, task, adapter.render(task, None, 10), 30)
-        assert result.ids == ["1", "2"]  # name (weight 5) outranks description (weight 1)
+        assert result.ids == ["2", "1"]  # name (weight 5) outranks description (weight 1)
         hybrid = make_task("hybrid", text="ズボン")
         request = adapter.render(hybrid, vectors[2].tolist(), 10)
         assert set(run_request(client, adapter, hybrid, request, 30).ids) == {"1", "2", "3"}

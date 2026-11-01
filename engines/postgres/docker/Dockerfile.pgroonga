@@ -1,6 +1,7 @@
 # Tuned Japanese track: PGroonga from PGroonga's official apt repository on top of the same
-# image as compose.yaml. That image is the official pgvector one (postgresql-17-pgvector from
-# PGDG), so pgvector and PGroonga both come from official packages.
+# image as compose.yaml. That image is the official pgvector one, which ships pgvector
+# (built from source by the pgvector project, not a PGDG package), so pgvector comes from its
+# official image and PGroonga from its official apt repository.
 FROM pgvector/pgvector:0.8.7-pg17
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates wget \
