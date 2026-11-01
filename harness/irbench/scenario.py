@@ -66,9 +66,14 @@ class Scenario(BaseModel):
     index_timeout_s: int
     perturbations: PerturbationSpec
     synonyms: str | None = None
-    language: Literal["en", "ja", "es"] = "en"
+    language: Literal["en", "ja", "es", "zh"] = "en"
     # When set, the scenario's text is only meaningful under this embedding model.
     embedding_model: str | None = None
+    # The metric of the scenario page's relevance matrix, interval and tie marks. mrr@10 for
+    # sets with one judged document per query, where nDCG@10 squashes the same rank.
+    headline_metric: Literal["ndcg@10", "mrr@10"] = "ndcg@10"
+    # False keeps runs out of `irbench publish` (data without publishing terms).
+    publishable: bool = True
 
     _directory: Path = PrivateAttr()
 
@@ -96,10 +101,12 @@ class Scenario(BaseModel):
                 raise ValueError(f"sort template field {s.field!r} is not sortable")
         if "faceted" in self.modes and not f.facets:
             raise ValueError("faceted mode needs at least one facet field")
-        if self.language == "ja" and "typo" in self.perturbations.kinds:
-            # str.isalpha() is true for kana and kanji, so typo would swap characters
-            # of unspaced Japanese into non-words.
-            raise ValueError("perturbation kind 'typo' is not supported for language 'ja'")
+        if self.language in ("ja", "zh") and "typo" in self.perturbations.kinds:
+            # Typed through an input method, and str.isalpha() is true for kana and Han
+            # characters, so typo would swap characters of unspaced text into non-words.
+            raise ValueError(
+                f"perturbation kind 'typo' is not supported for language {self.language!r}"
+            )
         sizes = self.perf.page_sizes
         if sizes is not None:
             if not sizes:

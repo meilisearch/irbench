@@ -206,3 +206,43 @@ def test_check_model_rejects_other_model():
     with pytest.raises(ValueError) as e:
         check_model(s, "bge-small-en-v1.5")
     assert str(e.value) == (f"{s.id} is embedded with multilingual-e5-small, not bge-small-en-v1.5")
+
+
+def test_zh_language_accepted(tmp_path):
+    def mutate(raw):
+        raw["language"] = "zh"
+        raw["perturbations"]["kinds"] = []
+
+    assert _scenario_with(tmp_path, mutate)().language == "zh"
+
+
+def test_zh_rejects_typo(tmp_path):
+    def mutate(raw):
+        raw["language"] = "zh"
+        raw["perturbations"]["kinds"] = ["typo"]
+
+    with pytest.raises(ValueError, match="'typo' is not supported for language 'zh'"):
+        _scenario_with(tmp_path, mutate)()
+
+
+def test_headline_metric_default_ndcg():
+    assert load_scenario(REPO_ROOT, SCENARIO).headline_metric == "ndcg@10"
+
+
+def test_headline_metric_accepts_mrr(tmp_path):
+    def mutate(raw):
+        raw["headline_metric"] = "mrr@10"
+
+    assert _scenario_with(tmp_path, mutate)().headline_metric == "mrr@10"
+
+
+def test_headline_metric_rejects_other(tmp_path):
+    def mutate(raw):
+        raw["headline_metric"] = "recall@10"
+
+    with pytest.raises(ValueError, match="headline_metric"):
+        _scenario_with(tmp_path, mutate)()
+
+
+def test_publishable_default_true():
+    assert load_scenario(REPO_ROOT, SCENARIO).publishable is True
