@@ -1,7 +1,7 @@
 # IRBench — Home Depot product search with real misspellings
 
 Date: 2026-10-31
-Status: Draft; internal-only use decided 2026-11-01, source still open (§11, Q2)
+Status: Draft; the user answered both open questions on 2026-11-01 (§11): internal only, Kaggle download
 Parent specs: `2026-10-09-irbench-design.md`, `2026-10-20-irbench-amazon-esci-design.md` (grade scale, loader and scenario layout)
 
 Example queries in this document are invented, written in the style of the data. The real queries are Kaggle competition data and are not reproduced in this public repository (§3).
@@ -40,7 +40,7 @@ Results stay internal: the data's terms do not allow publishing it (§2, §3).
 | Topic | Decision | By |
 |---|---|---|
 | Licence and use | Internal only. Never published: no runs in `results/`, no published vectors, no docs page, no scores in committed files. A new `distribution: internal` flag on the dataset enforces what it can (§6.1) | user, 2026-11-01 |
-| Source | The original Kaggle files, downloaded by each person who runs the scenario with their own Kaggle account, after accepting the competition rules. The Hugging Face mirror is not used (§3.2) | my call, the user must confirm (§11, Q2) |
+| Source | The original Kaggle files, downloaded by each person who runs the scenario with their own Kaggle account, after accepting the competition rules. The Hugging Face mirror is not used (§3.2) | user, 2026-11-01 |
 | Corpus | The 54,667 products judged in the training set, with title, brand and description (§4.4) | my call |
 | Attributes file | Used for brand only. Its bullet points repeat the description (§4.1) | my call |
 | Grades | Averaged 1–3 rating rounded to the nearest rating, then mapped onto WANDS's 0–2 scale (§4.3) | my call |
@@ -354,14 +354,10 @@ Risks:
 - A finer grade scale (the averages carry thirds) if the 0–2 mapping turns out to hide differences.
 - Real misspellings for the other e-commerce scenarios: the `corrected` mechanism works for any dataset that ships corrections.
 
-## 11. Open questions for the user
+## 11. Questions for the user (answered)
 
 1. **Use and publication.** Answered 2026-11-01: internal only. Results, vectors and docs never leave Meilisearch; only code, configs (with no scores) and checksums go in the public repository.
-2. **Source.** This spec has each person who runs the scenario download the files from Kaggle with their own account, after accepting the rules.
-   - The simpler alternative is the unlicensed Hugging Face mirror, fetched by URL.
-   - The mirror has no attributes, so brand filtering and facets would go.
-   - The public repository would point at a copy made against the rules.
-   - Do you accept the Kaggle download step?
+2. **Source.** Answered 2026-11-01: each person who runs the scenario downloads the files from Kaggle with their own account, after accepting the rules (§6.2). The Hugging Face mirror is not used.
 
 Calls made in this spec, to check while reading:
 - judged-products corpus (54,667), not the full catalogue (§4.4);
