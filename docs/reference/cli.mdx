@@ -27,6 +27,11 @@ Download the dataset, generate query variants and per-mode tasks.
 | `--scenario <str>` **required** | Scenario id, e.g. `ecommerce/product-search`. |
 | `--root <path>` | Repository root. |
 
+Files that a dataset marks `manual` must be downloaded by hand into the raw
+directory. `prepare` checks their sha256. When one is absent it prints the
+download instruction and every missing path, then exits 1. When one does not
+match the pinned sha256 it says so and exits 1.
+
 ## `irbench embed`
 
 Embed docs and query variants with one model: reuse local vectors that
@@ -75,6 +80,9 @@ See [Parity rules](/methodology/parity) for the rules it enforces.
 |---|---|
 | `--root <path>` | Repository root. |
 
+Notices, for example `not-prepared` for an internal scenario, are printed with
+`notice:` and do not fail the command. It exits 1 on errors only.
+
 ## `irbench publish`
 
 Copy finished runs into `results/` (reference hardware profiles only).
@@ -90,7 +98,8 @@ irbench publish [OPTIONS] RUN_IDS...
 | `--root <path>` | Repository root. |
 
 Refuses to publish any run whose manifest records the `local` hardware
-profile.
+profile. It also refuses runs of internal scenarios (dataset
+`distribution: internal`), whatever the profile.
 
 ## `irbench report`
 
@@ -101,6 +110,7 @@ Build the static HTML report from run bundles.
 | `--results <path>` **required** | `results/` or `.irbench/runs` for a preview. |
 | `--out <path>` **required** | Output directory (replaced on every build). |
 | `--docs-url <str>` | Default: `https://github.com/meilisearch/irbench/tree/main/docs`. |
+| `--internal` | Include internal runs, with a banner. Without it, a results directory that holds an internal run is refused. |
 
 ## `irbench vectors pack`
 
@@ -114,6 +124,8 @@ Copy computed vectors into release assets and record them in
 | `--release <str>` | GitHub release tag. Default: `vectors`. |
 | `--out <path>` | Default: `dist/vectors`. |
 | `--root <path>` | Repository root. |
+
+Refuses internal scenarios (dataset `distribution: internal`).
 
 ## `irbench version`
 

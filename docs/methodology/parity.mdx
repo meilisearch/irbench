@@ -92,7 +92,7 @@ competition data)".
 
 CI cannot prepare an internal scenario, because the data is not in the
 repository. For these scenarios `not-prepared` is a notice, not an error, and
-the query-leak check does not run. Tuned `justification:` entries on an internal
+the query-leak check does not run in CI (it runs locally after `prepare`). Tuned `justification:` entries on an internal
 scenario say what a setting does and that the sweep chose it. They give no
 scores.
 

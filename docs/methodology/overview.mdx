@@ -85,6 +85,10 @@ only, with no synonym list:
   bridges a vocabulary gap on its own, while `synonyms.txt` is the dictionary
   an engine's config may choose to load. A query with no applicable term
   produces no synonym variant.
+- **corrected** — supplied by the dataset, not generated: the spelling-corrected
+  text of a misspelled query, with the same judgments. It is a reference
+  measurement. It stays out of every `all` row and out of the headline. Its
+  paired difference with the original is the cost of the misspelling.
 
 Each variant inherits its source query's qrels unchanged.
 
@@ -94,7 +98,7 @@ Relevance is scored with [`ranx`](https://github.com/AmenRa/ranx):
 nDCG@10 (linear gain), Recall@10, Recall@100, MRR@10, and Success@1 (reported
 from `ranx`'s `hit_rate@1`). These are cross-checked against `trec_eval` on a
 fixed fixture. Metrics are reported overall and broken down per perturbation
-type (original, typo, prefix, synonym) — never combined into one score.
+type (original, typo, prefix, synonym, and corrected where a dataset supplies it) — never combined into one score.
 
 ### Judged@10
 
