@@ -30,7 +30,7 @@ Anti-goals:
 |---|---|---|
 | Dataset | DBpedia-Entity v2, the `mteb/dbpedia` copy on Hugging Face (BEIR format) | user |
 | Corpus | All judged entities plus uniform random distractors, seed `20261031`, 1,000,000 entities in total; 500,000 if the fit test fails (§3.3, §7.1) | my call |
-| Queries | All 467 (BEIR's 400 test and 67 dev queries), with the four original query groups (§3.4) | my call |
+| Queries | All 467 (BEIR's 400 test and 67 dev queries), QALD2's questions included, with the four original query groups (§3.4); the headline score is over all 467 | user (2026-11-01) |
 | Searchable fields | `title` (the entity name), then `text` (the abstract) | my call |
 | Modes | keyword, semantic, hybrid; filtered, sorted and faceted not run (§4.2) | my call |
 | Grades | As published: 0, 1 (relevant), 2 (highly relevant); grade 0 judgments stay in the qrels as judged non-relevant | my call |
@@ -257,15 +257,14 @@ Scenario and configs: the scenario validates; the 6 configs pass `irbench lint`.
 
 ## 11. Open questions
 
-For the user:
-1. **Should QALD2's 140 questions count in the headline score?** This spec keeps all 467 queries (§3.2): the collection is used as published, no subset is picked, and the group table shows SemSearch ES (bare names) and QALD2 (questions) apart. The alternative is a 327-query scenario without QALD2, closer to the short-query use case of §1 but no longer the published collection. The answer changes the query set, the headline number and the tuned sweep.
+None from the user. Decided on 2026-11-01: QALD2's 140 question-style queries stay in the scenario and count in the headline score, so the collection is used as published; the group table shows SemSearch ES and QALD2 apart.
 
 Calls made in this spec, to check while reading:
 - 1,000,000 entities, 500,000 if any engine fails the fit test; uniform distractors, seed `20261031` (§3.3, §7.1);
 - the sample makes gaps between engines look larger and more significant than on the full corpus; the docs page says so (§3.5);
 - `title` before `text`; both embedded (§4.1);
 - keyword, semantic and hybrid only; entity types for filters and facets left for later (§4.2);
-- all 467 queries, test and dev merged, in the paper's four groups (§3.4);
+- test and dev merged, in the paper's four groups (§3.4);
 - hashed ids with the URI kept as a stored field (§3.4);
 - `typo` and `prefix` perturbations; perf page sizes 20 and 100, as on the other scenarios;
 - a new `entity-search/` category; this scenario runs its own fit test rather than waiting for ESCI's (§4.1, §7.1).
