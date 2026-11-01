@@ -1,0 +1,127 @@
+---
+title: "Scenario: amazon-search-ja"
+description: Japanese product search, real Amazon.co.jp queries against 339k products with graded human judgments (Amazon ESCI)
+---
+
+Scenario id: `ecommerce/amazon-search-ja`. It tests product search in a language
+written without spaces between words. 51% of the queries contain a run of 6 or
+more Japanese characters with no space, so an engine has to split that text into
+words before it can match anything. It also tests how much setup each engine
+needs to do that.
+
+## Source
+
+- **Dataset:** Amazon ESCI (Shopping Queries Dataset), Japanese part
+  (`locale: jp`). Same files and same pinned commit as the other ESCI scenario:
+  `shopping_queries_dataset_examples.parquet` and
+  `shopping_queries_dataset_products.parquet`.
+- **License:** Apache-2.0.
+- **Dataset id:** `amazon-esci-jp`.
+
+## Size
+
+Counts measured on the pinned examples file:
+
+| | Japanese part (all splits) | In this scenario |
+|---|---|---|
+| Queries | 18,127 | 2,000, sampled from the 3,123 hard test queries |
+| Judgments | 446,053 | those of the 2,000 queries, 28.4 per hard test query on average |
+| Products | 339,059 judged products | the full catalogue |
+
+A product with no title is dropped with its judgments, so the indexed count can
+be a little lower than 339,059. Every hard test query has at least one Exact or
+Substitute product. The sample is seeded (`20261020`), the same seed as the
+other ESCI scenario.
+
+The median query is 2 words and 9 characters. 93% of the queries contain kana or
+kanji, 7% are Latin only (brands, titles), and 57% contain a space. Examples:
+`空調服 ズボン`, `カシオソーラー電波腕時計 メンズ`, `azul by moussy レディース`,
+`satoshi kon`.
+
+## Fields and modes
+
+| Role | Fields |
+|---|---|
+| Searchable (priority order) | `title`, `brand`, `color`, `bullet_points`, `description` (HTML stripped) |
+| Filterable | `brand`, `color` |
+| Sortable | none |
+| Facets | `brand` |
+
+Modes: `keyword`, `semantic`, `hybrid`, `filtered`, `faceted`. `filtered` and
+`faceted` run on `keyword` and `semantic`. There is no `sorted` mode: the
+catalogue has no sortable field. Filter templates: `brand` equals a value, `color`
+equals a value. Page sizes for the speed runs: 20 and 100.
+
+Text is kept as Amazon wrote it. There is no width folding of full-width Latin
+letters, no kana conversion and no other Unicode normalisation. How an engine
+handles those is part of what is measured.
+
+## Judgments
+
+Grades: Exact 2, Substitute 1, Complement 0, Irrelevant 0.
+
+ESCI judges about 28 products per query, all taken from Amazon's own ranking.
+A product that an engine returns and that was never judged counts as grade 0, so
+an engine that ranks differently from Amazon can be scored below what a person
+would give it. The report shows judged@10 (the share of the top 10 that has a
+judgment) next to every nDCG score. Read nDCG together with it.
+
+## Semantic search
+
+The vectors come from `multilingual-e5-small` (`intfloat/multilingual-e5-small`,
+384 dimensions, MIT), pinned on the scenario: `embed` and `run` refuse another
+`--model`. Queries are embedded with the `query: ` prefix and documents with
+`passage: `, as the model expects. Embeddings use `title`, `brand`, `color` and
+`bullet_points`.
+
+The English scenarios use another model. **Semantic and hybrid scores on this
+scenario are not comparable with the English scenarios.** Compare engines with
+each other here, not with the English tables.
+
+## Language settings
+
+Every engine is told the language in its config, in the `default` block, and
+each setting carries a `justification:` entry. The two tracks differ in what is
+allowed. See [Methodology](/methodology/parity#tracks).
+
+- **default:** only the engine's built-in language setting. Nothing is installed.
+  If an engine has no built-in setting for Japanese, it runs as it would on any
+  text, and its README says so.
+- **tuned:** the same, plus the vendor's official language plugin, tried in the
+  sweep. A plugin variant is kept only if it wins on nDCG@10.
+
+| Engine | default track | tuned track |
+|---|---|---|
+| Meilisearch | `index.localizedAttributes` with locale `jpn` on all searchable fields, and `locales: ["jpn"]` on search requests (stops kanji-only text being read as Chinese) | usual sweep, no plugin |
+| Elasticsearch | `index.analyzer: cjk`, the built-in analyzer. It splits Japanese into overlapping pieces of two characters, not into words | may use `analysis-kuromoji` (official Elastic plugin, same version as the engine), from a Docker image that a `compose:` key in the tuned config selects (`compose.kuromoji.yaml`). The sweep tries its analyzer and its `search` mode next to `cjk` |
+| Typesense | `index.searchable_fields.locale: ja` | usual sweep, no plugin |
+| Qdrant | `index.bm25_options` for the language, as documented for v1.19.2. It may not split Japanese into words; if it does not, Qdrant's Japanese keyword score shows that | usual sweep, no plugin |
+| ParadeDB | `index.tokenizer: pdb.lindera(japanese)`, pg_search's built-in Japanese tokenizer | usual sweep, no plugin |
+| Postgres | `index.text_search_config: simple`. Postgres has no Japanese configuration, so a Japanese phrase with no spaces stays one token | may use PGroonga if an official image with both PGroonga and pgvector is available. If none is, the tuned track keeps `simple` |
+
+If `cjk` beats kuromoji, the tuned Elasticsearch track keeps `cjk` and this page
+gives kuromoji's best score next to it. The analyzer is an index setting, so each
+variant re-indexes the whole catalogue.
+
+## Default and tuned side by side
+
+The published report shows the default runs of this scenario in one place: a
+table on the scenario page with keyword, semantic and hybrid nDCG@10 per engine,
+default next to tuned, and the change. Default runs are left out of the
+rankings, the best-score marking, the significance tests, and every
+cross-scenario view. They show what each engine does with only its built-in
+language setting.
+
+## Perturbations
+
+Only `prefix`, seed `20261020`: the last whitespace-separated piece of the query
+is cut to 40 to 70% of its characters. For Japanese text that is close to what an
+input method sends before the user finishes typing. Without spaces, the "last
+piece" is often a whole phrase, so the cut can land in the middle of it.
+
+There is no `typo`. The generator swaps a letter for a QWERTY neighbour, and
+Japanese is typed in romaji and converted by an input method. Real mistakes are
+wrong conversions, the right sound with the wrong kanji, not neighbouring keys.
+Python's `str.isalpha()` is also true for kana and kanji, so the generator would
+edit them and produce strings that nobody types. A scenario with `language: ja`
+that lists `typo` is rejected when it is loaded. No synonym list was built.

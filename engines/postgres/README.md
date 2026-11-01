@@ -23,6 +23,17 @@ Found by a sweep scored on nDCG@10 per scenario and base; each value is justifie
 
 Config keys (`search.<base>`): `match` (`all` | `any`), `rank` (`ts_rank` | `ts_rank_cd`), `normalization` (the rank functions' integer flags) and `rrf` (`{k, weights: [keyword, vector]}`, hybrid). Any other key is refused.
 
+## Languages
+
+The non-English scenarios (`ecommerce/amazon-search-ja`, `ecommerce/amazon-search-es`) set the language in the config's `default` block. Each setting has a `justification:` entry.
+
+| Scenario | default track | tuned track |
+|---|---|---|
+| Japanese | `index.text_search_config: simple`. Postgres has no Japanese configuration, so a Japanese phrase with no spaces stays one token | may use PGroonga, if an official image with both PGroonga and pgvector is available (it is selected with `compose:` and justified). If none is, it keeps `simple` and the scenario page says why |
+| Spanish | `index.text_search_config: spanish`, the built-in configuration | no plugin; usual sweep |
+
+`index.text_search_config` names the built-in configuration that the scenario's configuration is copied from. With no key, it is `english`, as before. The stemmer in the thesaurus dictionary follows it (`spanish_stem` for `spanish`); a configuration with no built-in stemmer, such as `simple`, uses the `simple` dictionary.
+
 ## Modes
 
 Every mode is one SQL statement. Placeholders are `$n::text` plus a cast; the query text is always a parameter.

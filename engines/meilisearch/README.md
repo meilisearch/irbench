@@ -28,6 +28,17 @@ Found by a sweep scored on nDCG@10 per scenario and base; each value is justifie
 - keyword, every scenario: `matchingStrategy: frequency` (drop the most frequent query words first, instead of the last ones).
 - hybrid: `semanticRatio` 0.45 with `frequency` on WANDS, 0.55 on web-questions, 0.95 on covid-papers, and the default 0.5 with `frequency` on community-qa. Above 0.5, every ratio ranks about the same on the knowledge-base scenarios (the vector side leads).
 
+## Languages
+
+The non-English scenarios (`ecommerce/amazon-search-ja`, `ecommerce/amazon-search-es`) set the language in the config's `default` block. Each setting has a `justification:` entry.
+
+| Scenario | default track | tuned track |
+|---|---|---|
+| Japanese | `index.localizedAttributes` with locale `jpn` on all searchable fields, and `search.<base>.locales: ["jpn"]` on search requests, so that kanji-only text is not read as Chinese | the same; no plugin exists or is needed, usual sweep |
+| Spanish | `index.localizedAttributes` with locale `spa` | the same, usual sweep |
+
+With no `index.localizedAttributes`, nothing changes (language detection as shipped).
+
 ## Modes
 
 - keyword: `q`.

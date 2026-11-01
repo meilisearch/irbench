@@ -1,0 +1,126 @@
+---
+title: "Scenario: amazon-search-es"
+description: Spanish product search, real Amazon.es queries against 260k products with graded human judgments (Amazon ESCI)
+---
+
+Scenario id: `ecommerce/amazon-search-es`. It tests product search in a language
+with accents and inflection that is close to English in how it is split into
+words. It shows what language settings (stemming, stop words, accent folding) do
+on a second Latin-script language, and how much setup each engine needs to get
+them.
+
+## Source
+
+- **Dataset:** Amazon ESCI (Shopping Queries Dataset), Spanish part
+  (`locale: es`). Same files and same pinned commit as the other ESCI scenario:
+  `shopping_queries_dataset_examples.parquet` and
+  `shopping_queries_dataset_products.parquet`.
+- **License:** Apache-2.0.
+- **Dataset id:** `amazon-esci-es`.
+
+## Size
+
+Counts measured on the pinned examples file:
+
+| | Spanish part (all splits) | In this scenario |
+|---|---|---|
+| Queries | 15,180 | 2,000, sampled from the 2,417 hard test queries |
+| Judgments | 356,410 | those of the 2,000 queries, 27.3 per hard test query on average |
+| Products | 259,973 judged products | the full catalogue |
+
+A product with no title is dropped with its judgments, so the indexed count can
+be a little lower than 259,973. Every hard test query has at least one Exact or
+Substitute product. The sample is seeded (`20261020`), the same seed as the
+other ESCI scenario.
+
+The median query is 3 words and 20 characters. Examples:
+`rinconera ducha sin taladro`, `filtro cafetera delonghi`,
+`calefactor eléctrico inteligente`, `telefonos moviles para mayores con tapa`.
+
+## Fields and modes
+
+| Role | Fields |
+|---|---|
+| Searchable (priority order) | `title`, `brand`, `color`, `bullet_points`, `description` (HTML stripped) |
+| Filterable | `brand`, `color` |
+| Sortable | none |
+| Facets | `brand` |
+
+Modes: `keyword`, `semantic`, `hybrid`, `filtered`, `faceted`. `filtered` and
+`faceted` run on `keyword` and `semantic`. There is no `sorted` mode: the
+catalogue has no sortable field. Filter templates: `brand` equals a value, `color`
+equals a value. Page sizes for the speed runs: 20 and 100.
+
+Text is kept as Amazon wrote it, accents included. There is no Unicode
+normalisation beyond what the other ESCI scenario does.
+
+## Judgments
+
+Grades: Exact 2, Substitute 1, Complement 0, Irrelevant 0.
+
+ESCI judges about 27 products per query, all taken from Amazon's own ranking.
+A product that an engine returns and that was never judged counts as grade 0, so
+an engine that ranks differently from Amazon can be scored below what a person
+would give it. The report shows judged@10 (the share of the top 10 that has a
+judgment) next to every nDCG score. Read nDCG together with it.
+
+## Semantic search
+
+The vectors come from `multilingual-e5-small` (`intfloat/multilingual-e5-small`,
+384 dimensions, MIT), pinned on the scenario: `embed` and `run` refuse another
+`--model`. Queries are embedded with the `query: ` prefix and documents with
+`passage: `, as the model expects. Embeddings use `title`, `brand`, `color` and
+`bullet_points`.
+
+The English scenarios use another model. **Semantic and hybrid scores on this
+scenario are not comparable with the English scenarios.** Compare engines with
+each other here, not with the English tables.
+
+## Language settings
+
+Every engine is told the language in its config, in the `default` block, and
+each setting carries a `justification:` entry. The two tracks differ in what is
+allowed. See [Methodology](/methodology/parity#tracks).
+
+- **default:** only the engine's built-in language setting. Nothing is installed.
+- **tuned:** the same, plus the sweep of each engine's documented search settings.
+  There is no official plugin for Spanish.
+
+| Engine | default track | tuned track |
+|---|---|---|
+| Meilisearch | `index.localizedAttributes` with locale `spa` | usual sweep |
+| Elasticsearch | `index.analyzer: spanish`, the built-in analyzer (stemming and stop words) | usual sweep. It may add built-in filters such as `asciifolding` |
+| Typesense | `index.searchable_fields.locale: es` | usual sweep |
+| Qdrant | `index.bm25_options` for Spanish, as documented for v1.19.2 | usual sweep |
+| ParadeDB | `index.tokenizer: pdb.simple('stemmer=spanish')`, pg_search's Spanish stemmer | usual sweep |
+| Postgres | `index.text_search_config: spanish`, the built-in configuration | usual sweep |
+
+The English scenarios do not give Elasticsearch its `english` analyzer: they
+run its standard tokenizer. Spanish gets the `spanish` analyzer here because that
+is the documented way to tell Elasticsearch that the text is Spanish. The
+inconsistency is recorded in the Elasticsearch README.
+
+## Default and tuned side by side
+
+The published report shows the default runs of this scenario in one place: a
+table on the scenario page with keyword, semantic and hybrid nDCG@10 per engine,
+default next to tuned, and the change. Default runs are left out of the
+rankings, the best-score marking, the significance tests, and every
+cross-scenario view. They show what each engine does with only its built-in
+language setting.
+
+## Perturbations
+
+`typo`, `prefix` and `accents`, seed `20261020`. No synonym list was built.
+
+`accents` is new. Shoppers often type Spanish without accents: `electrico` for
+`eléctrico`, `telefonos` for `teléfonos`, `nino` for `niño`. The variant removes
+every diacritic from the query: Unicode NFD, drop the combining marks, NFC. `ñ`
+becomes `n` and `ü` becomes `u`. A query with no diacritic gets no variant, as
+`synonym` does on other scenarios for a query with no synonym.
+
+10.7% of the hard Spanish test queries contain a diacritic (6.1% an `ñ`), so the
+`accents` variant covers about 210 of the 2,000 queries. That figure is an
+estimate from the hard test queries, not a count from a run. With about 210
+queries, confidence intervals on the `accents` score are wide: read small
+differences between engines as ties.
