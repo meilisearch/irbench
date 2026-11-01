@@ -164,7 +164,10 @@ What it shows:
 - **Scores rise by about a tenth** (0.274 to 0.307).
 - **Gaps widen, and can become significant.** The gap between the two choices
   goes from +0.015 to +0.027. On the full corpus it is not significant
-  (paired Wilcoxon, p = 0.17); at 1M it is (p = 0.01).
+  (p = 0.17); at 1M it is (p = 0.01). These p-values come from a paired
+  Wilcoxon test over the 467 queries, a different test from the report's ≈
+  marker (a paired randomization test over tasks, variants included), so do
+  not compare the two directly.
 
 ## Caveats
 
@@ -179,8 +182,8 @@ What it shows:
   test, p ≥ 0.05; see
   [Methodology](/methodology/overview#confidence-intervals-and-significance)).
   On this scenario, a run without ≈ is a real difference in ranking the same
-  candidates, but the gap may be smaller on the full corpus, and a run with ≈
-  may be a tie there too. The check above covers lexical ranking only.
+  candidates, but on the full corpus the gap may be smaller and not
+  significant. The check above covers lexical ranking only.
 - **The keyword-versus-semantic gap may be inflated.** The judgments were
   pooled from 2017 systems, mostly lexical. Entities that a dense model ranks
   high but nobody judged are more likely to be dropped by the sampling than

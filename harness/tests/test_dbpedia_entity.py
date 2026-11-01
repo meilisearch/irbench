@@ -165,3 +165,27 @@ def test_size_bounds(tmp_path):
     assert result.stats["distractor_docs"] == 23
     with pytest.raises(ValueError, match="32"):
         run(tmp_path, 32)
+
+
+def test_sample_changes_with_seed(tmp_path, monkeypatch):
+    default = {d["uri"] for d in read_jsonl(run(tmp_path, 12).docs)}
+    monkeypatch.setattr(dbpedia_entity, "SEED", SEED + 1)
+    reseeded = run(tmp_path, 12)
+    other = {d["uri"] for d in read_jsonl(reseeded.docs)}
+    assert reseeded.stats["corpus_seed"] == SEED + 1
+    assert other - JUDGED != default - JUDGED
+    assert other & JUDGED == default & JUDGED == JUDGED
+
+
+def test_size_below_judged_fails_before_reading_corpus(tmp_path):
+    raw = make_raw(tmp_path)
+    raw["corpus"].unlink()
+    out = tmp_path / "out"
+    out.mkdir()
+    with pytest.raises(ValueError, match=r"(?s)(?=.*\b5\b)(?=.*\b8\b)"):
+        normalize_dbpedia_entity(raw, out, 5)
+
+
+def test_query_in_both_test_and_dev_fails(tmp_path):
+    with pytest.raises(ValueError, match="SemSearch_ES-1"):
+        run(tmp_path, 12, dev_qrels=[*DEV_QRELS, ("SemSearch_ES-1", "<dbpedia:E07>", 1)])

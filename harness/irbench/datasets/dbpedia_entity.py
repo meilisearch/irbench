@@ -48,11 +48,17 @@ def normalize_dbpedia_entity(
     raw: dict[str, Path], out: Path, corpus_size: int = 1_000_000
 ) -> NormalizedDataset:
     queries = _query_rows(raw["queries"])
-    uri_qrels: Qrels = {}
-    for key in ("qrels_test", "qrels_dev"):
-        for qid, grades in read_qrels_tsv(raw[key]).items():
-            uri_qrels.setdefault(qid, {}).update(grades)
+    uri_qrels: Qrels = read_qrels_tsv(raw["qrels_test"])
+    for qid, grades in read_qrels_tsv(raw["qrels_dev"]).items():
+        if qid in uri_qrels:
+            raise ValueError(f"query {qid!r} is judged in both the test and dev qrels")
+        uri_qrels[qid] = grades
     judged = {uri for grades in uri_qrels.values() for uri in grades}
+    if corpus_size < len(judged):
+        raise ValueError(
+            f"corpus_size {corpus_size} is below the {len(judged)} judged entities, "
+            "which must all be kept"
+        )
 
     # Pass 1: size the corpus and check that every judged entity is in it.
     source_docs = unjudged = 0
@@ -66,11 +72,6 @@ def normalize_dbpedia_entity(
     if missing := judged - seen:
         raise ValueError(
             f"{len(missing)} judged entities are not in the corpus, e.g. {min(missing)!r}"
-        )
-    if corpus_size < len(judged):
-        raise ValueError(
-            f"corpus_size {corpus_size} is below the {len(judged)} judged entities, "
-            "which must all be kept"
         )
     if corpus_size > source_docs:
         raise ValueError(f"corpus_size {corpus_size} is above the {source_docs} entities available")
