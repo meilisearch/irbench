@@ -93,6 +93,8 @@ def prepare(root: Path, scenario_id: str, client: httpx.Client | None = None) ->
                 "id": spec.id,
                 "version": spec.version,
                 "files": {name: f.sha256 for name, f in spec.files.items()},
+                "params": spec.params,
+                "stats": normalized.stats,
             },
             "seed": p.seed,
             "counts": {

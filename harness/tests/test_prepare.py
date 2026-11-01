@@ -154,3 +154,21 @@ def test_raw_from_shares_directory(tmp_path, wands_raw):
     shared = root / ".irbench" / "data" / "amazon-esci" / "raw"
     assert {p.name for p in shared.iterdir()} == {f"{name}.csv" for name in wands_raw}
     assert not (root / ".irbench" / "data" / "wands" / "raw").exists()
+
+
+def test_manifest_records_dataset_params_and_stats(tmp_path, wands_raw, monkeypatch):
+    root = make_root(tmp_path, wands_raw)
+    plain = prepare(root, SCENARIO, client=fixture_client(wands_raw))
+    dataset = json.loads((plain.scenario_dir / "prepare.manifest.json").read_text())["dataset"]
+    assert dataset["stats"] == {} and dataset["params"] == {}
+
+    real = NORMALIZERS["wands"]
+
+    def with_stats(raw, out_dir):
+        return replace(real(raw, out_dir), stats={"judged_docs": 1})
+
+    monkeypatch.setitem(NORMALIZERS, "wands", with_stats)
+    result = prepare(root, SCENARIO, client=fixture_client(wands_raw))
+    dataset = json.loads((result.scenario_dir / "prepare.manifest.json").read_text())["dataset"]
+    assert dataset["stats"] == {"judged_docs": 1}
+    assert dataset["params"] == {}
