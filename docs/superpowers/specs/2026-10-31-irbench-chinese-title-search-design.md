@@ -46,7 +46,7 @@ Both scenarios run keyword, semantic and hybrid only (§4). They are the first s
 | Headline metric | MRR@10, with success@1, recall@10, recall@100 and nDCG@10 next to it, each with its 95% interval (§6) | my call |
 | Default track | Each engine's built-in Chinese setting, nothing installed (§5.1) | my call (the rule set by the multilingual spec) |
 | Tuned track | Official vendor plugins allowed: Elasticsearch `analysis-smartcn` and `analysis-icu`, Postgres PGroonga. IK and zhparser: see §12 | my call, one question open |
-| Licence | No licence. Runs are kept internal until the user decides (§7) | open, §12 |
+| Licence | No licence. Runs stay internal until the Multi-CPR authors give terms (§7) | user |
 
 ## 3. Data
 
@@ -257,7 +257,8 @@ What this says:
 - Multi-CPR (`github.com/Alibaba-NLP/Multi-CPR`) has no licence file and its README states no terms. The C-MTEB copies on Hugging Face have no licence either, and MTEB records the tasks as "not specified". Without a licence, the default is that the authors keep all rights.
 - What IRBench redistributes: nothing of the data. Raw files are downloaded at prepare time and never committed; published run bundles (`manifest.json`, `scores.json`, `perf.json`, `index.json`) hold task and document ids and numbers, no text. Rendered requests, which contain query text, are not published.
 - What publishing would show: scores per engine, as the MTEB leaderboard does publicly for these two tasks. The scenario docs page would show no query or title text beyond what the paper itself prints.
-- Until the user decides (§12), these scenarios are internal: `Scenario.publishable: bool = True`, set to `false` on both, and `irbench publish` refuses a run of a non-publishable scenario with a message pointing here. Local reports (`irbench report --results .irbench/runs`) work as usual.
+- **Decision (user, 2026-11-01): these scenarios stay internal until the Multi-CPR authors give terms.** `Scenario.publishable: bool = True`, set to `false` on both, and `irbench publish` refuses a run of a non-publishable scenario with a message pointing here. Local reports (`irbench report --results .irbench/runs`) work as usual. The scenario docs pages say the results are internal and why.
+- If the authors grant terms that allow publishing scores, flipping `publishable` on both scenarios is the whole change; the published bundles still carry no text.
 
 ## 8. Harness changes
 
@@ -265,7 +266,7 @@ Most of what these scenarios need comes from the multilingual plan (`docs/superp
 
 - `Scenario.language` gains `zh`; validation rejects `typo` for `zh`.
 - `Scenario.headline_metric` and `Scenario.publishable` (§6.3, §7).
-- Score stage: per-task values and intervals for `mrr@10` and `success@1` (§6.3).
+- Score stage: per-task headline values, intervals for five metrics, `headline_metric` and `single_judgment` in `scores.json` (§6.3).
 - Report: headline metric in the matrix and tie test; the second metrics table; judged@10 hidden for single-judgment scenarios.
 - `irbench publish` refuses non-publishable scenarios.
 - Loader `irbench.datasets.cmteb` and two `dataset.yaml` files. The train files are plain TSV; the parquet files are read with pyarrow. No new dependency.
@@ -289,7 +290,7 @@ On the laptop (`local` profile), after the multilingual plan's runs:
 1. Prepare both datasets; embed 2 × 100k titles and 2 × 4,000 queries with multilingual-e5-small.
 2. Default track, all 6 engines, both scenarios.
 3. Sweeps with the significance rule of §5.2, then the tuned track.
-4. Report built locally. Nothing is published until §12 is answered.
+4. Report built locally. Nothing is published (§7).
 
 Risks:
 - **False negatives favour one kind of engine** (§6.1). Not measured by this change; §11.
@@ -307,8 +308,9 @@ Risks:
 
 ## 12. Open questions for the user
 
-1. **Licence.** Keep these runs internal until the Multi-CPR authors answer an issue asking for terms (recommended; I can draft the issue), or publish scores only now, as MTEB does, with no text in the published bundles or docs?
-2. **Community plugins on the tuned track.** The multilingual spec allows only official plugins. For Chinese, the plugins most deployments actually use are community ones: IK for Elasticsearch (INFINI Labs, Apache-2.0, a build for 9.5.5 exists) and zhparser for Postgres (no PGDG package; it needs a source build of SCWS and zhparser). Recommended: allow IK as a named exception, since without it the tuned Elasticsearch result invites the "nobody runs Chinese without IK" objection; keep zhparser out, since it can only be built by hand, which the multilingual spec rules out.
+Answered: the licence (§7, keep internal).
+
+1. **Community plugins on the tuned track.** The multilingual spec allows only official plugins. For Chinese, the plugins most deployments actually use are community ones: IK for Elasticsearch (INFINI Labs, Apache-2.0, a build for 9.5.5 exists) and zhparser for Postgres (no PGDG package; it needs a source build of SCWS and zhparser). Recommended: allow IK as a named exception, since without it the tuned Elasticsearch result invites the "nobody runs Chinese without IK" objection; keep zhparser out, since it can only be built by hand, which the multilingual spec rules out.
    If IK is allowed: the zh image installs it from the maintainer's 9.5.5 release zip, pinned by URL and sha256 in the Dockerfile; the sweep adds `ik_smart` and `ik_max_word` (same significance rule); the parity doc and the `justification.compose` entry name IK as the one community plugin allowed and why; the docker test checks `_analyze` with `ik_smart` splits `纯山楂酱`. If not, the image holds smartcn and icu only and the Elasticsearch README says IK was not tried.
 
 Calls made in this spec, to check while reading:
@@ -318,5 +320,4 @@ Calls made in this spec, to check while reading:
 - ParadeDB's `jieba` as its default-track tokenizer (§5.1);
 - the sweep's significance rule: each variant against the default, Holm-corrected, index-time settings chosen on keyword (§5.2);
 - multilingual-e5-small over bge-small-zh (§5.3);
-- MRR@10 as the headline, sweeps still on nDCG@10 (§6.3);
-- internal until §12.1 is answered (§7).
+- MRR@10 as the headline, sweeps still on nDCG@10 (§6.3).
