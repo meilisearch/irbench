@@ -1,0 +1,29 @@
+id: home-depot
+version: "kaggle-2016"
+license: "Kaggle competition rules (Home Depot Product Search Relevance), internal use only"
+source: https://www.kaggle.com/competitions/home-depot-product-search-relevance
+distribution: internal
+files:
+  train:
+    manual: &kaggle_download |
+      These files come from the Kaggle competition "Home Depot Product Search Relevance" and need
+      a Kaggle account that has accepted the competition rules.
+      1. Accept the rules at https://www.kaggle.com/competitions/home-depot-product-search-relevance/rules
+      2. Download the data: kaggle competitions download -c home-depot-product-search-relevance -p <raw dir>
+         (or download train.csv.zip, product_descriptions.csv.zip and attributes.csv.zip from the
+         competition's data page into <raw dir>)
+      3. Run prepare again.
+      The harness never handles Kaggle credentials; it only checks the files you downloaded.
+    filename: train.csv.zip
+    sha256: "0000000000000000000000000000000000000000000000000000000000000000"  # replaced with the real sha256 in Task 9
+  descriptions:
+    manual: *kaggle_download
+    filename: product_descriptions.csv.zip
+    sha256: "0000000000000000000000000000000000000000000000000000000000000000"  # replaced with the real sha256 in Task 9
+  attributes:
+    manual: *kaggle_download
+    filename: attributes.csv.zip
+    sha256: "0000000000000000000000000000000000000000000000000000000000000000"  # replaced with the real sha256 in Task 9
+  spelling:
+    url: https://raw.githubusercontent.com/ChenglongChen/Kaggle_HomeDepot/55c1033d0af3b6cf2f033fe4bcf3e1e0ffda3445/Code/Chenglong/google_spelling_checker_dict.py
+    sha256: 76edf5ee8de0da6cd9385e5713f0866ac6f38d76aae1c80eb8b921a876615fd2
