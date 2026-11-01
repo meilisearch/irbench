@@ -671,7 +671,7 @@ HD_SCENARIO = "ecommerce/home-depot-search"
 HD_PAGE = "ecommerce__home-depot-search__aws-c7i-4xlarge.html"
 
 
-def _with_misspelling_rows(bundle, *, typo_n=40):
+def _with_misspelling_rows(bundle, *, corrected_n=30, typo_n=40):
     """Group rows (misspelled original/corrected, clean original) and paired rows for keyword."""
 
     def add(d):
@@ -709,7 +709,7 @@ def _with_misspelling_rows(bundle, *, typo_n=40):
                 group_row("clean", "original", 70, 0.488),
             ],
             "paired": [
-                paired("corrected", "misspelled", 30, 0.081, [0.044, 0.118]),
+                paired("corrected", "misspelled", corrected_n, 0.081, [0.044, 0.118]),
                 paired("typo", "clean", typo_n, -0.137, [-0.19, -0.083]),
             ],
         }
@@ -736,12 +736,32 @@ def test_misspelling_table_values(tmp_path):
     assert "speller changed the query" in section
     assert "1,086 / 415 / 100 / 39 of 1,640" in section
 
-    # a single-query pair has a zero-width interval, which is not an interval
-    _with_misspelling_rows(bundle, typo_n=1)
+
+def _misspelling_section(tmp_path, **n):
+    tmp_path.mkdir(exist_ok=True)
+    results, out = site(tmp_path)
+    bundle = write_bundle(
+        results, "meilisearch", scenario=HD_SCENARIO, groups={"keyword/keyword": 0.5}
+    )
+    _with_misspelling_rows(bundle, **n)
     build_site(results, out)
-    section = read(out, HD_PAGE).split("<h2>Misspellings</h2>")[1].split("</section>")[0]
-    assert "−0.137" in section and "n/a" in section
-    assert "[−0.190, −0.083]" not in section
+    return read(out, HD_PAGE).split("<h2>Misspellings</h2>")[1].split("</section>")[0]
+
+
+NA_CELL = '<small class="ci">n/a</small>'
+
+
+def test_a_single_pair_has_no_interval(tmp_path):
+    # a single-query pair has a zero-width interval, which is not an interval
+    section = _misspelling_section(tmp_path, typo_n=1)
+    assert section.count(NA_CELL) == 1
+    assert "−0.137 " + NA_CELL in section and "[−0.190, −0.083]" not in section
+    assert "[+0.044, +0.118]" in section
+
+    section = _misspelling_section(tmp_path / "b", corrected_n=1)
+    assert section.count(NA_CELL) == 1
+    assert "+0.081 " + NA_CELL in section and "[+0.044, +0.118]" not in section
+    assert "[−0.190, −0.083]" in section
 
 
 def test_misspelling_copy_only_for_the_home_depot_scenario(tmp_path):
