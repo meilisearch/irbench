@@ -130,3 +130,44 @@ def test_null_digest_publishes(tmp_path):
     (d / "manifest.json").write_text(json.dumps(manifest))
     dest = publish_run(tmp_path, RUN_ID)
     assert json.loads((dest / "manifest.json").read_text())["engine_image"]["digest"] is None
+
+
+def _with_scenario(root, publishable):
+    """A run whose manifest names a scenario that exists under `root`."""
+    from conftest import REPO_ROOT
+
+    src = REPO_ROOT / "scenarios" / "ecommerce" / "product-search"
+    dest = root / "scenarios" / "ecommerce" / "product-search"
+    dest.mkdir(parents=True)
+    for p in src.iterdir():
+        if p.is_file():
+            (dest / p.name).write_bytes(p.read_bytes())
+    if not publishable:
+        with (dest / "scenario.yaml").open("a", encoding="utf-8") as f:
+            f.write("\npublishable: false\n")
+    d = make_run(root)
+    manifest = json.loads((d / "manifest.json").read_text())
+    manifest["scenario"] = "ecommerce/product-search"
+    (d / "manifest.json").write_text(json.dumps(manifest))
+    return d
+
+
+def test_publish_allows_publishable_scenario(tmp_path):
+    _with_scenario(tmp_path, publishable=True)
+    assert publish_run(tmp_path, RUN_ID).exists()
+
+
+def test_publish_refuses_internal_scenario(tmp_path):
+    _with_scenario(tmp_path, publishable=False)
+    with pytest.raises(ValueError, match=r"ecommerce/product-search is internal.*spec §7"):
+        publish_run(tmp_path, RUN_ID)
+    assert not (tmp_path / "results").exists()
+
+
+def test_publish_missing_scenario(tmp_path):
+    d = make_run(tmp_path)
+    manifest = json.loads((d / "manifest.json").read_text())
+    manifest["scenario"] = "media/gone"
+    (d / "manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match="media/gone"):
+        publish_run(tmp_path, RUN_ID)
