@@ -5,7 +5,9 @@
 #   the usual Chinese parser for Postgres text search. Neither has a PGDG package, so both are
 #   built unmodified from pinned upstream commits, with SCWS's shipped dictionary.
 FROM pgvector/pgvector:0.8.7-pg17
-ARG SCWS_COMMIT=b5ae33f6a71ecbf5442a2e485703af4d372f3341
+# SCWS at its 1.2.3 release tag (the commit zhparser's own Dockerfiles build); master's Makefile.am no
+# longer passes automake.
+ARG SCWS_COMMIT=a04ef5e655213eb6b07fb57761d0eac72c281ad4
 ARG ZHPARSER_COMMIT=2e995c4df672563992b4d7a147b8fa2d0d4cda6c
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates wget \
