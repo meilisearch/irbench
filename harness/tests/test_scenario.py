@@ -206,3 +206,14 @@ def test_check_model_rejects_other_model():
     with pytest.raises(ValueError) as e:
         check_model(s, "bge-small-en-v1.5")
     assert str(e.value) == (f"{s.id} is embedded with multilingual-e5-small, not bge-small-en-v1.5")
+
+
+def test_entity_search_scenario_loads():
+    s = load_scenario(REPO_ROOT, "entity-search/dbpedia")
+    assert s.dataset == "dbpedia-entity"
+    assert s.index_fields.searchable == ["title", "text"]
+    assert s.modes == ["keyword", "semantic", "hybrid"] and s.structured_bases == []
+    assert s.embedding_fields == ["title", "text"]
+    assert s.perturbations.kinds == ["typo", "prefix"] and s.perturbations.seed == 20261031
+    assert s.synonyms is None and s.index_timeout_s == 7200
+    assert s.page_sizes == [20, 100] and s.top_k == 100
