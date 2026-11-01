@@ -1,7 +1,7 @@
 # IRBench — Home Depot product search with real misspellings
 
 Date: 2026-10-31
-Status: Draft; the user answered both open questions on 2026-11-01 (§11): internal only, Kaggle download
+Status: Approved 2026-11-01 (internal only, Kaggle download; §11)
 Parent specs: `2026-10-09-irbench-design.md`, `2026-10-20-irbench-amazon-esci-design.md` (grade scale, loader and scenario layout)
 
 Example queries in this document are invented, written in the style of the data. The real queries are Kaggle competition data and are not reproduced in this public repository (§3).
