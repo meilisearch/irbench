@@ -934,6 +934,5 @@ def test_judged_hidden_for_single_judgment(tmp_path):
     page = read(build_site(results, out).pages[1].parent, PAGE)
     assert "Judged results" not in page
     assert (
-        "Each query has one judged document, so judged@10 is at most 0.1 and is not shown."
-        in page
+        "Each query has one judged document, so judged@10 is at most 0.1 and is not shown." in page
     )
