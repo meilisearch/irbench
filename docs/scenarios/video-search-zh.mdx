@@ -34,6 +34,17 @@ cut noise (engines are not trained, so a train query is as good a test). The
 sample is seeded (`20261031`). Text is kept as written: no full-width folding, no
 case folding, no traditional/simplified conversion.
 
+On video, the two groups are not equally hard. Keyword MRR@10 on the default
+track: Elasticsearch 0.536 on `dev` against 0.176 on `train`, Qdrant 0.541
+against 0.202 (on e-commerce the groups are close: 0.385 against 0.369 for
+Elasticsearch). Many train queries are vague (`电影小孩子看的`, "a film for kids")
+and are judged against one catalogue entry, often a long cast list: the judged
+title shares no character with its query for 5.1% of train queries against 0.3%
+of dev ones, and its median length is 38 characters against 24. The labels look
+click-based. The scenario keeps all 4,000 queries: the train group is a harder,
+noisier set of real queries, not a broken one. Read the `dev` row for numbers
+comparable with C-MTEB, and expect the headline to sit well below it.
+
 ## Fields and modes
 
 One searchable field, `title`. Modes: `keyword`, `semantic`, `hybrid`.

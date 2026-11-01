@@ -114,6 +114,8 @@ One normaliser, `irbench.datasets.cmteb` (`normalize_cmteb`), registered twice i
 
 Why train queries: §6.2 shows that 1,000 queries leave intervals too wide to separate most engines. The engines are not trained, so a train query is as good a test as a dev query; only an embedding model trained on Multi-CPR would gain from it, and the chosen model was not (§5.3). The `dev` group alone gives the numbers comparable with C-MTEB, and the scenario page shows it as a group, as it shows ESCI's query sources.
 
+Measured after the default runs (2026-11-01): on video, train queries are much harder than dev ones (keyword MRR@10, Elasticsearch 0.536 dev against 0.176 train; Qdrant 0.541 against 0.202). Their judged titles share no character with the query five times as often (5.1% against 0.3%) and are longer (median 38 characters against 24), and many queries are vague; the labels look click-based. On e-commerce the two groups are close (0.385 against 0.369). The user kept all 4,000 video queries; the docs page states the gap and points to the `dev` row. Of the keyword sweep decisions, only Elasticsearch's on video depends on it: smartcn is kept on all 4,000 queries, while on dev alone no analyzer beats `cjk` significantly.
+
 ## 4. Scenarios
 
 ```yaml
