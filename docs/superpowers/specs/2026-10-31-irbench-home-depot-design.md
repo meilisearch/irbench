@@ -1,7 +1,7 @@
 # IRBench — Home Depot product search with real misspellings
 
 Date: 2026-10-31
-Status: Draft, waiting on the user (§11)
+Status: Draft; internal-only use decided 2026-11-01, source still open (§11, Q2)
 Parent specs: `2026-10-09-irbench-design.md`, `2026-10-20-irbench-amazon-esci-design.md` (grade scale, loader and scenario layout)
 
 Example queries in this document are invented, written in the style of the data. The real queries are Kaggle competition data and are not reproduced in this public repository (§3).
@@ -39,7 +39,7 @@ Results stay internal: the data's terms do not allow publishing it (§2, §3).
 
 | Topic | Decision | By |
 |---|---|---|
-| Licence and use | Internal only. Never published: no runs in `results/`, no published vectors, no docs page, no scores in committed files. A new `distribution: internal` flag on the dataset enforces what it can (§6.1) | my call, the user must confirm (§11, Q1) |
+| Licence and use | Internal only. Never published: no runs in `results/`, no published vectors, no docs page, no scores in committed files. A new `distribution: internal` flag on the dataset enforces what it can (§6.1) | user, 2026-11-01 |
 | Source | The original Kaggle files, downloaded by each person who runs the scenario with their own Kaggle account, after accepting the competition rules. The Hugging Face mirror is not used (§3.2) | my call, the user must confirm (§11, Q2) |
 | Corpus | The 54,667 products judged in the training set, with title, brand and description (§4.4) | my call |
 | Attributes file | Used for brand only. Its bullet points repeat the description (§4.1) | my call |
@@ -72,7 +72,7 @@ Results stay internal: the data's terms do not allow publishing it (§2, §3).
   - **Tuned-config justifications:** `docs/methodology/parity.mdx` asks each tuned setting's justification to state its measured gain, and existing configs quote nDCG values. For an internal scenario the justification says what the setting does and that the sweep chose it, with no numbers. The numbers stay in the internal sweep notes, outside the repository. Lint does not check for numbers, so this is a documented rule only.
   - **No results README:** the scenario folder gets no README with results. Findings such as the grade-sensitivity check (§4.3) go on the internal preview report.
 - **The source is Kaggle itself, not a mirror.** Each person who prepares the scenario downloads the files with their own Kaggle account, which requires accepting the rules. That meets the rules' condition that only people who accepted them have the data, and keeps the public repository from pointing at an unlicensed copy.
-- Even internal benchmarking is outside "the purpose of the competition" read strictly. Whether Meilisearch accepts that is the user's decision (§11, Q1). If the answer is no, this scenario is not built.
+- Even internal benchmarking is outside "the purpose of the competition" read strictly. The user accepted internal use on 2026-11-01 (§11, Q1).
 
 ## 4. Data
 
@@ -356,10 +356,7 @@ Risks:
 
 ## 11. Open questions for the user
 
-1. **Use and publication.** The rules limit the data to the competition and forbid redistribution.
-   - This spec makes the scenario internal only: results, vectors and docs never leave Meilisearch.
-   - Only code, configs (with no scores) and checksums go in the public repository.
-   - Is internal use acceptable to you, or should the scenario be dropped?
+1. **Use and publication.** Answered 2026-11-01: internal only. Results, vectors and docs never leave Meilisearch; only code, configs (with no scores) and checksums go in the public repository.
 2. **Source.** This spec has each person who runs the scenario download the files from Kaggle with their own account, after accepting the rules.
    - The simpler alternative is the unlicensed Hugging Face mirror, fetched by URL.
    - The mirror has no attributes, so brand filtering and facets would go.
