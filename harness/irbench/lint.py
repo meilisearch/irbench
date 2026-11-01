@@ -9,10 +9,12 @@ from typing import Any, get_args
 
 import yaml
 
+from irbench.engines.base import load_adapter_class
 from irbench.engines.config import TRACKS, TrackConfig, load_engine_config
 from irbench.io import read_jsonl
 from irbench.models import BASE_MODES, Mode
 from irbench.paths import Workspace
+from irbench.scenario import load_scenario
 
 MODES = get_args(Mode)
 REQUIRED_FILES = ("adapter.py", "README.md", "docker/compose.yaml")
@@ -112,30 +114,72 @@ def _check_engine_files(root: Path, engine_dir: Path) -> list[Finding]:
     ]
     compose = engine_dir / "docker" / "compose.yaml"
     if compose.exists():
-        image = _compose_image(compose.read_text(encoding="utf-8"))
-        match = IMAGE_RE.match(image or "")
-        if not match or match["tag"] == "latest":
-            out.append(
-                Finding(
-                    f"{rel}/docker/compose.yaml",
-                    "image-pin",
-                    f"services.engine.image must pin a version tag, got {image!r}",
-                )
-            )
+        out += _check_compose(compose, f"{rel}/docker/compose.yaml")
     return out
 
 
-def _compose_image(text: str) -> str | None:
+def _check_compose(compose: Path, rel: str) -> list[Finding]:
+    problem = _compose_problem(compose)
+    return [Finding(rel, "image-pin", problem)] if problem else []
+
+
+def _compose_problem(compose: Path) -> str | None:
+    """Why the engine image of this compose file is not pinned, or None if it is.
+
+    With `build:`, the image that matters is the Dockerfile's first FROM (the plugin layer
+    is added on top of it) and `image:` is the local tag the run manifest records."""
     # A malformed compose file (bad YAML, or `services`/`services.engine` not a mapping)
-    # has no image to pin; the caller turns that into an `image-pin` finding, not a crash.
+    # has no image to pin; that is a finding, not a crash.
     try:
-        data = yaml.safe_load(text)
+        data = yaml.safe_load(compose.read_text(encoding="utf-8"))
     except yaml.YAMLError:
-        return None
+        data = None
     services = data.get("services") if isinstance(data, dict) else None
     engine = services.get("engine") if isinstance(services, dict) else None
-    image = engine.get("image") if isinstance(engine, dict) else None
-    return image if isinstance(image, str) else None
+    if not isinstance(engine, dict):
+        return "services.engine must be a mapping with a pinned image, got none"
+    image = engine.get("image")
+    if "build" not in engine:
+        return _unpinned(image, "services.engine.image")
+    if not isinstance(image, str) or not image:
+        return "services.engine uses `build:` and must also set `image:` (the local tag recorded)"
+    dockerfile = _build_dockerfile(compose.parent, engine["build"])
+    if dockerfile is None:
+        return "services.engine.build must be a context path or a {context, dockerfile} mapping"
+    if not dockerfile.is_file():
+        return (
+            f"services.engine.build Dockerfile {dockerfile.relative_to(compose.parent)} is missing"
+        )
+    return _unpinned(_dockerfile_from(dockerfile.read_text(encoding="utf-8")), "Dockerfile FROM")
+
+
+def _unpinned(image: object, where: str) -> str | None:
+    if isinstance(image, str):
+        match = IMAGE_RE.match(image)
+        if match and match["tag"] != "latest":
+            return None
+    return f"{where} must pin a version tag, got {image!r}"
+
+
+def _build_dockerfile(base: Path, build: object) -> Path | None:
+    if isinstance(build, str):
+        context, name = build, "Dockerfile"
+    elif isinstance(build, dict):
+        context, name = build.get("context", "."), build.get("dockerfile", "Dockerfile")
+    else:
+        return None
+    if not isinstance(context, str) or not isinstance(name, str):
+        return None
+    return base / context / name
+
+
+def _dockerfile_from(text: str) -> str | None:
+    for line in text.splitlines():
+        words = line.split()
+        if words and words[0].upper() == "FROM":
+            args = [w for w in words[1:] if not w.startswith("--")]
+            return args[0] if args else None
+    return None
 
 
 def _check_config(
@@ -149,6 +193,18 @@ def _check_config(
 
     tracks = [(name, config.track(name)) for name in TRACKS if name in config.raw]
     out: list[Finding] = []
+    docker = root / "engines" / engine / "docker"
+    for compose in sorted({t.compose for _, t in tracks if t.compose}):
+        if not (docker / compose).is_file():
+            out.append(
+                Finding(
+                    rel,
+                    "compose-missing",
+                    f"compose: {compose} does not exist in {docker.relative_to(root).as_posix()}/",
+                )
+            )
+        else:
+            out += _check_compose(docker / compose, (docker / compose).relative_to(root).as_posix())
     for name, track in tracks:
         for setting in _settings(track):
             if not _justified(setting, track.justification):
@@ -169,6 +225,7 @@ def _check_config(
                         f"[{name}] {key!r} is not `<mode>`, `<mode>:<base>` or `*:<base>`",
                     )
                 )
+    out += _check_language(root, engine, scenario_id, rel, config.track("default"))
     try:
         query_set = load(scenario_id)
     except FileNotFoundError as e:
@@ -188,7 +245,48 @@ def _check_config(
     return out
 
 
+def _check_language(
+    root: Path, engine: str, scenario_id: str, rel: str, default: TrackConfig
+) -> list[Finding]:
+    """A non-English scenario needs the default track to set the engine's language."""
+    try:
+        language = load_scenario(root, scenario_id).language
+    except FileNotFoundError:
+        return []  # no scenario to read a language from
+    except (ValueError, yaml.YAMLError) as e:
+        return [Finding(rel, "scenario-load", f"{scenario_id}: {e}")]
+    if language == "en":
+        return []
+    try:
+        keys = load_adapter_class(root, engine).language_keys
+    except (OSError, ImportError, TypeError, ValueError, SyntaxError) as e:
+        return [Finding(rel, "language-setting", f"cannot read language_keys of {engine}: {e}")]
+    tree = {"index": default.index, "search": default.search}
+    if any(_has_path(tree, key) for key in keys):
+        return []
+    wanted = ", ".join(keys) or "none: the adapter declares no language_keys"
+    return [
+        Finding(
+            rel,
+            "language-setting",
+            f"[default] {engine} must set its language for a `language: {language}` scenario; "
+            f"set one of: {wanted}",
+        )
+    ]
+
+
+def _has_path(tree: dict[str, Any], path: str) -> bool:
+    node: Any = tree
+    for part in path.split("."):
+        if not isinstance(node, dict) or part not in node:
+            return False
+        node = node[part]
+    return True
+
+
 def _settings(track: TrackConfig) -> Iterator[str]:
+    if track.compose:
+        yield "compose"
     yield from _leaves(track.index, "index")
     yield from _leaves(track.search, "search")
 

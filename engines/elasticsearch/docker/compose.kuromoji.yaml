@@ -1,0 +1,29 @@
+# compose.yaml plus the analysis-kuromoji plugin (Dockerfile.kuromoji), for the tuned Japanese track.
+# Keep everything else identical to compose.yaml.
+services:
+  engine:
+    build:
+      context: .
+      dockerfile: Dockerfile.kuromoji
+    image: irbench-elasticsearch-kuromoji:9.5.5   # local tag recorded in the run manifest
+    container_name: irbench-elasticsearch
+    ports:
+      - "19200:9200"
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"   # local benchmark only
+      # The rrf retriever (hybrid) needs a paid license; the basic license returns 403. The
+      # self-generated 30-day trial unlocks it. `down -v` drops the volume, so every run
+      # starts a fresh trial.
+      xpack.license.self_generated.type: trial
+      # No heap override: Elasticsearch sizes its heap from the container memory limit.
+    volumes:
+      - data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS 'http://127.0.0.1:9200/_cluster/health?wait_for_status=yellow&timeout=1s' >/dev/null"]
+      interval: 2s
+      timeout: 3s
+      retries: 90
+
+volumes:
+  data:

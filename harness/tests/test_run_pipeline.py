@@ -126,6 +126,35 @@ def test_tuned_track_records_its_diff(tmp_path, wands_raw):
     }
 
 
+def test_runtime_factory_receives_the_track_compose_file(tmp_path, wands_raw):
+    config = {**FAKE_CONFIG, "tuned": {"compose": "compose.kuromoji.yaml"}}
+    root = fake_root(tmp_path, wands_raw, config=config)
+    seen = []
+
+    def factory(*args):
+        seen.append(args[3:])
+        return FakeRuntime()
+
+    for track in ("default", "tuned"):
+        spec = RunSpec(scenario=SCENARIO, engine="fake", model="fake", track=track)
+        run_pipeline(root, spec, ["render"], runtime_factory=factory)
+    assert seen == [("compose.yaml",), ("compose.kuromoji.yaml",)]
+
+
+def test_prepare_only_run_does_not_need_an_engine_config(tmp_path, wands_raw):
+    root = fake_root(tmp_path, wands_raw)
+    (root / "engines/fake/configs/ecommerce/product-search.yaml").unlink()
+    spec = RunSpec(scenario=SCENARIO, engine="fake", model="fake")
+    manifest = run_pipeline(
+        root,
+        spec,
+        ["prepare"],
+        runtime_factory=lambda *a: FakeRuntime(),
+        prepare_client=fixture_client(wands_raw),
+    )
+    assert manifest["status"] == "succeeded"
+
+
 def test_cli_run_prints_scores_and_na(tmp_path, wands_raw, monkeypatch):
     root = fake_root(tmp_path, wands_raw)
     server = _server(root)

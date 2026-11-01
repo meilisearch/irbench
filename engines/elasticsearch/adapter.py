@@ -29,6 +29,9 @@ RRF_RANK_CONSTANT = 60
 # hybrid fusion: {method: rrf | linear, rank_constant, weights: [keyword, vector], normalizer}.
 MULTI_MATCH = "multi_match"
 FUSION = "fusion"
+# index.analyzer: the analyzer of every searchable text field (the language setting). Applied
+# here, never merged into the create-index body.
+ANALYZER = "analyzer"
 
 
 class Adapter(EngineAdapter):
@@ -36,6 +39,7 @@ class Adapter(EngineAdapter):
     host_port = 19200
     health_path = "/_cluster/health?wait_for_status=yellow&timeout=1s"
     data_dir = "/usr/share/elasticsearch/data"
+    language_keys = ("index.analyzer",)
 
     def _exact_fields(self) -> set[str]:
         f = self.ctx.scenario.index_fields
@@ -44,12 +48,25 @@ class Adapter(EngineAdapter):
     def exact_field(self, name: str) -> str:
         return f"{name}.raw" if name in self.ctx.scenario.index_fields.searchable else name
 
+    @property
+    def _language_analyzer(self) -> str | None:
+        return self.ctx.config.index.get(ANALYZER)
+
+    @property
+    def _search_analyzer(self) -> str:
+        """The synonym analyzer when there are synonyms (or no language analyzer to fall back
+        on), else the language analyzer."""
+        language = self._language_analyzer
+        return language if language and not self.ctx.synonyms else SEARCH_ANALYZER
+
     def mappings(self) -> dict[str, Any]:
         f = self.ctx.scenario.index_fields
         exact = self._exact_fields()
         props: dict[str, Any] = {}
         for name in f.searchable:
-            props[name] = {"type": "text", "search_analyzer": SEARCH_ANALYZER}
+            props[name] = {"type": "text", "search_analyzer": self._search_analyzer}
+            if self._language_analyzer:
+                props[name]["analyzer"] = self._language_analyzer
             if name in exact:
                 props[name]["fields"] = {"raw": {"type": "keyword"}}
         for name in sorted(exact - set(f.searchable)):
@@ -75,14 +92,16 @@ class Adapter(EngineAdapter):
                 }
             }
             filters.append(SYNONYMS_FILTER)
-        analysis["analyzer"] = {
-            SEARCH_ANALYZER: {"type": "custom", "tokenizer": "standard", "filter": filters}
-        }
+        if self._search_analyzer == SEARCH_ANALYZER:
+            analysis["analyzer"] = {
+                SEARCH_ANALYZER: {"type": "custom", "tokenizer": "standard", "filter": filters}
+            }
         body = {
             "settings": {"number_of_replicas": 0, "analysis": analysis},
             "mappings": self.mappings(),
         }
-        return deep_merge(body, self.ctx.config.index)
+        overrides = {k: v for k, v in self.ctx.config.index.items() if k != ANALYZER}
+        return deep_merge(body, overrides)
 
     def create_index(self, client: httpx.Client) -> None:
         idx = self.ctx.index

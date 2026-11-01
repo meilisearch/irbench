@@ -320,3 +320,38 @@ def test_label_names_the_track_when_an_engine_has_two(tmp_path):
     write_bundle(tmp_path, "qdrant")
     labels = sorted(r.label for r in load_results(tmp_path)[0][0].runs)
     assert labels == ["qdrant", "qdrant (tuned)"]
+
+
+def test_null_digest_accepted(tmp_path):
+    image = {"image": "irbench-es-kuromoji:9.5.5", "digest": None}
+    write_bundle(tmp_path, "elasticsearch", engine_image=image)
+    scenarios, unreadable = load_results(tmp_path)
+    assert unreadable == []
+    assert scenarios[0].runs[0].manifest["engine_image"] == image
+
+
+def test_ranked_runs_drop_defaults_that_have_a_tuned_run(tmp_path):
+    write_bundle(tmp_path, "elasticsearch")
+    write_bundle(tmp_path, "elasticsearch", track="tuned")
+    write_bundle(tmp_path, "qdrant")  # default only: stays ranked
+    write_bundle(tmp_path, "meilisearch", track="tuned")  # tuned only
+    s = load_results(tmp_path)[0][0]
+    assert sorted((r.engine, r.track) for r in s.ranked_runs) == [
+        ("elasticsearch", "tuned"),
+        ("meilisearch", "tuned"),
+        ("qdrant", "default"),
+    ]
+    assert len(s.runs) == 4
+
+
+def test_ranked_runs_compare_tracks_within_one_model(tmp_path):
+    write_bundle(tmp_path, "qdrant")
+    write_bundle(tmp_path, "qdrant", track="tuned", model="other-model")
+    s = load_results(tmp_path)[0][0]
+    assert len(s.ranked_runs) == 2  # the tuned run is of another model
+
+
+def test_accents_is_a_known_perturbation():
+    from irbench.report.data import PERTURBATIONS
+
+    assert "accents" in PERTURBATIONS

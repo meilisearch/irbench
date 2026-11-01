@@ -24,6 +24,17 @@ Search parameters only, found by a sweep scored on nDCG@10 per scenario and base
 - hybrid, per scenario: the fusion weight `alpha` (through `vector_query_options`), `rerank_hybrid_matches`, and `text_match_type`; on WANDS also word dropping. Word dropping lowers hybrid relevance on the three knowledge-base scenarios, so it stays off there.
 - Stemming and stop words stay off: the parity rules keep stemming at each engine's language default, and no other engine removes stop words.
 
+## Languages
+
+The non-English scenarios (`ecommerce/amazon-search-ja`, `ecommerce/amazon-search-es`) set the language in the config's `default` block. Each setting has a `justification:` entry.
+
+| Scenario | default track | tuned track |
+|---|---|---|
+| Japanese | `index.searchable_fields.locale: ja` | no plugin; usual sweep |
+| Spanish | `index.searchable_fields.locale: es` | no plugin; usual sweep |
+
+`searchable_fields` is merged into every searchable field (see the last section), so the locale is set on all of them. With no `locale`, nothing changes (Typesense's default tokenization, no locale).
+
 ## Modes
 
 All requests go through `POST /multi_search` (one search per request), so a 384-float vector never sits in a URL.
