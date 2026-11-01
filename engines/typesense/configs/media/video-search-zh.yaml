@@ -1,0 +1,29 @@
+# Typesense on media/video-search-zh.
+#
+# default: Typesense as shipped. adapter.py generates only what the scenario
+#   schema requires (optional string*/float fields, facet flags, a float[] vector
+#   field, the synonyms.txt synonym set, field weights n - i from the scenario's
+#   priority order). Typo tolerance and prefix search are on by default.
+# tuned: changes within the parity rules; a `tuned:` block is deep-merged over
+#   `default`.
+#
+# Keys: index (merged into the create-collection body; `searchable_fields` is
+# merged into every searchable field, `fields.<name>` into one field,
+# `stopwords.<set>` creates a stopword set), search.<keyword|semantic|hybrid>
+# (merged into each search of that base), unsupported, justification.
+# Chinese (spec 2026-10-31 Chinese title search §5): Typesense as shipped plus field locale
+#   `zh`.
+# tuned: written after the sweeps (plan Task 11).
+default:
+  index:
+    searchable_fields:
+      locale: zh
+  search: {}
+  unsupported: {}
+  justification:
+    searchable_fields.locale: >-
+      Default-track language setting (spec 2026-10-31 Chinese title search §5.1, the
+      multilingual spec's rule): the engine's own documented setting for Chinese,
+      nothing installed.
+      Typesense's `zh` locale: ICU-based segmentation of Chinese, simplified and
+      traditional.

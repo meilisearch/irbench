@@ -1,0 +1,51 @@
+# Chinese video title search: short real queries (median 7 characters) against
+# 100,579 video titles from C-MTEB VideoRetrieval, plus Multi-CPR train queries
+# (spec docs/superpowers/specs/2026-10-31-irbench-chinese-title-search-design.md).
+id: media/video-search-zh
+dataset: cmteb-video
+id_field: id
+language: zh
+# Semantic and hybrid scores are only meaningful with this model (spec §5.3).
+embedding_model: multilingual-e5-small
+# One judged title per query: the matrix headlines MRR@10, the rank of that title (spec §6).
+headline_metric: mrr@10
+# Multi-CPR has no licence: runs stay internal (spec §7, user decision 2026-11-01).
+publishable: false
+
+# Order of `searchable` is the field priority every engine must respect.
+index_fields:
+  searchable: [title]
+  filterable: []
+  sortable: []
+  facets: []
+  numeric: []
+# filtered, faceted and sorted are N/A: the data has an id and a title, nothing else.
+modes: [keyword, semantic, hybrid]
+structured_bases: []
+# Doc text sent to embedding models: these fields, joined with ". ", empty ones skipped.
+embedding_fields: [title]
+filter_templates: []
+sort_templates: []
+
+top_k: 100
+max_facet_values: 1000
+facet_verify_limit: 1000
+request_timeout_s: 10
+max_error_rate: 0.001
+index_timeout_s: 1800
+
+# No perturbations: typo is not how Chinese is mistyped, and prefix variants would mix into
+# the headline (spec §4).
+perturbations:
+  seed: 20261031
+  kinds: []
+
+perf:
+  concurrency: [1, 2, 4, 8, 16, 32, 64]
+  step_seconds: 20
+  p99_limit_ms: 100
+  max_error_rate: 0.001
+  throughput_groups: [keyword/keyword, semantic/semantic, hybrid/hybrid]
+  warmup_concurrency: 4
+  # 20: a search results page (headline). 100: deep retrieval (reranking, RAG).
+  page_sizes: [20, 100]

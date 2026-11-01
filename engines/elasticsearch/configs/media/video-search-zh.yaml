@@ -1,0 +1,31 @@
+# Elasticsearch on media/video-search-zh.
+#
+# default: Elasticsearch as shipped. adapter.py generates only what the
+#   scenario schema requires (mapping, field boosts
+#   from the scenario's priority order, dense_vector).
+#   Not enabled by default: fuzziness, prefix matching, stemming. Hybrid uses
+#   the rrf retriever (trial license, see README).
+# tuned: changes within the parity rules. Add a `tuned:` block here; it is
+#   deep-merged over `default`. Example: fuzziness on keyword queries:
+#     tuned:
+#       search:
+#         keyword: {query: {multi_match: {fuzziness: AUTO}}}
+#
+# Keys: index (merged into the create-index body), search.<keyword|semantic|hybrid>
+# (merged into search bodies of that base), unsupported, justification.
+# Chinese (spec 2026-10-31 Chinese title search §5): Elasticsearch as shipped plus its
+#   built-in `cjk` analyzer on the title.
+# tuned: written after the sweeps (plan Task 11).
+default:
+  index:
+    analyzer: cjk
+  search: {}
+  unsupported: {}
+  justification:
+    analyzer: >-
+      Default-track language setting (spec 2026-10-31 Chinese title search §5.1, the
+      multilingual spec's rule): the engine's own documented setting for Chinese,
+      nothing installed.
+      `cjk` is Elasticsearch's built-in analyzer for Chinese, Japanese and Korean:
+      overlapping two-character pieces, width folding, lower-casing. Elasticsearch ships no
+      Chinese word analyzer (smartcn, icu and IK are plugins, tried on the tuned track).
