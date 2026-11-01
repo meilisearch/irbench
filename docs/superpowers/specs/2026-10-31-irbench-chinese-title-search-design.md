@@ -1,7 +1,7 @@
 # IRBench — Chinese title search (C-MTEB EcomRetrieval and VideoRetrieval)
 
 Date: 2026-10-31
-Status: Draft, awaiting approval
+Status: Draft, awaiting approval (licence and plugin rule decided 2026-11-01)
 Parent specs: `2026-10-09-irbench-design.md`, `2026-10-31-irbench-amazon-esci-multilingual-design.md` (builds on its scenario language, per-language engine settings, plugin images and pinned embedding model)
 
 ## 1. Goal
@@ -30,7 +30,7 @@ Both scenarios run keyword, semantic and hybrid only (§4). They are the first s
 
 ### Anti-goals
 
-- A scenario an engine wins only because another is set up badly. Every engine gets its documented Chinese setting on the default track, and its vendor's Chinese plugin on the tuned track (§5). A reader who runs Elasticsearch in Chinese should not be able to say "nobody runs Chinese without smartcn or IK" about the tuned results.
+- A scenario an engine wins only because another is set up badly. Every engine gets its documented Chinese setting on the default track, and the official or very popular Chinese plugins for it on the tuned track (§5). A reader who runs Elasticsearch in Chinese should not be able to say "nobody runs Chinese without smartcn or IK" about the tuned results.
 - Publishing a ranking the data cannot support. With one judgment per query, many differences between engines are within noise. The report marks them as ties (§6) and the scenario pages say how large a difference has to be before it means anything.
 
 ## 2. Decisions
@@ -45,7 +45,7 @@ Both scenarios run keyword, semantic and hybrid only (§4). They are the first s
 | Embedding model | `multilingual-e5-small`, pinned on both scenarios (§5.3) | my call |
 | Headline metric | MRR@10, with success@1, recall@10, recall@100 and nDCG@10 next to it, each with its 95% interval (§6) | my call |
 | Default track | Each engine's built-in Chinese setting, nothing installed (§5.1) | my call (the rule set by the multilingual spec) |
-| Tuned track | Official vendor plugins allowed: Elasticsearch `analysis-smartcn` and `analysis-icu`, Postgres PGroonga. IK and zhparser: see §12 | my call, one question open |
+| Tuned track | Official or very popular plugins allowed (§5.2): Elasticsearch `analysis-smartcn`, `analysis-icu` and IK; Postgres PGroonga and zhparser | user (the rule); my call (which plugins meet it) |
 | Licence | No licence. Runs stay internal until the Multi-CPR authors give terms (§7) | user |
 
 ## 3. Data
@@ -165,14 +165,22 @@ The rule is the multilingual spec's (§6.1 there): each engine gets the scenario
 
 The builder confirms each setting's name and behaviour on the pinned version (for ParadeDB, the tokenizer names changed between pg_search releases; for Qdrant, that `multilingual` is accepted as a BM25 inference option and segments Chinese, not just Japanese). If a setting does not exist as described, the engine runs without it and its README says why.
 
-### 5.2 Tuned track: official plugins allowed
+### 5.2 Tuned track: official or very popular plugins allowed
 
-The tuned track is found as for the other scenarios: a sweep of documented search settings, scored on nDCG@10 for each base (parity doc), plus the official Chinese plugins below. A plugin is tried, not imposed: it is kept only if it wins, and its best score is reported either way (multilingual spec §6.2).
+The tuned track is found as for the other scenarios: a sweep of documented search settings, scored on nDCG@10 for each base (parity doc), plus the Chinese plugins below. A plugin is tried, not imposed: it is kept only if it wins, and its best score is reported either way (multilingual spec §6.2).
+
+**Which plugins (user, 2026-11-01): official or very popular.** A plugin qualifies if it is published by the engine's vendor, or if it is a very popular community plugin for that language on that engine. "Very popular" means all of:
+- it is the plugin that guides and the engine's own community most commonly point to for that language on that engine (the justification cites the evidence: adoption figures, managed services that ship it, vendor docs that mention it);
+- it has an open-source licence;
+- its maintainer publishes a release or tag that builds against the pinned engine version;
+- it is installed unmodified, pinned by URL and sha256 (a release file) or by commit (a source build), in the engine's zh image.
+
+Not allowed: forks, plugins written or patched for the benchmark, and custom dictionaries. Every plugin uses the dictionary it ships with.
 
 | Engine | Sweep adds |
 |---|---|
-| Elasticsearch | `analysis-smartcn` (Elastic's Chinese word segmenter) and `analysis-icu` (`icu_tokenizer`, dictionary-based word breaking for Chinese), both official Elastic plugins version-locked to 9.5.5, installed in one image `compose.zh.yaml` built like the kuromoji image. Variants: `standard`, `cjk`, `smartcn`, `icu_tokenizer`. `standard` is in the list on purpose: on the ecom toy runs of §6.2, one token per character beat two-character pieces by 0.105 MRR@10, so the default track's `cjk` is not assumed to be better. IK: §12. |
-| Postgres | PGroonga, using the image the multilingual plan builds (default `TokenBigram`, which splits Han text into bigrams; the sweep also tries `TokenNgram`). If that plan found no official PGroonga + pgvector image, Postgres's tuned track keeps `simple` and the page says why. zhparser: §12. |
+| Elasticsearch | Official: `analysis-smartcn` (Elastic's Chinese word segmenter) and `analysis-icu` (`icu_tokenizer`, dictionary-based word breaking for Chinese), version-locked to 9.5.5. Very popular: IK (`infinilabs/analysis-ik`, Apache-2.0, about 17.5k GitHub stars), from its maintainer's 9.5.5 release zip pinned by URL and sha256. All three in one image, `compose.zh.yaml`, built like the kuromoji image. Variants: `standard`, `cjk`, `smartcn`, `icu_tokenizer`, `ik_smart`, `ik_max_word`. `standard` is in the list on purpose: on the ecom toy runs of §6.2, one token per character beat two-character pieces by 0.105 MRR@10, so the default track's `cjk` is not assumed to be better. |
+| Postgres | Official package: PGroonga, as in the multilingual plan (default `TokenBigram`, which splits Han text into bigrams; the sweep also tries `TokenNgram`). Very popular: zhparser (`amutu/zhparser`, PostgreSQL-style licence, on the SCWS segmenter), the usual Chinese parser for Postgres text search. It has no PGDG package, so the zh image builds SCWS and zhparser from pinned upstream commits, unmodified, with their shipped dictionary, and the text search configuration maps nouns, verbs, adjectives and the other content token types to `simple`, as zhparser's README shows. Variants: `simple` (default), PGroonga `TokenBigram`, PGroonga `TokenNgram`, zhparser. One image `compose.zh.yaml` holds both extensions, built on the PGroonga image if the multilingual plan produced one, otherwise on the current pgvector image with zhparser only. If zhparser does not build against PG17 from an upstream commit, it is left out and the README says so. |
 | ParadeDB | its other built-in tokenizers, `chinese_lindera` and `chinese_compatible` (one character per token) |
 | Meilisearch, Typesense, Qdrant | no plugin exists; usual sweep of search settings (Meilisearch matching strategy, Typesense `drop_tokens_threshold`, Qdrant BM25 `k`/`b`, and so on) |
 
@@ -270,7 +278,8 @@ Most of what these scenarios need comes from the multilingual plan (`docs/superp
 - Report: headline metric in the matrix and tie test; the second metrics table; judged@10 hidden for single-judgment scenarios.
 - `irbench publish` refuses non-publishable scenarios.
 - Loader `irbench.datasets.cmteb` and two `dataset.yaml` files. The train files are plain TSV; the parquet files are read with pyarrow. No new dependency.
-- The Elasticsearch `compose.zh.yaml` and its Dockerfile (smartcn and icu).
+- The Elasticsearch `compose.zh.yaml` and its Dockerfile (smartcn, icu, IK); the Postgres `compose.zh.yaml` and its Dockerfile (PGroonga if available, zhparser). Both pin every download by URL and sha256 or commit; the `image-pin` lint rule covers the Dockerfiles as in the multilingual plan.
+- `docs/methodology/parity.mdx`: the tuned-track plugin rule of §5.2 (official or very popular, with its four conditions), worded as a general rule.
 
 ## 9. Testing
 
@@ -281,7 +290,7 @@ Most of what these scenarios need comes from the multilingual plan (`docs/superp
 - **Report:** a scenario with `headline_metric: mrr@10` marks the best and ties on MRR@10; existing scenarios render unchanged; judged@10 hidden when every query has one judgment.
 - **Publish:** a run of a non-publishable scenario is refused.
 - **Adapters:** for each of the 6, the rendered index body or request for `zh` contains the setting of §5.1.
-- **Docker tests** (marked `docker`), one per engine: index `护肚子肚围婴儿冬季纯棉加厚绒肚兜宝宝保暖新生儿裹腹护肚脐神器` and check that the query `宝宝护肚` finds it with the default-track setting (Postgres excepted, where the test asserts it does not, documenting §5.1). Elasticsearch's zh image: `_analyze` with `smartcn` and `icu_tokenizer` returns more than one token for `纯山楂酱`.
+- **Docker tests** (marked `docker`), one per engine: index `护肚子肚围婴儿冬季纯棉加厚绒肚兜宝宝保暖新生儿裹腹护肚脐神器` and check that the query `宝宝护肚` finds it with the default-track setting (Postgres excepted, where the test asserts it does not, documenting §5.1). Elasticsearch's zh image: `_analyze` with `smartcn`, `icu_tokenizer`, `ik_smart` and `ik_max_word` each returns more than one token for `纯山楂酱`. Postgres's zh image: `to_tsvector` with the zhparser configuration returns more than one lexeme for `纯山楂酱`, and the `宝宝护肚` query finds the title above.
 
 ## 10. Runs
 
@@ -306,18 +315,18 @@ Risks:
 - The full Multi-CPR corpus (1M titles per set) for a large-catalogue variant.
 - Pooling both scenarios' queries for a single "Chinese" significance test, for twice the queries.
 
-## 12. Open questions for the user
+## 12. Questions answered by the user
 
-Answered: the licence (§7, keep internal).
-
-1. **Community plugins on the tuned track.** The multilingual spec allows only official plugins. For Chinese, the plugins most deployments actually use are community ones: IK for Elasticsearch (INFINI Labs, Apache-2.0, a build for 9.5.5 exists) and zhparser for Postgres (no PGDG package; it needs a source build of SCWS and zhparser). Recommended: allow IK as a named exception, since without it the tuned Elasticsearch result invites the "nobody runs Chinese without IK" objection; keep zhparser out, since it can only be built by hand, which the multilingual spec rules out.
-   If IK is allowed: the zh image installs it from the maintainer's 9.5.5 release zip, pinned by URL and sha256 in the Dockerfile; the sweep adds `ik_smart` and `ik_max_word` (same significance rule); the parity doc and the `justification.compose` entry name IK as the one community plugin allowed and why; the docker test checks `_analyze` with `ik_smart` splits `纯山楂酱`. If not, the image holds smartcn and icu only and the Elasticsearch README says IK was not tried.
+- Licence: keep internal until the Multi-CPR authors give terms (§7).
+- Tuned-track plugins: official or very popular (§5.2). Applying the rule, IK and zhparser qualify (my reading; zhparser needs a source build from pinned upstream commits, which the rule's fourth condition allows).
+- Not changed by this spec: the Japanese and Spanish tuned tracks were specified under "official only". Whether a very popular Japanese plugin should now be tried there (for example Sudachi for Elasticsearch) is for that spec and its plan.
 
 Calls made in this spec, to check while reading:
 - 4,000 queries per scenario, 1,000 dev and 3,000 train (§3.3);
 - duplicate titles merged (§3.3);
 - no perturbations: no `typo`, and no `prefix` so headlines are over original queries (§4);
 - ParadeDB's `jieba` as its default-track tokenizer (§5.1);
+- the four conditions that define "very popular", and IK and zhparser meeting them (§5.2);
 - the sweep's significance rule: each variant against the default, Holm-corrected, index-time settings chosen on keyword (§5.2);
 - multilingual-e5-small over bge-small-zh (§5.3);
 - MRR@10 as the headline, sweeps still on nDCG@10 (§6.3).
