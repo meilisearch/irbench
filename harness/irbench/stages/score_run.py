@@ -1,9 +1,10 @@
 from typing import Any
 
 from irbench.io import read_json, read_jsonl, read_run, write_json
+from irbench.models import REFERENCE_PERTURBATIONS
 from irbench.perf_files import read_perf_reports
 from irbench.score.checks import CheckSummary, TaskCheck, summarize_checks
-from irbench.score.relevance import per_task_ndcg, score_relevance
+from irbench.score.relevance import paired_deltas, per_task_ndcg, score_relevance
 from irbench.stages.context import RunContext
 from irbench.stages.perf import summarize_perf
 
@@ -22,6 +23,11 @@ def score_stage(ctx: RunContext) -> dict[str, Any]:
         if task.task_id in na:
             not_applicable.setdefault(f"{task.mode}:{task.base}", na[task.task_id])
 
+    # Reference kinds feed the paired differences but stay out of per_task: that map feeds the
+    # run-vs-run significance test, which must cover the tasks the headline covers.
+    all_ndcg = per_task_ndcg(supported, ctx.qrels, run)
+    reference = {t.task_id for t in supported if t.perturbation in REFERENCE_PERTURBATIONS}
+
     checks = [TaskCheck.model_validate(r) for r in read_jsonl(run_dir / "checks.jsonl")]
     summaries = summarize_checks(checks)
     report = {
@@ -34,7 +40,8 @@ def score_stage(ctx: RunContext) -> dict[str, Any]:
             g.model_dump(exclude_none=True) for g in score_relevance(supported, ctx.qrels, run)
         ],
         # Per-task nDCG@10 lets the report test whether two runs really differ (paired test).
-        "per_task": {"ndcg@10": per_task_ndcg(supported, ctx.qrels, run)},
+        "per_task": {"ndcg@10": {t: v for t, v in all_ndcg.items() if t not in reference}},
+        "paired": [d.model_dump(exclude_none=True) for d in paired_deltas(supported, all_ndcg)],
         "checks": [s.model_dump() for s in summaries],
         "constraint_violations": _constraint_violations(summaries),
         "not_applicable": not_applicable,

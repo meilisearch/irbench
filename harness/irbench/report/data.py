@@ -16,6 +16,7 @@ MODES: tuple[str, ...] = get_args(Mode)
 PERTURBATIONS = ("original", "typo", "prefix", "synonym")
 REQUIRED_KEYS = ("run_id", "scenario", "engine", "model", "track", "hardware", "status")
 REQUIRED_RELEVANCE_KEYS = ("mode", "base", "perturbation", "n", "metrics")
+REQUIRED_PAIRED_KEYS = ("mode", "base", "perturbation", "n", "delta", "ci95")
 # run_id and hardware.id become path components (runs/{run_id}.html, the scenario slug);
 # this also excludes "." and "..".
 SAFE_PATH_COMPONENT = re.compile(r"^[A-Za-z0-9._-]+$")
@@ -103,21 +104,43 @@ class RunResult:
         suffix = f":{mode}:{base}"
         return {t: v for t, v in self.scores["per_task"]["ndcg@10"].items() if t.endswith(suffix)}
 
-    def group_ndcg(self, group: str, query_group: str) -> float | None:
+    def group_ndcg(self, group: str, query_group: str, perturbation: str = "all") -> float | None:
+        row = self._group_row(query_group, perturbation, group)
+        return row["metrics"]["ndcg@10"] if row else None
+
+    def group_n(self, query_group: str, perturbation: str = "all") -> int | None:
+        row = self._group_row(query_group, perturbation)
+        return row["n"] if row else None
+
+    def _group_row(
+        self, query_group: str, perturbation: str, group: str | None = None
+    ) -> dict[str, Any] | None:
+        """The row of one query group and perturbation; `group` is a mode/base, any when None."""
+        if self.scores is None:
+            return None
+        mode, _, base = group.partition("/") if group is not None else (None, "", None)
+        for g in self.scores["relevance"]:
+            if g.get("group") != query_group or g["perturbation"] != perturbation:
+                continue
+            if group is None or (g["mode"], g["base"]) == (mode, base):
+                return g
+        return None
+
+    def paired(
+        self, group: str, perturbation: str, query_group: str | None
+    ) -> dict[str, Any] | None:
+        """Variant-minus-original nDCG@10 of a mode/base group; None for bundles without it."""
         if self.scores is None:
             return None
         mode, _, base = group.partition("/")
-        for g in self.scores["relevance"]:
-            if (g["mode"], g["base"], g.get("group")) == (mode, base, query_group):
-                return g["metrics"]["ndcg@10"]
-        return None
-
-    def group_n(self, query_group: str) -> int | None:
-        if self.scores is None:
-            return None
-        for g in self.scores["relevance"]:
-            if g.get("group") == query_group:
-                return g["n"]
+        for row in self.scores.get("paired", []):
+            if (row["mode"], row["base"], row["perturbation"], row.get("group")) == (
+                mode,
+                base,
+                perturbation,
+                query_group,
+            ):
+                return row
         return None
 
     @property
@@ -315,6 +338,30 @@ def _validate_number(p: str, key: str, value: Any) -> None:
         raise ValueError(f"{p}: {key} must be a number")
 
 
+def _validate_paired(p: str, paired: Any) -> None:
+    if not isinstance(paired, list):
+        raise ValueError(f"{p} paired must be a list")
+    for row in paired:
+        if not isinstance(row, dict):
+            raise ValueError(f"{p}: paired item must be a dict")
+        missing = [k for k in REQUIRED_PAIRED_KEYS if k not in row]
+        if missing:
+            raise ValueError(f"{p}: paired item lacks {', '.join(missing)}")
+        if row["mode"] not in MODES or row["base"] not in BASE_MODES:
+            raise ValueError(
+                f"{p}: paired item has unknown mode/base {row['mode']!r}/{row['base']!r}"
+            )
+        if "group" in row and not isinstance(row["group"], str):
+            raise ValueError(f"{p}: paired item group must be a string")
+        _validate_number(p, "paired.n", row["n"])
+        _validate_number(p, "paired.delta", row["delta"])
+        ci = row["ci95"]
+        if not isinstance(ci, list) or len(ci) != 2:
+            raise ValueError(f"{p}: paired.ci95 must be a pair of numbers")
+        for bound in ci:
+            _validate_number(p, "paired.ci95", bound)
+
+
 def _validate_files(d: Path, files: dict[str, Any]) -> None:
     """Validate structure of loaded JSON files; raise ValueError if malformed."""
     if files["scores"] is not None:
@@ -340,6 +387,8 @@ def _validate_files(d: Path, files: dict[str, Any]) -> None:
             raise ValueError(f"{p} constraint_violations must be a dict")
         for key in scores["constraint_violations"]:
             _validate_group_key(p, "constraint_violations", key)
+        if "paired" in scores:
+            _validate_paired(p, scores["paired"])
         if "per_task" in scores:
             per_task = scores["per_task"]
             if not isinstance(per_task, dict) or not isinstance(per_task.get("ndcg@10"), dict):

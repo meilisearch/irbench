@@ -320,3 +320,100 @@ def test_label_names_the_track_when_an_engine_has_two(tmp_path):
     write_bundle(tmp_path, "qdrant")
     labels = sorted(r.label for r in load_results(tmp_path)[0][0].runs)
     assert labels == ["qdrant", "qdrant (tuned)"]
+
+
+def _scores_with_group_rows(tmp_path):
+    rows = relevance({"keyword/keyword": 0.5})
+    base = {"mode": "keyword", "base": "keyword", "group": "misspelled"}
+    metric = lambda v: {"ndcg@10": v, "recall@10": 0, "recall@100": 0, "mrr@10": 0}  # noqa: E731
+    group_rows = [
+        {**base, "perturbation": "typo", "n": 7, "metrics": metric(0.11)},
+        {**base, "perturbation": "all", "n": 20, "metrics": metric(0.22)},
+        {**base, "perturbation": "corrected", "n": 5, "metrics": metric(0.33)},
+    ]
+    bundle = write_bundle(tmp_path, "meilisearch", groups={"keyword/keyword": 0.5})
+    _edit_json(bundle / "scores.json", lambda d: {**d, "relevance": rows + group_rows})
+    return load_results(tmp_path)[0][0].runs[0]
+
+
+def test_group_ndcg_reads_all_row(tmp_path):
+    run = _scores_with_group_rows(tmp_path)
+    assert run.group_ndcg("keyword/keyword", "misspelled") == 0.22
+    assert run.group_n("misspelled") == 20
+    assert run.group_ndcg("keyword/keyword", "misspelled", "typo") == 0.11
+    assert run.group_ndcg("keyword/keyword", "misspelled", "corrected") == 0.33
+    assert run.group_n("misspelled", "typo") == 7
+    assert run.group_n("misspelled", "original") is None
+    assert run.group_ndcg("keyword/keyword", "misspelled", "original") is None
+
+
+def _paired_run(tmp_path, paired):
+    bundle = write_bundle(tmp_path, "meilisearch", groups={"keyword/keyword": 0.5})
+    _edit_json(bundle / "scores.json", lambda d: {**d, "paired": paired})
+    return load_results(tmp_path)
+
+
+def test_paired_rows_are_looked_up_by_group_perturbation_and_query_group(tmp_path):
+    def row(p, g, delta):
+        r = {"mode": "keyword", "base": "keyword", "perturbation": p, "n": 4, "delta": delta}
+        return {**r, "ci95": [delta - 0.1, delta + 0.1], **({"group": g} if g else {})}
+
+    scenarios, unreadable = _paired_run(
+        tmp_path, [row("corrected", None, 0.1), row("corrected", "misspelled", 0.4)]
+    )
+    assert unreadable == []
+    run = scenarios[0].runs[0]
+    assert run.paired("keyword/keyword", "corrected", None)["delta"] == 0.1
+    assert run.paired("keyword/keyword", "corrected", "misspelled")["delta"] == 0.4
+    assert run.paired("keyword/keyword", "typo", None) is None
+    assert run.paired("keyword/keyword", "corrected", "clean") is None
+
+
+def test_bundle_without_paired_is_valid(tmp_path):
+    write_bundle(tmp_path, "meilisearch", groups={"keyword/keyword": 0.5})
+    scenarios, unreadable = load_results(tmp_path)
+    assert unreadable == []
+    assert scenarios[0].runs[0].paired("keyword/keyword", "typo", None) is None
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "nope",
+        ["nope"],
+        [{"mode": "keyword", "base": "keyword", "perturbation": "typo"}],
+        [
+            {
+                "mode": "nope",
+                "base": "keyword",
+                "perturbation": "typo",
+                "n": 1,
+                "delta": 0,
+                "ci95": [0, 0],
+            }
+        ],
+        [
+            {
+                "mode": "keyword",
+                "base": "keyword",
+                "perturbation": "typo",
+                "n": 1,
+                "delta": 0,
+                "ci95": [0],
+            }
+        ],
+        [
+            {
+                "mode": "keyword",
+                "base": "keyword",
+                "perturbation": "typo",
+                "n": 1,
+                "delta": "x",
+                "ci95": [0, 0],
+            }
+        ],
+    ],
+)
+def test_malformed_paired_is_unreadable(tmp_path, bad):
+    _, unreadable = _paired_run(tmp_path, bad)
+    assert unreadable and "paired" in str(unreadable[0])
