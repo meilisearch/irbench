@@ -754,6 +754,75 @@ def test_comparison_settings_dash_when_none_set(tmp_path):
     assert row["default_setting"] == "—" and row["tuned_setting"] == "—"
 
 
+def test_comparison_names_pgroonga_and_the_compose_file(tmp_path):
+    from irbench.report.render import track_comparison_view
+
+    results, out = site(tmp_path)
+    ja = "ecommerce/amazon-search-ja"
+    write_bundle(
+        results,
+        "postgres",
+        scenario=ja,
+        effective={"index": {"text_search_config": "simple"}, "search": {}},
+    )
+    write_bundle(
+        results,
+        "postgres",
+        scenario=ja,
+        track="tuned",
+        effective={
+            "index": {"text_search": "pgroonga", "text_search_config": "simple"},
+            "search": {},
+            "compose": "compose.pgroonga.yaml",
+        },
+    )
+    scenarios, _ = load_results(results)
+    (row,) = track_comparison_view(scenarios[0], REPO_ROOT)
+    assert row["default_setting"] == '"simple"' and row["default_compose"] is None
+    assert '"index.text_search":"pgroonga"' in row["tuned_setting"]
+    assert row["tuned_compose"] == "compose.pgroonga.yaml"
+    build_site(results, out, root=REPO_ROOT)
+    page = read(out, "ecommerce__amazon-search-ja__aws-c7i-4xlarge.html")
+    section = page.split("Built-in settings vs tuned")[1].split("</section>")[0]
+    assert "pgroonga" in section and "<code>compose.pgroonga.yaml</code>" in section
+
+
+def test_comparison_shows_the_change(tmp_path):
+    from irbench.report.render import track_comparison_view
+
+    results, out = site(tmp_path)
+    write_bundle(results, "elasticsearch", groups={"keyword/keyword": 0.70})
+    write_bundle(
+        results,
+        "elasticsearch",
+        track="tuned",
+        groups={"keyword/keyword": 0.60, "semantic/semantic": 0.5},
+    )
+    scenarios, _ = load_results(results)
+    (row,) = track_comparison_view(scenarios[0], REPO_ROOT)
+    assert row["keyword_change"] == pytest.approx(-0.1)
+    assert row["semantic_change"] is None and row["hybrid_change"] is None
+    build_site(results, out)
+    section = read(out, PAGE).split("Built-in settings vs tuned")[1].split("</section>")[0]
+    assert section.count("<th>change</th>") == 3
+    body = section.split("<tbody>")[1]
+    assert '<td class="num">−0.100</td>' in body
+    # semantic default and change; hybrid default, tuned and change
+    assert body.count('<td class="num">—</td>') == 5
+
+
+def test_scenario_header_states_a_non_english_language(tmp_path):
+    results, out = site(tmp_path)
+    write_bundle(results, "elasticsearch", scenario="ecommerce/amazon-search-es", language="es")
+    write_bundle(results, "qdrant", language="en")
+    build_site(results, out)
+    es = read(out, "ecommerce__amazon-search-es__aws-c7i-4xlarge.html")
+    meta = es.split('<p class="meta">')[1].split("</p>")[0]
+    assert "language <code>es</code>" in meta
+    en = read(out, PAGE).split('<p class="meta">')[1].split("</p>")[0]
+    assert "language" not in en
+
+
 def test_comparison_view_empty_without_both_tracks(tmp_path):
     from irbench.report.render import track_comparison_view
 

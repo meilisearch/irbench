@@ -525,10 +525,15 @@ def perturbation_phrase(kinds: list[str]) -> str:
     return f"{', '.join(phrases[:-1])} or {phrases[-1]}"
 
 
+def _effective(run: RunResult) -> dict[str, Any]:
+    """The track config the run used, with its justifications (empty for older bundles)."""
+    return (run.manifest.get("config") or {}).get("effective") or {}
+
+
 def _language_setting(run: RunResult, keys: tuple[str, ...]) -> str:
     """The values of the engine's language keys that the run's effective config sets, as
     compact JSON; a dash when it sets none."""
-    eff = (run.manifest.get("config") or {}).get("effective") or {}
+    eff = _effective(run)
     found: dict[str, Any] = {}
     for key in keys:
         node: Any = eff
@@ -544,7 +549,8 @@ def _language_setting(run: RunResult, keys: tuple[str, ...]) -> str:
 
 def track_comparison_view(s: ScenarioResults, root: Path | None = None) -> list[dict[str, Any]]:
     """One row per engine and model that has both a default and a tuned run: nDCG@10 per base
-    and the language setting each track sets. Empty when no engine has both."""
+    with the change (tuned − default), and the language setting and compose file each track
+    sets. Empty when no engine has both."""
     root = root or REPO_ROOT
     by_key: dict[tuple[str, str], dict[str, RunResult]] = defaultdict(dict)
     for r in s.runs:
@@ -555,16 +561,18 @@ def track_comparison_view(s: ScenarioResults, root: Path | None = None) -> list[
         if default is None or tuned is None:
             continue
         try:
-            keys = load_adapter_class(root, engine).language_keys
+            keys = load_adapter_class(root, engine).report_keys()
         except (OSError, ImportError, TypeError, ValueError, SyntaxError):
             keys = ()  # an engine this checkout has no adapter for: no setting to show
         row: dict[str, Any] = {"engine": engine, "model": model}
         for group in BASE_GROUPS:
             base = group.partition("/")[0]
-            row[f"{base}_default"] = default.ndcg(group)
-            row[f"{base}_tuned"] = tuned.ndcg(group)
-        row["default_setting"] = _language_setting(default, keys)
-        row["tuned_setting"] = _language_setting(tuned, keys)
+            before, after = default.ndcg(group), tuned.ndcg(group)
+            row[f"{base}_default"], row[f"{base}_tuned"] = before, after
+            row[f"{base}_change"] = None if before is None or after is None else after - before
+        for track, run in (("default", default), ("tuned", tuned)):
+            row[f"{track}_setting"] = _language_setting(run, keys)
+            row[f"{track}_compose"] = _effective(run).get("compose")
         rows.append(row)
     return rows
 

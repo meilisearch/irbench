@@ -154,6 +154,11 @@ class ScenarioResults:
         return sorted({r.model for r in self.runs})
 
     @property
+    def language(self) -> str | None:
+        """The scenario's language as its run manifests record it (None in older bundles)."""
+        return next((r.manifest["language"] for r in self.runs if r.manifest.get("language")), None)
+
+    @property
     def groups(self) -> list[str]:
         return sorted({g for r in self.runs for g in r.groups}, key=group_key)
 

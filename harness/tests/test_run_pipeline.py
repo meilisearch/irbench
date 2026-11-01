@@ -49,6 +49,7 @@ def test_pipeline_end_to_end_with_fake_engine(tmp_path, wands_raw):
     assert len(manifest["config"]["hash"]) == 64 and manifest["config"]["diff_vs_default"] == {}
     assert manifest["dataset"]["version"] == "fixture" and manifest["seed"] == 20261009
     assert manifest["hardware"]["id"] == "local"
+    assert manifest["language"] == "en"  # the report labels non-English scenario pages
 
     run_dir = RunContext(root, FAKE_SPEC).run_dir
     assert read_json(run_dir / "manifest.json")["status"] == "succeeded"
@@ -174,6 +175,35 @@ def test_cli_run_rejects_unknown_stage(tmp_path, wands_raw):
     result = CliRunner().invoke(app, args)
     assert result.exit_code == 1
     assert "bogus" in result.output
+
+
+def test_cli_run_reports_an_unknown_scenario_without_a_traceback(tmp_path, wands_raw):
+    args = ["run", "--scenario", "ecommerce/no-such", "--engine", "fake", "--model", "fake"]
+    args += ["--root", str(fake_root(tmp_path, wands_raw))]
+    result = CliRunner().invoke(app, args)
+    assert result.exit_code == 1
+    assert "no-such" in result.output and "Traceback" not in result.output
+    assert not isinstance(result.exception, FileNotFoundError)
+
+
+def test_cli_run_reports_a_missing_engine_config(tmp_path, wands_raw):
+    root = fake_root(tmp_path, wands_raw)
+    (root / "engines/fake/configs/ecommerce/product-search.yaml").unlink()
+    args = ["run", "--scenario", SCENARIO, "--engine", "fake", "--model", "fake"]
+    args += ["--root", str(root)]
+    result = CliRunner().invoke(app, args)
+    assert result.exit_code == 1
+    assert "has no config for" in result.output
+    assert not isinstance(result.exception, FileNotFoundError)
+
+
+def test_cli_embed_reports_an_unknown_scenario(tmp_path, wands_raw):
+    args = ["embed", "--scenario", "ecommerce/no-such", "--model", "fake"]
+    args += ["--root", str(fake_root(tmp_path, wands_raw))]
+    result = CliRunner().invoke(app, args)
+    assert result.exit_code == 1
+    assert "no-such" in result.output
+    assert not isinstance(result.exception, FileNotFoundError)
 
 
 ENGINE_STAGES = ["up", "index", "render", "relevance", "score", "down"]

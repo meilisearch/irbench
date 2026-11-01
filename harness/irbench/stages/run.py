@@ -57,7 +57,8 @@ def run_pipeline(
     if unknown:
         raise ValueError(f"unknown stage(s) {unknown}; known: {', '.join(STAGES)}")
     ordered = [s for s in STAGES if s in stages]
-    check_model(load_scenario(root, spec.scenario), spec.model)
+    scenario = load_scenario(root, spec.scenario)
+    check_model(scenario, spec.model)
 
     ctx = RunContext(root, spec, client_factory or default_client)
     profile = load_hardware(root, spec.hardware)
@@ -77,6 +78,7 @@ def run_pipeline(
         model=spec.model,
         track=spec.track,
         hardware=profile.model_dump(),
+        language=scenario.language,  # the report labels non-English scenario pages
     )
     log: dict[str, Any] = manifest.setdefault("stages", {})
     _invalidate_from(ctx.run_dir, log, ordered[0] if ordered else None)

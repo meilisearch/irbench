@@ -121,6 +121,7 @@ def write_bundle(
     checks=None,
     effective=None,
     engine_image=None,
+    language=None,
 ) -> Path:
     run_id = "__".join([scenario.replace("/", "__"), engine, model, track, hardware])
     d = results / run_id
@@ -150,6 +151,7 @@ def write_bundle(
         },
         "dataset": {"id": "wands", "version": "3b74dcf4"},
         "seed": 20261009,
+        **({"language": language} if language is not None else {}),
     }
     (d / "manifest.json").write_text(json.dumps(manifest))
     if status == "succeeded":
