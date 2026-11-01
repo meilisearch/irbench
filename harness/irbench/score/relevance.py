@@ -11,6 +11,7 @@ from irbench.models import Qrels, QueryTask, RunResults
 METRICS = ["ndcg@10", "recall@10", "recall@100", "mrr@10", "hit_rate@1"]
 REPORTED = {"hit_rate@1": "success@1"}
 JUDGED_DEPTH = 10
+CI_METRICS = ["ndcg@10", "mrr@10", "success@1", "recall@10", "recall@100"]
 Z_95 = 1.959964
 
 
@@ -23,6 +24,9 @@ class GroupScore(BaseModel):
     group: str | None = None
     # 95% confidence interval of the mean nDCG@10 over the group's tasks (normal approximation).
     ndcg_ci95: tuple[float, float] | None = None
+    # The same interval for each metric in CI_METRICS (reported names). ndcg_ci95 stays for
+    # bundles and readers that predate it.
+    ci95: dict[str, tuple[float, float]] | None = None
 
 
 def _ranked_scores(ids: list[str]) -> dict[str, float]:
@@ -61,10 +65,11 @@ def ci95(values: list[float]) -> tuple[float, float]:
 
 def _evaluate(
     task_ids: list[str], qrels: Qrels, run: RunResults
-) -> tuple[dict[str, float], dict[str, float]]:
-    """Group metrics, and nDCG@10 per task (0 for a task with no results)."""
+) -> tuple[dict[str, float], dict[str, dict[str, float]]]:
+    """Group metrics, and every metric per task (reported names; 0 for a task with no
+    results)."""
     run_dict = {t: _ranked_scores(run[t]) for t in task_ids if run.get(t)}
-    per_task = dict.fromkeys(task_ids, 0.0)
+    per_task = {REPORTED.get(m, m): dict.fromkeys(task_ids, 0.0) for m in METRICS}
     if not run_dict:
         metrics = {REPORTED.get(m, m): 0.0 for m in METRICS}
     else:
@@ -76,15 +81,29 @@ def _evaluate(
             make_comparable=True,
         )
         metrics = {REPORTED.get(m, m): float(values[m]) for m in METRICS}
-        for t, v in ranx_run.scores["ndcg@10"].items():
-            per_task[t] = float(v)
+        for m in METRICS:
+            for t, v in ranx_run.scores[m].items():
+                per_task[REPORTED.get(m, m)][t] = float(v)
     metrics[f"judged@{JUDGED_DEPTH}"] = judged_at_k(task_ids, qrels, run)
     return metrics, per_task
 
 
+def per_task_scores(
+    tasks: list[QueryTask], qrels: Qrels, run: RunResults, metric: str
+) -> dict[str, float]:
+    """`metric` (a reported name) of every task, for paired comparisons between runs."""
+    return _evaluate([t.task_id for t in tasks], qrels, run)[1][metric]
+
+
 def per_task_ndcg(tasks: list[QueryTask], qrels: Qrels, run: RunResults) -> dict[str, float]:
     """nDCG@10 of every task, for paired comparisons between runs of the same scenario."""
-    return _evaluate([t.task_id for t in tasks], qrels, run)[1]
+    return per_task_scores(tasks, qrels, run, "ndcg@10")
+
+
+def single_judgment(qrels: Qrels, task_ids: list[str]) -> bool:
+    """True when every task has exactly one judged document: judged@10 is then at most 0.1
+    and says nothing."""
+    return bool(task_ids) and all(len(qrels.get(t, {})) == 1 for t in task_ids)
 
 
 def score_relevance(tasks: list[QueryTask], qrels: Qrels, run: RunResults) -> list[GroupScore]:
@@ -107,7 +126,8 @@ def score_relevance(tasks: list[QueryTask], qrels: Qrels, run: RunResults) -> li
                 perturbation=p,
                 n=len(ids),
                 metrics=metrics,
-                ndcg_ci95=ci95(list(per_task.values())),
+                ndcg_ci95=ci95(list(per_task["ndcg@10"].values())),
+                ci95={m: ci95(list(per_task[m].values())) for m in CI_METRICS},
             )
         )
     rows += [

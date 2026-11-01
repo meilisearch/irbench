@@ -317,3 +317,25 @@ def test_manifest_records_the_synonyms_reason(tmp_path, wands_raw):
         prepare_client=fixture_client(wands_raw),
     )
     assert manifest["config"]["synonyms"] == "no synonyms.txt"
+
+
+def test_scores_record_the_headline_metric(tmp_path, wands_raw):
+    root = fake_root(tmp_path, wands_raw)
+    set_scenario(root, headline_metric="mrr@10")
+    run_pipeline(
+        root,
+        FAKE_SPEC,
+        list(STAGES),
+        runtime_factory=lambda *a: FakeRuntime(),
+        client_factory=_server(root).client_factory,
+        prepare_client=fixture_client(wands_raw),
+        embedder=FakeEmbedder(),
+        loadgen_runner=fake_loadgen(),
+    )
+    scores = read_json(RunContext(root, FAKE_SPEC).run_dir / "scores.json")
+    assert scores["headline_metric"] == "mrr@10"
+    assert set(scores["per_task"]) == {"ndcg@10", "mrr@10"}
+    assert scores["per_task"]["mrr@10"].keys() == scores["per_task"]["ndcg@10"].keys()
+    assert scores["single_judgment"] is False  # WANDS judges many products per query
+    overall = next(g for g in scores["relevance"] if g["perturbation"] == "all")
+    assert "mrr@10" in overall["ci95"]

@@ -1,7 +1,14 @@
 import pytest
 
 from irbench.models import QueryTask
-from irbench.score.relevance import ci95, judged_at_k, per_task_ndcg, score_relevance
+from irbench.score.relevance import (
+    ci95,
+    judged_at_k,
+    per_task_ndcg,
+    per_task_scores,
+    score_relevance,
+    single_judgment,
+)
 
 
 def _task(
@@ -93,7 +100,7 @@ def test_ungrouped_tasks_produce_exactly_todays_rows():
     rows = score_relevance([_task("t1"), _task("t2")], QRELS, {"t1": ["d1"], "t2": ["d5"]})
     assert all(r.group is None for r in rows)
     dumped = [r.model_dump(exclude_none=True) for r in rows]
-    keys = {"mode", "base", "perturbation", "n", "metrics", "ndcg_ci95"}
+    keys = {"mode", "base", "perturbation", "n", "metrics", "ndcg_ci95", "ci95"}
     assert all(set(d) == keys for d in dumped)
 
 
@@ -130,3 +137,33 @@ def test_per_task_ndcg_matches_the_group_mean():
     assert sum(per_task.values()) / 2 == pytest.approx(overall.metrics["ndcg@10"])
     lo, hi = overall.ndcg_ci95
     assert lo < overall.metrics["ndcg@10"] < hi
+
+
+CI_KEYS = ["ndcg@10", "mrr@10", "success@1", "recall@10", "recall@100"]
+
+
+def test_ci95_for_five_metrics():
+    qrels = {"a": {"d1": 1}, "b": {"d2": 1}, "c": {"d3": 1}}
+    run = {"a": ["d1"], "b": ["x", "x2", "d2"], "c": ["y"]}
+    tasks = [_task(t) for t in qrels]
+    overall = _group(score_relevance(tasks, qrels, run))
+    assert sorted(overall.ci95) == sorted(CI_KEYS)
+    for key in CI_KEYS:
+        lo, hi = overall.ci95[key]
+        assert lo <= overall.metrics[key] <= hi
+    assert overall.ndcg_ci95 == overall.ci95["ndcg@10"]
+
+
+def test_per_task_mrr():
+    qrels = {"a": {"d1": 1}, "b": {"d2": 1}, "c": {"d3": 1}}
+    run = {"a": ["d1"], "b": ["x", "x2", "d2"], "c": ["y"]}
+    tasks = [_task(t) for t in qrels]
+    got = per_task_scores(tasks, qrels, run, "mrr@10")
+    assert got == pytest.approx({"a": 1.0, "b": 1 / 3, "c": 0.0})
+    assert per_task_scores(tasks, qrels, run, "ndcg@10") == per_task_ndcg(tasks, qrels, run)
+
+
+def test_single_judgment_flag():
+    assert single_judgment({"a": {"d1": 1}, "b": {"d2": 1}}, ["a", "b"])
+    assert not single_judgment({"a": {"d1": 1, "d4": 0}, "b": {"d2": 1}}, ["a", "b"])
+    assert not single_judgment({}, [])
