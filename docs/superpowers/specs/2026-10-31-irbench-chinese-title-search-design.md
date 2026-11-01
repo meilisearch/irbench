@@ -1,7 +1,7 @@
 # IRBench — Chinese title search (C-MTEB EcomRetrieval and VideoRetrieval)
 
 Date: 2026-10-31
-Status: Draft, awaiting approval (licence and plugin rule decided 2026-11-01)
+Status: Approved 2026-11-01
 Parent specs: `2026-10-09-irbench-design.md`, `2026-10-31-irbench-amazon-esci-multilingual-design.md` (builds on its scenario language, per-language engine settings, plugin images and pinned embedding model)
 
 ## 1. Goal
