@@ -1,5 +1,7 @@
 """Language settings are config keys: each adapter carries one through its existing channel."""
 
+from dataclasses import replace
+
 import pytest
 
 from adapter_helpers import make_adapter, make_task
@@ -135,3 +137,62 @@ def test_paradedb_tokenizer_rejects_comments_and_statements(expr):
     adapter = make_adapter("postgres-paradedb", {"index": {"tokenizer": expr}})
     with pytest.raises(ValueError, match="tokenizer"):
         adapter.text_index_ddl()
+
+
+def test_pgroonga_render():
+    adapter = make_adapter(
+        "postgres", {"index": {"text_search": "pgroonga"}}, synonyms=[["grey", "gray"]]
+    )
+    setup = adapter.setup_ddl()
+    assert "CREATE EXTENSION IF NOT EXISTS pgroonga" in setup and "vector" in setup
+    assert "TEXT SEARCH" not in setup
+    assert adapter.extra_columns() == []
+    fields = adapter.ctx.scenario.index_fields.searchable
+    ddl = adapter.text_index_ddl()
+    assert ddl == (
+        f"CREATE INDEX {adapter.pgroonga_index} ON {adapter.table} USING pgroonga "
+        f"((ARRAY[{', '.join(fields)}]))"
+    )
+    request = adapter.render(make_task("keyword", text="ズボン"), None, 10)
+    weights = ", ".join(str(len(fields) - i) for i in range(len(fields)))
+    assert f"ARRAY[{', '.join(fields)}] &@~ pgroonga_condition($1::text, " in request.sql
+    assert f"weights => ARRAY[{weights}]" in request.sql
+    assert f"index_name => '{adapter.pgroonga_index}'" in request.sql
+    assert "pgroonga_score(tableoid, ctid)" in request.sql
+    assert "tsv" not in request.sql and "ts_rank" not in request.sql
+    assert request.params[0] == "ズボン"
+
+
+def test_pgroonga_index_name_fits_an_identifier():
+    adapter = make_adapter("postgres", {"index": {"text_search": "pgroonga"}})
+    adapter.ctx = replace(adapter.ctx, index="irbench_" + "x" * 80)
+    assert len(adapter.pgroonga_index) <= 63
+
+
+def test_pgroonga_rejects_options_it_cannot_honour():
+    adapter = make_adapter(
+        "postgres",
+        {"index": {"text_search": "pgroonga"}, "search": {"keyword": {"match": "any"}}},
+    )
+    with pytest.raises(ValueError, match="pgroonga"):
+        adapter.render(make_task("keyword"), None, 10)
+    adapter = make_adapter(
+        "postgres",
+        {"index": {"text_search": "pgroonga"}, "search": {"keyword": {"rank": "ts_rank_cd"}}},
+    )
+    with pytest.raises(ValueError, match="pgroonga"):
+        adapter.render(make_task("keyword"), None, 10)
+
+
+def test_pg_unknown_text_search_is_rejected():
+    adapter = make_adapter("postgres", {"index": {"text_search": "bm25"}})
+    with pytest.raises(ValueError, match="text_search"):
+        adapter.setup_ddl()
+
+
+def test_pg_tsvector_is_the_default_text_search():
+    for track in (None, {"index": {"text_search": "tsvector"}}):
+        adapter = make_adapter("postgres", track)
+        assert "USING gin (tsv)" in adapter.text_index_ddl()
+        assert "pgroonga" not in adapter.setup_ddl()
+        assert "websearch_to_tsquery" in adapter.render(make_task("keyword"), None, 10).sql

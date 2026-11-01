@@ -1,9 +1,15 @@
 import json
 
+import pytest
+
 from adapter_helpers import SCENARIO, make_adapter, make_task
 from conftest import REPO_ROOT
+from irbench.engines.base import engine_base_url, load_adapter_class
 from irbench.engines.config import load_engine_config
 from irbench.models import Filter, Sort
+from irbench.runtime.docker import DockerRuntime, wait_ready
+from irbench.runtime.hardware import load_hardware
+from irbench.stages.context import default_client
 
 V = [0.1, 0.2, 0.3]
 FIELDS = ["name^5", "product_class^4", "category^3", "features^2", "description^1"]
@@ -148,3 +154,30 @@ def test_hybrid_fusion_options():
         (3, "minmax"),
     ]
     assert linear["rank_window_size"] == 100
+
+
+@pytest.mark.docker
+def test_kuromoji_analyzer():
+    """The tuned Japanese image ships analysis-kuromoji (same version as the default image)
+    and `index.analyzer: kuromoji` makes `_analyze` split an unspaced Japanese phrase."""
+    cls = load_adapter_class(REPO_ROOT, "elasticsearch")
+    adapter = make_adapter("elasticsearch", {"index": {"analyzer": "kuromoji"}}, synonyms=[])
+    runtime = DockerRuntime(
+        REPO_ROOT,
+        "elasticsearch",
+        load_hardware(REPO_ROOT, "local"),
+        compose="compose.kuromoji.yaml",
+    )
+    runtime.up()
+    try:
+        client = default_client(engine_base_url(cls, "localhost"))
+        wait_ready(client, cls.health_path, 180)
+        adapter.create_index(client)
+        analyzed = client.post(
+            f"/{adapter.ctx.index}/_analyze", json={"field": "name", "text": "空調服ズボン"}
+        ).json()
+        tokens = [t["token"] for t in analyzed["tokens"]]
+        assert len(tokens) > 1, tokens
+        assert "ズボン" in tokens, tokens
+    finally:
+        runtime.down()

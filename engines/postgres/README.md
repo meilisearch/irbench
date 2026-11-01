@@ -29,10 +29,16 @@ The non-English scenarios (`ecommerce/amazon-search-ja`, `ecommerce/amazon-searc
 
 | Scenario | default track | tuned track |
 |---|---|---|
-| Japanese | `index.text_search_config: simple`. Postgres has no Japanese configuration, so a Japanese phrase with no spaces stays one token | may use PGroonga, if an official image with both PGroonga and pgvector is available (it is selected with `compose:` and justified). If none is, it keeps `simple` and the scenario page says why |
+| Japanese | `index.text_search_config: simple`. Postgres has no Japanese configuration, so a Japanese phrase with no spaces stays one token | may use PGroonga (`index.text_search: pgroonga` with `compose: compose.pgroonga.yaml`, justified). It is kept only if it wins on nDCG@10 |
 | Spanish | `index.text_search_config: spanish`, the built-in configuration | no plugin; usual sweep |
 
 `index.text_search_config` names the built-in configuration that the scenario's configuration is copied from. With no key, it is `english`, as before. The stemmer in the thesaurus dictionary follows it (`spanish_stem` for `spanish`); a configuration with no built-in stemmer, such as `simple`, uses the `simple` dictionary.
+
+### PGroonga (tuned Japanese track)
+
+`docker/Dockerfile.pgroonga` builds on the same `pgvector/pgvector:0.8.7-pg17` image as `compose.yaml` (pgvector is its official `postgresql-17-pgvector` package) and installs `postgresql-17-pgdg-pgroonga=4.0.6-1` from PGroonga's official apt repository (`packages.groonga.org`, the `groonga-apt-source` package for Debian bookworm). `docker/compose.pgroonga.yaml` is `compose.yaml` with `build:` and the local tag `irbench-postgres-pgroonga:0.8.7-pg17`; ports, healthcheck and volumes are the same.
+
+`index.text_search` is `tsvector` (default) or `pgroonga`. With `pgroonga` there is no `tsv` column and no text search configuration; the text index is `USING pgroonga ((ARRAY[<searchable columns>]))`, and the keyword predicate is `ARRAY[<columns>] &@~ pgroonga_condition($1, weights => ARRAY[5,4,3,2,1], index_name => ...)`, scored by `pgroonga_score(tableoid, ctid)`. The weights are the scenario's field boosts. `&@~` is PGroonga's query syntax: every word is required, as with `websearch_to_tsquery`. The default tokenizer (`TokenBigram`) is used. `search.keyword.match: any`, `rank` and `normalization` are tsvector features and are rejected with PGroonga; the synonym thesaurus is not loaded either. PGroonga only scores rows reached through its index, so the planner must use the index; on a 20,000-row probe table it chose a bitmap index scan and the scores were non-zero, whereas a sequential scan scores every row 0.
 
 ## Modes
 
