@@ -11,6 +11,9 @@
   <a class="brand" href="{{ root }}index.html">IRBench</a>
   <nav><a href="{{ root }}configs.html">Engine configurations</a> · <a href="{{ docs_url }}">Methodology</a></nav>
 </header>
+{% if internal_banner %}
+<p class="alert">Internal: not for publication (Kaggle competition data)</p>
+{% endif %}
 <main>
 {% block main %}{% endblock %}
 </main>

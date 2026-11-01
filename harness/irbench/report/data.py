@@ -6,6 +6,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, get_args
 
+from irbench.internal import manifest_is_internal
 from irbench.io import read_json
 from irbench.models import BASE_MODES, Mode
 from irbench.paths import slug
@@ -47,6 +48,10 @@ class RunResult:
         if not self.show_track or self.track == "default":
             return self.engine
         return f"{self.engine} ({self.track})"
+
+    @property
+    def internal(self) -> bool:
+        return manifest_is_internal(self.manifest)
 
     @property
     def groups(self) -> list[str]:
@@ -141,6 +146,10 @@ class ScenarioResults:
     @property
     def slug(self) -> str:
         return f"{slug(self.scenario)}__{self.hardware}"
+
+    @property
+    def internal(self) -> bool:
+        return any(r.internal for r in self.runs)
 
     @property
     def models(self) -> list[str]:

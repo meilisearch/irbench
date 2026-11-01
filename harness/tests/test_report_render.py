@@ -8,6 +8,7 @@ from irbench.cli import app
 from irbench.report.data import load_results
 from irbench.report.render import (
     MARKER,
+    InternalRunsError,
     build_site,
     engine_slots,
     fmt_bytes,
@@ -610,3 +611,57 @@ def test_config_page_lists_settings_and_why(tmp_path):
     assert "postgres:1" in page  # image
     assert 'id="qdrant"' in page and "Every setting at the engine" in page
     assert 'href="configs.html"' in read(out, "index.html")
+
+
+BANNER = "Internal: not for publication (Kaggle competition data)"
+INTERNAL_SCENARIO = "ecommerce/internal-search"
+INTERNAL_PAGE = "ecommerce__internal-search__aws-c7i-4xlarge.html"
+
+
+def internal_site(tmp_path):
+    results, out = site(tmp_path)
+    write_bundle(results, "meilisearch")
+    internal = write_bundle(
+        results, "meilisearch", scenario=INTERNAL_SCENARIO, distribution="internal"
+    )
+    return results, out, internal
+
+
+def test_build_site_refuses_internal_by_default(tmp_path):
+    results, out, internal = internal_site(tmp_path)
+    with pytest.raises(InternalRunsError, match=internal.name) as e:
+        build_site(results, out)
+    assert "--internal" in str(e.value)
+    assert not out.exists()
+
+    out.mkdir()
+    (out / "keep.txt").write_text("x")
+    with pytest.raises(InternalRunsError):
+        build_site(results, out)
+    assert (out / "keep.txt").exists()
+
+
+def test_build_site_internal_banner(tmp_path):
+    results, out, internal = internal_site(tmp_path)
+    build_site(results, out, allow_internal=True)
+    assert BANNER in read(out, "index.html")
+    assert BANNER in read(out, INTERNAL_PAGE)
+    assert BANNER in read(out, f"runs/{internal.name}.html")
+    assert BANNER in read(out, "configs.html")
+    public_run = next(p.name for p in results.iterdir() if p != internal)
+    assert BANNER not in read(out, PAGE)
+    assert BANNER not in read(out, f"runs/{public_run}.html")
+
+
+def test_public_build_unchanged(tmp_path):
+    results, out = site(tmp_path)
+    write_bundle(results, "meilisearch", groups={"keyword/keyword": 0.481})
+    write_bundle(results, "qdrant", groups={"semantic/semantic": 0.55})
+    build_site(results, out)
+    out2 = tmp_path / "site2"
+    build_site(results, out2, allow_internal=True)
+    names = sorted(p.relative_to(out).as_posix() for p in out.rglob("*.html"))
+    assert names
+    for name in names:
+        assert read(out, name) == read(out2, name)
+        assert "Internal:" not in read(out, name)

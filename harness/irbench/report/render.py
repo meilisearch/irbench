@@ -40,6 +40,10 @@ class Cell:
     tied: bool = False  # not significantly different from the best (paired test)
 
 
+class InternalRunsError(ValueError):
+    """Raised when the results include internal-only runs and the caller did not opt in."""
+
+
 @dataclass(frozen=True)
 class SiteResult:
     pages: list[Path]
@@ -612,29 +616,69 @@ def _prepare_out(out: Path) -> None:
     (out / MARKER).write_text("written by `irbench report`; replaced on every build\n")
 
 
-def build_site(results_dir: Path, out: Path, docs_url: str = DEFAULT_DOCS_URL) -> SiteResult:
+def build_site(
+    results_dir: Path,
+    out: Path,
+    docs_url: str = DEFAULT_DOCS_URL,
+    allow_internal: bool = False,
+) -> SiteResult:
     scenarios, unreadable = load_results(results_dir)
+    internal_ids = sorted(r.run_id for s in scenarios for r in s.runs if r.internal)
+    if internal_ids and not allow_internal:
+        raise InternalRunsError(
+            "refusing to build a report that includes internal-only runs: "
+            + ", ".join(internal_ids)
+            + "; pass --internal to build a private report"
+        )
     _prepare_out(out)
     env = _env()
     slots = engine_slots(scenarios)
     pages: list[Path] = []
 
-    def write(rel: str, template: str, **context: Any) -> None:
+    def write(rel: str, template: str, internal_banner: bool = False, **context: Any) -> None:
         path = out / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         html = env.get_template(template).render(
-            docs_url=docs_url, root="../" * rel.count("/"), **context
+            docs_url=docs_url,
+            root="../" * rel.count("/"),
+            internal_banner=internal_banner,
+            **context,
         )
         path.write_text(html, encoding="utf-8")
         pages.append(path)
 
     repo_url = docs_url.removesuffix("/").removesuffix("/docs").removesuffix("/tree/main")
-    write("index.html", "index.html.j2", scenarios=scenarios, unreadable=unreadable)
-    write("configs.html", "configs.html.j2", engines=configs_view(scenarios, repo_url))
+    any_internal = bool(internal_ids)
+    write(
+        "index.html",
+        "index.html.j2",
+        internal_banner=any_internal,
+        scenarios=scenarios,
+        unreadable=unreadable,
+    )
+    write(
+        "configs.html",
+        "configs.html.j2",
+        internal_banner=any_internal,
+        engines=configs_view(scenarios, repo_url),
+    )
     for s in scenarios:
-        write(f"{s.slug}.html", "scenario.html.j2", s=s, view=scenario_view(s, slots))
+        write(
+            f"{s.slug}.html",
+            "scenario.html.j2",
+            internal_banner=s.internal,
+            s=s,
+            view=scenario_view(s, slots),
+        )
         for run in s.runs:
-            write(f"runs/{run.run_id}.html", "run.html.j2", run=run, s=s, view=run_view(run))
+            write(
+                f"runs/{run.run_id}.html",
+                "run.html.j2",
+                internal_banner=run.internal,
+                run=run,
+                s=s,
+                view=run_view(run),
+            )
     style = resources.files("irbench.report").joinpath("static/style.css")
     (out / "style.css").write_text(style.read_text(encoding="utf-8"), encoding="utf-8")
     return SiteResult(pages, unreadable)
