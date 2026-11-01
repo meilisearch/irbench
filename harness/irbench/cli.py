@@ -4,6 +4,7 @@ from pathlib import Path
 import typer
 
 from irbench import __version__
+from irbench.datasets.fetch import ManualFileMissing
 from irbench.embed.publish import DEFAULT_RELEASE, REGISTRY, RELEASE_REPO, pack_vectors
 from irbench.io import read_json, read_jsonl, read_qrels, read_run
 from irbench.lint import lint_repo
@@ -45,7 +46,11 @@ def prepare(
     root: Path = ROOT_OPTION,
 ) -> None:
     """Download the dataset, generate query variants and per-mode tasks."""
-    r = run_prepare(root, scenario)
+    try:
+        r = run_prepare(root, scenario)
+    except ManualFileMissing as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(code=1) from e
     typer.echo(
         f"{scenario}: {r.n_docs} docs, {r.n_queries} queries, {r.n_variants} variants, "
         f"{r.n_tasks} tasks; skipped {len(r.skipped_queries)} queries without relevant judgments"
