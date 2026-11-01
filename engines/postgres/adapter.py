@@ -23,6 +23,8 @@ class Adapter(PostgresAdapter):
     name = "postgres"
     host_port = 15432
     language_keys = ("index.text_search_config",)
+    # A PGroonga track inherits text_search_config from the default block: show both.
+    language_report_keys = ("index.text_search", "index.text_search_config")
     # rank: ts_rank (default) or ts_rank_cd; normalization: the rank functions' integer flags
     # (default 0); match: all (websearch_to_tsquery, every word) or any (its words OR-ed).
     search_keys = PostgresAdapter.search_keys | {"rank", "normalization", "match"}
@@ -78,6 +80,13 @@ class Adapter(PostgresAdapter):
         `kids` and `children` meet on the same lexeme; a plain synonym dictionary does not.
         """
         return "".join(f"{w} : {words[0]}\n" for words in self.thesaurus_groups() for w in words)
+
+    def default_settings(self) -> dict[str, str]:
+        """PGroonga scores only rows its index returns: a sequential scan (the planner's pick on
+        a small table) scores every row 0 and the ranking falls back to `id`. Without
+        sequential scans the planner keeps its index (alone or ANDed with a filter's bitmap)
+        for keyword queries. index.settings.enable_seqscan overrides it."""
+        return {"enable_seqscan": "off"} if self.text_search == "pgroonga" else {}
 
     def setup_ddl(self) -> str:
         if self.text_search == "pgroonga":

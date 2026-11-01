@@ -299,10 +299,9 @@ def test_pgroonga_japanese():
     whose words are spaced or run together, and a field boost orders the hits."""
     cls = load_adapter_class(REPO_ROOT, ENGINE)
     # PGroonga scores only rows reached through its index; on a three-row table the planner
-    # picks a sequential scan, which scores every row 0 (ties then fall back to `id`). Turning
-    # sequential scans off for the session (index.settings) makes the index scan happen.
-    track = {"index": {"text_search": "pgroonga", "settings": {"enable_seqscan": "off"}}}
-    adapter = make_adapter(ENGINE, track, dim=3, synonyms=[])
+    # would pick a sequential scan, which scores every row 0 (ties then fall back to `id`).
+    # The adapter turns sequential scans off under PGroonga, so no index.settings is needed.
+    adapter = make_adapter(ENGINE, {"index": {"text_search": "pgroonga"}}, dim=3, synonyms=[])
     docs = [
         # the description hit has the lower id: a tie on score would return ["1", "2"]
         {"id": "1", "name": "作業服", "description": "涼しい空調服ズボン"},
@@ -328,6 +327,61 @@ def test_pgroonga_japanese():
         hybrid = make_task("hybrid", text="ズボン")
         request = adapter.render(hybrid, vectors[2].tolist(), 10)
         assert set(run_request(client, adapter, hybrid, request, 30).ids) == {"1", "2", "3"}
+    finally:
+        client.close()
+        runtime.down()
+
+
+@pytest.mark.docker
+def test_pgroonga_filtered_and_faceted_keyword_are_scored():
+    """Filtered and faceted keyword queries under PGroonga rank by the field weights, with no
+    index.settings in the config. Control: a plan that bypasses the PGroonga index scores
+    every row 0 and the same filtered query falls back to `id` order."""
+    cls = load_adapter_class(REPO_ROOT, ENGINE)
+    adapter = make_adapter(ENGINE, {"index": {"text_search": "pgroonga"}}, dim=3, synonyms=[])
+    fashion = "ファッション"
+    docs = [
+        # "1" has the word in description (weight 1), "2" and "3" in name (weight 5)
+        {"id": "1", "name": "作業服", "description": "涼しい空調服ズボン", "category": [fashion]},
+        {"id": "2", "name": "空調服 ズボン メンズ", "category": [fashion], "average_rating": 4.6},
+        {"id": "3", "name": "ズボン", "category": ["その他"], "average_rating": 1.0},
+        {"id": "4", "name": "ジャケット", "category": [fashion], "average_rating": 4.8},
+    ]
+    docs[0]["average_rating"] = 4.5
+    vectors = np.eye(4, 3, dtype=np.float32)
+    runtime = DockerRuntime(
+        REPO_ROOT, ENGINE, load_hardware(REPO_ROOT, "local"), compose="compose.pgroonga.yaml"
+    )
+    runtime.up()
+    client = default_client(engine_base_url(cls, "localhost"))
+
+    def ids(task):
+        return run_request(client, adapter, task, adapter.render(task, None, 10), 30).ids
+
+    try:
+        wait_ready(client, cls.health_path, 180)
+        adapter.create_index(client)
+        adapter.load_documents(client, docs, vectors)
+        adapter.wait_until_indexed(client, len(docs), 60)
+        assert client.execute("SHOW enable_seqscan")[0]["enable_seqscan"] == "off"
+        eq = Filter(field="category", op="eq", value=fashion)
+        filtered = make_task("filtered", base="keyword", text="ズボン", filter=eq)
+        assert ids(filtered) == ["2", "1"]  # id order would be ["1", "2"]
+        rating = Filter(field="average_rating", op="gte", value=4.0)
+        ranged = make_task("filtered", base="keyword", text="ズボン", filter=rating)
+        assert ids(ranged) == ["2", "1"]
+        faceted = make_task("faceted", base="keyword", text="ズボン", facets=["category"])
+        request = adapter.render(faceted, None, 10)
+        result = run_request(client, adapter, faceted, request, 30)
+        assert result.ids == ["2", "3", "1"]  # id order would be ["1", "2", "3"]
+        assert result.facets == {"category": {fashion: 2, "その他": 1}}
+
+        # control: force a sequential scan (the plan a small table can get with sequential
+        # scans on); the PGroonga index is bypassed and nothing is scored
+        off = {"enable_seqscan": "on", "enable_indexscan": "off", "enable_bitmapscan": "off"}
+        bypass = {"index": {"text_search": "pgroonga", "settings": off}}
+        make_adapter(ENGINE, bypass, dim=3, synonyms=[]).apply_settings(client)
+        assert ids(filtered) == ["1", "2"]
     finally:
         client.close()
         runtime.down()

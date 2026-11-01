@@ -154,3 +154,34 @@ def test_parse_raises_on_an_error_inside_a_200_response():
     payload = {"results": [{"code": 422, "error": "Only upto 250 hits can be fetched per page."}]}
     with pytest.raises(EngineError, match="422"):
         make_adapter("typesense").parse(make_task("keyword"), payload)
+
+
+def _create_requests(track):
+    import httpx
+
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        return httpx.Response(200, json={})
+
+    adapter = make_adapter("typesense", track, synonyms=[])
+    with httpx.Client(base_url="http://ts", transport=httpx.MockTransport(handler)) as client:
+        adapter.create_index(client)
+    return seen
+
+
+def _stopword_bodies(track):
+    import json
+
+    return [json.loads(r.content) for r in _create_requests(track) if "/stopwords/" in r.url.path]
+
+
+def test_stopwords_locale_follows_the_searchable_fields_locale():
+    track = {"index": {"searchable_fields": {"locale": "es"}, "stopwords": {"sw": ["de", "la"]}}}
+    assert _stopword_bodies(track) == [{"stopwords": ["de", "la"], "locale": "es"}]
+
+
+def test_stopwords_locale_defaults_to_english():
+    track = {"index": {"stopwords": {"sw": ["the", "a"]}}}
+    assert _stopword_bodies(track) == [{"stopwords": ["the", "a"], "locale": "en"}]

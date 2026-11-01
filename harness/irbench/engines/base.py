@@ -140,6 +140,15 @@ class EngineAdapter(ABC):
     # Config key paths (`index.analyzer`, ...) that carry this engine's language setting; a
     # non-English scenario's default track must set one of them (`irbench lint`).
     language_keys: ClassVar[tuple[str, ...]] = ()
+    # What the report's default-vs-tuned table shows as each track's language setting; None
+    # means language_keys. Add keys that change the language handling without being required
+    # on the default track (Postgres `index.text_search`, PGroonga on the tuned track).
+    language_report_keys: ClassVar[tuple[str, ...] | None] = None
+
+    @classmethod
+    def report_keys(cls) -> tuple[str, ...]:
+        """The config keys the report shows as the language setting (language_report_keys)."""
+        return cls.language_keys if cls.language_report_keys is None else cls.language_report_keys
 
     def __init__(self, ctx: IndexContext):
         self.ctx = ctx

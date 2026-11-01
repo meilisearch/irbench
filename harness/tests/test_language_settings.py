@@ -196,3 +196,44 @@ def test_pg_tsvector_is_the_default_text_search():
         assert "USING gin (tsv)" in adapter.text_index_ddl()
         assert "pgroonga" not in adapter.setup_ddl()
         assert "websearch_to_tsquery" in adapter.render(make_task("keyword"), None, 10).sql
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_report_keys_default_to_language_keys(engine):
+    cls = load_adapter_class(REPO_ROOT, engine)
+    if engine == "postgres":
+        # a PGroonga run inherits `text_search_config` from the default block: the report
+        # must also show `text_search`, which lint does not require
+        assert cls.report_keys() == ("index.text_search", "index.text_search_config")
+        assert cls.language_keys == ("index.text_search_config",)
+    else:
+        assert cls.report_keys() == LANGUAGE_KEYS[engine]
+
+
+def _settings_sql(adapter):
+    class Recorder:
+        sql = ""
+
+        def script(self, sql):
+            self.sql = sql
+
+    rec = Recorder()
+    adapter.apply_settings(rec)
+    return rec.sql
+
+
+def test_pgroonga_turns_sequential_scans_off_by_default():
+    sql = _settings_sql(make_adapter("postgres", {"index": {"text_search": "pgroonga"}}))
+    assert "ALTER DATABASE %I SET enable_seqscan = off" in sql
+    assert sql.endswith("\nSET enable_seqscan = off;")
+
+
+def test_pgroonga_seqscan_default_yields_to_the_config():
+    track = {"index": {"text_search": "pgroonga", "settings": {"enable_seqscan": "on"}}}
+    sql = _settings_sql(make_adapter("postgres", track))
+    assert "enable_seqscan = on" in sql and "enable_seqscan = off" not in sql
+
+
+def test_tsvector_sets_no_planner_default():
+    for track in (None, {"index": {"text_search": "tsvector"}}):
+        assert "enable_seqscan" not in _settings_sql(make_adapter("postgres", track))
