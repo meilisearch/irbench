@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlparse
 
 import httpx
@@ -28,6 +28,9 @@ class DatasetSpec(BaseModel):
     # A dataset id whose raw directory is reused, so datasets cut from the same source files
     # (e.g. ESCI locales) download them once.
     raw_from: str | None = None
+    # "internal" data may not be redistributed: runs on it are never published and its
+    # vectors are never packed or downloaded (irbench.internal).
+    distribution: Literal["public", "internal"] = "public"
 
 
 def load_dataset_spec(root: Path, dataset_id: str) -> DatasetSpec:

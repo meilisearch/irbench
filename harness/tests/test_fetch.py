@@ -7,6 +7,8 @@ from pathlib import Path
 
 import httpx
 import pytest
+import yaml
+from pydantic import ValidationError
 
 from irbench.datasets import fetch as fetch_module
 from irbench.datasets.fetch import (
@@ -62,6 +64,20 @@ def test_wands_spec_is_pinned():
     for f in spec.files.values():
         assert "/main/" not in f.url
         assert len(f.sha256) == 64
+
+
+def test_distribution_defaults_public(tmp_path):
+    root = tmp_path / "root"
+    (root / "datasets" / "d").mkdir(parents=True)
+    spec = {"id": "d", "version": "1", "license": "MIT", "source": "x", "files": {}}
+    path = root / "datasets" / "d" / "dataset.yaml"
+    path.write_text(yaml.safe_dump(spec))
+    assert load_dataset_spec(root, "d").distribution == "public"
+    path.write_text(yaml.safe_dump({**spec, "distribution": "internal"}))
+    assert load_dataset_spec(root, "d").distribution == "internal"
+    path.write_text(yaml.safe_dump({**spec, "distribution": "secret"}))
+    with pytest.raises(ValidationError):
+        load_dataset_spec(root, "d")
 
 
 def test_workspace_paths(tmp_path):

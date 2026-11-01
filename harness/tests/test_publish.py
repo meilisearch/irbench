@@ -4,7 +4,9 @@ import pytest
 from typer.testing import CliRunner
 
 from irbench.cli import app
+from irbench.internal import InternalDataError
 from irbench.publish import BUNDLE_FILES, publish_run
+from test_prepare import make_root, mark_internal
 
 RUN_ID = "ecommerce__product-search__meilisearch__bge-small-en-v1.5__default__aws-c7i-4xlarge"
 
@@ -15,12 +17,13 @@ def make_run(
     profile="aws-c7i-4xlarge",
     status="succeeded",
     files=("scores.json", "perf.json", "perf-p20.json", "index.json"),
+    **extra,
 ):
     d = root / ".irbench" / "runs" / run_id
     (d / "rendered" / "keyword").mkdir(parents=True, exist_ok=True)
     (d / "rendered" / "keyword" / "0.json").write_text("{}")
     (d / "run.trec").write_text("0 Q0 d1 1 1.0 x\n")
-    manifest = {"run_id": run_id, "status": status, "hardware": {"id": profile}}
+    manifest = {"run_id": run_id, "status": status, "hardware": {"id": profile}, **extra}
     (d / "manifest.json").write_text(json.dumps(manifest))
     for name in files:
         (d / name).write_text(json.dumps({"file": name}))
@@ -121,3 +124,41 @@ def test_republishing_cleans_up_tmp_and_old_files(tmp_path):
     assert RUN_ID in siblings
     assert not any(p.endswith(".tmp") or p.endswith(".old") for p in siblings)
     assert sorted(p.name for p in dest.iterdir()) == ["manifest.json", "scores.json"]
+
+
+def test_publish_refuses_internal_run(tmp_path):
+    make_run(
+        tmp_path,
+        scenario="ecommerce/product-search",
+        dataset={"id": "wands", "distribution": "internal"},
+    )
+    with pytest.raises(InternalDataError, match="wands"):
+        publish_run(tmp_path, RUN_ID)
+    assert not (tmp_path / "results").exists()
+
+
+def test_publish_refuses_internal_by_spec(tmp_path, wands_raw):
+    # An old manifest without `distribution`: the scenario's dataset spec decides.
+    root = make_root(tmp_path, wands_raw)
+    mark_internal(root)
+    make_run(root, scenario="ecommerce/product-search", dataset={"id": "wands"})
+    with pytest.raises(InternalDataError, match=r"wands.*MIT"):
+        publish_run(root, RUN_ID)
+    assert not (root / "results").exists()
+
+
+def test_publish_ignores_a_scenario_that_left_the_repository(tmp_path):
+    make_run(tmp_path, scenario="ecommerce/gone", dataset={"id": "wands"})
+    assert publish_run(tmp_path, RUN_ID).exists()
+
+
+def test_cli_publish_internal_exit_1(tmp_path):
+    make_run(
+        tmp_path,
+        scenario="ecommerce/product-search",
+        dataset={"id": "wands", "distribution": "internal"},
+    )
+    result = CliRunner().invoke(app, ["publish", RUN_ID, "--root", str(tmp_path)])
+    assert result.exit_code == 1
+    assert "wands" in result.output
+    assert not (tmp_path / "results").exists()

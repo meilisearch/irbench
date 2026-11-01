@@ -63,6 +63,24 @@ def test_prepare_writes_all_outputs(tmp_path, wands_raw):
     assert "created_at" in manifest and "irbench_version" in manifest
 
 
+def mark_internal(root):
+    path = root / "datasets" / "wands" / "dataset.yaml"
+    path.write_text(
+        yaml.safe_dump({**yaml.safe_load(path.read_text()), "distribution": "internal"})
+    )
+
+
+def test_prepare_manifest_records_distribution(tmp_path, wands_raw):
+    root = make_root(tmp_path, wands_raw)
+    result = prepare(root, SCENARIO, client=fixture_client(wands_raw))
+    manifest_path = result.scenario_dir / "prepare.manifest.json"
+    assert json.loads(manifest_path.read_text())["dataset"]["distribution"] == "public"
+
+    mark_internal(root)
+    result = prepare(root, SCENARIO, client=fixture_client(wands_raw))
+    assert json.loads(manifest_path.read_text())["dataset"]["distribution"] == "internal"
+
+
 def test_prepare_is_deterministic(tmp_path, wands_raw):
     root = make_root(tmp_path, wands_raw)
     first = prepare(root, SCENARIO, client=fixture_client(wands_raw))

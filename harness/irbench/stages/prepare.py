@@ -92,6 +92,7 @@ def prepare(root: Path, scenario_id: str, client: httpx.Client | None = None) ->
             "dataset": {
                 "id": spec.id,
                 "version": spec.version,
+                "distribution": spec.distribution,
                 "files": {name: f.sha256 for name, f in spec.files.items()},
             },
             "seed": p.seed,

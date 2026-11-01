@@ -18,11 +18,13 @@ from irbench.embed.publish import (
     pack_vectors,
 )
 from irbench.embed.vectors import read_vectors, write_vectors
+from irbench.internal import InternalDataError
 from irbench.io import read_jsonl
 from irbench.paths import Workspace
 from irbench.scenario import load_scenario
 from irbench.stages.embed import embed_scenario
 from test_embed_cache import FakeEmbedder
+from test_prepare import mark_internal
 
 
 def serve(directory, seen=None):
@@ -63,6 +65,16 @@ def test_pack_writes_assets_and_registry(tmp_path, wands_raw):
     pack_vectors(root, SCENARIO, "fake", tmp_path / "dist", release="vectors-2")
     registry = load_registry(root)
     assert len(registry) == 1 and "/download/vectors-2/" in registry[0].docs.url
+
+
+def test_pack_vectors_refuses_internal(tmp_path, wands_raw):
+    root = fake_root(tmp_path, wands_raw)
+    mark_internal(root)
+    out_dir = tmp_path / "dist"
+    with pytest.raises(InternalDataError, match=r"wands.*MIT"):
+        pack_vectors(root, SCENARIO, "fake", out_dir)
+    assert not out_dir.exists()
+    assert not (root / REGISTRY).exists()
 
 
 def test_published_vectors_are_downloaded_instead_of_computed(tmp_path, wands_raw):

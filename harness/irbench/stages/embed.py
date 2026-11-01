@@ -14,6 +14,7 @@ from irbench.embed.publish import (
     write_sidecar,
 )
 from irbench.embed.vectors import write_vectors
+from irbench.internal import is_internal
 from irbench.io import read_jsonl
 from irbench.paths import Workspace
 from irbench.scenario import check_model, load_scenario
@@ -60,7 +61,10 @@ def embed_scenario(
         if local is not None:
             docs_path, queries_path, n_docs, n_queries = local
             return EmbedResult(docs_path, queries_path, n_docs, n_queries, 0, "local")
-        entry = find_published(root, scenario_id, model_id)
+        # Internal data is never published, so it is never downloaded either.
+        entry = (
+            None if is_internal(root, scenario_id) else find_published(root, scenario_id, model_id)
+        )
         if entry is not None:
             docs_path, queries_path = download_published(root, entry, client)
             return EmbedResult(
