@@ -2,7 +2,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-Perturbation = Literal["original", "typo", "prefix", "synonym", "accents"]
+Perturbation = Literal["original", "typo", "prefix", "synonym", "accents", "corrected"]
+# Variants a dataset supplies that are not perturbations of what users type.
+REFERENCE_PERTURBATIONS: frozenset[str] = frozenset({"corrected"})
 Mode = Literal["keyword", "semantic", "hybrid", "filtered", "sorted", "faceted"]
 BaseMode = Literal["keyword", "semantic", "hybrid"]
 BASE_MODES: tuple[BaseMode, ...] = ("keyword", "semantic", "hybrid")
@@ -19,6 +21,7 @@ class Query(BaseModel):
     variant_of: str
     perturbation: Perturbation
     group: str | None = None
+    corrected: str | None = None  # set on originals only; the source of the `corrected` variant
 
 
 class Filter(BaseModel):

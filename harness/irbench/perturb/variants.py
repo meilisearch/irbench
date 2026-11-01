@@ -11,7 +11,10 @@ def _norm(text: str) -> str:
     return " ".join(text.lower().split())
 
 
-def _apply(kind: str, text: str, rng: random.Random, vocabulary: list[list[str]]) -> str | None:
+def _apply(kind: str, query: Query, rng: random.Random, vocabulary: list[list[str]]) -> str | None:
+    text = query.text
+    if kind == "corrected":
+        return query.corrected
     if kind == "typo":
         return typo(text, rng)
     if kind == "prefix":
@@ -31,7 +34,7 @@ def make_variants(
         out.append(query)
         for kind in kinds:
             rng = random.Random(f"{seed}:{query.qid}:{kind}")
-            text = _apply(kind, query.text, rng, vocabulary)
+            text = _apply(kind, query, rng, vocabulary)
             if text is None or _norm(text) == _norm(query.text):
                 continue
             out.append(

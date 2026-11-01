@@ -23,7 +23,7 @@ class FilterTemplate(BaseModel):
 
 class PerturbationSpec(BaseModel):
     seed: int
-    kinds: list[Literal["typo", "prefix", "synonym", "accents"]]
+    kinds: list[Literal["typo", "prefix", "synonym", "accents", "corrected"]]
     vocabulary: str | None = None
 
     @model_validator(mode="after")

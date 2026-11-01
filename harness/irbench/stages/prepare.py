@@ -58,6 +58,7 @@ def prepare(root: Path, scenario_id: str, client: httpx.Client | None = None) ->
             variant_of=r["qid"],
             perturbation="original",
             group=r.get("group"),
+            corrected=r.get("corrected"),
         )
         for r in read_jsonl(normalized.queries)
     ]
