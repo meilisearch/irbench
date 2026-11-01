@@ -218,6 +218,62 @@ def query_group_tables(s: ScenarioResults) -> list[dict[str, Any]]:
     return tables
 
 
+def _interval(row: dict[str, Any] | None) -> str | None:
+    """The 95% interval of a paired row; None for a single pair, whose interval has no width."""
+    if row is None or row["n"] < 2:
+        return None
+    low, high = row["ci95"]
+    return f"[{fmt_delta(low)}, {fmt_delta(high)}]"
+
+
+def _paired_cell(row: dict[str, Any] | None) -> dict[str, Any]:
+    return {
+        "delta": None if row is None else row["delta"],
+        "interval": _interval(row),
+        "n": None if row is None else row["n"],
+    }
+
+
+def misspelling_tables(s: ScenarioResults) -> list[dict[str, Any]]:
+    """Real misspellings, corrected, against a synthetic typo on clean queries, per retrieval
+    base. One table per base where some run has a paired `corrected` row; empty otherwise."""
+    tables = []
+    for group in BASE_GROUPS:
+        rows = []
+        for run in s.runs:
+            corrected = run.paired(group, "corrected", "misspelled")
+            if run.failure or corrected is None:
+                continue
+            rows.append(
+                {
+                    "run": run,
+                    "original": run.group_ndcg(group, "misspelled", "original"),
+                    "corrected_ndcg": run.group_ndcg(group, "misspelled", "corrected"),
+                    "corrected": _paired_cell(corrected),
+                    "typo": _paired_cell(run.paired(group, "typo", "clean")),
+                    "judged": run.judged(group),
+                }
+            )
+        if rows:
+            ns = [
+                next((n for r in s.runs if (n := r.group_n(q, "original")) is not None), None)
+                for q in ("misspelled", "clean")
+            ]
+            tables.append({"group": group, "n_misspelled": ns[0], "n_clean": ns[1], "rows": rows})
+    return tables
+
+
+# Fixed copy that goes with a scenario's misspelling table (the dictionary is that dataset's).
+MISSPELLING_NOTES = {
+    "ecommerce/home-depot-search": (
+        "Misspelled means Google's speller changed the query; a few clean queries still "
+        "contain mistakes, and a few corrections are wrong.",
+        "Edit distance between the query and its correction, 1 / 2 / 3 / 4+: "
+        "1,086 / 415 / 100 / 39 of 1,640.",
+    )
+}
+
+
 def na_notes(s: ScenarioResults) -> list[dict[str, Any]]:
     notes: dict[tuple[str, str], list[str]] = defaultdict(list)
     for run in s.runs:
@@ -518,6 +574,8 @@ def scenario_view(s: ScenarioResults, slots: dict[str, int]) -> dict[str, Any]:
             if any(r["deltas"].get(p) is not None for r in perturbation_rows(s))
         ],
         "query_groups": query_group_tables(s),
+        "misspellings": misspelling_tables(s),
+        "misspelling_notes": MISSPELLING_NOTES.get(s.scenario, ()),
         "models": model_comparison(s),
         "comparable": s.hardware not in UNPUBLISHED_PROFILES,
         "perf": perf_view(s, slots),

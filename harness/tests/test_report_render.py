@@ -665,3 +665,100 @@ def test_public_build_unchanged(tmp_path):
     for name in names:
         assert read(out, name) == read(out2, name)
         assert "Internal:" not in read(out, name)
+
+
+HD_SCENARIO = "ecommerce/home-depot-search"
+HD_PAGE = "ecommerce__home-depot-search__aws-c7i-4xlarge.html"
+
+
+def _with_misspelling_rows(bundle, *, typo_n=40):
+    """Group rows (misspelled original/corrected, clean original) and paired rows for keyword."""
+
+    def add(d):
+        base = next(
+            r for r in d["relevance"] if (r["mode"], r["perturbation"]) == ("keyword", "all")
+        )
+
+        def group_row(group, perturbation, n, ndcg):
+            metrics = {**base["metrics"], "ndcg@10": ndcg}
+            return {
+                **base,
+                "group": group,
+                "perturbation": perturbation,
+                "n": n,
+                "metrics": metrics,
+            }
+
+        def paired(perturbation, group, n, delta, ci):
+            return {
+                "mode": "keyword",
+                "base": "keyword",
+                "perturbation": perturbation,
+                "group": group,
+                "n": n,
+                "delta": delta,
+                "ci95": ci,
+            }
+
+        return {
+            **d,
+            "relevance": d["relevance"]
+            + [
+                group_row("misspelled", "original", 30, 0.271),
+                group_row("misspelled", "corrected", 30, 0.352),
+                group_row("clean", "original", 70, 0.488),
+            ],
+            "paired": [
+                paired("corrected", "misspelled", 30, 0.081, [0.044, 0.118]),
+                paired("typo", "clean", typo_n, -0.137, [-0.19, -0.083]),
+            ],
+        }
+
+    _edit_json(bundle / "scores.json", add)
+
+
+def test_misspelling_table_values(tmp_path):
+    results, out = site(tmp_path)
+    bundle = write_bundle(
+        results, "meilisearch", scenario=HD_SCENARIO, groups={"keyword/keyword": 0.5}
+    )
+    _add_per_task(bundle, "keyword/keyword", [0.4, 0.6], judged=0.912)
+    _with_misspelling_rows(bundle)
+    build_site(results, out)
+    page = read(out, HD_PAGE)
+    assert "<h2>Misspellings</h2>" in page
+    section = page.split("<h2>Misspellings</h2>")[1].split("</section>")[0]
+    assert "n=30" in section and "n=70" in section
+    for cell in ("0.271", "0.352", "+0.081", "[+0.044, +0.118]", "−0.137", "[−0.190, −0.083]"):
+        assert cell in section
+    assert "0.912" in section
+    # the caveats are fixed copy of this scenario
+    assert "speller changed the query" in section
+    assert "1,086 / 415 / 100 / 39 of 1,640" in section
+
+    # a single-query pair has a zero-width interval, which is not an interval
+    _with_misspelling_rows(bundle, typo_n=1)
+    build_site(results, out)
+    section = read(out, HD_PAGE).split("<h2>Misspellings</h2>")[1].split("</section>")[0]
+    assert "−0.137" in section and "n/a" in section
+    assert "[−0.190, −0.083]" not in section
+
+
+def test_misspelling_copy_only_for_the_home_depot_scenario(tmp_path):
+    results, out = site(tmp_path)
+    bundle = write_bundle(results, "meilisearch", groups={"keyword/keyword": 0.5})
+    _with_misspelling_rows(bundle)
+    build_site(results, out)
+    section = read(out, PAGE).split("<h2>Misspellings</h2>")[1].split("</section>")[0]
+    assert "0.352" in section
+    assert "speller" not in section and "1,086" not in section
+
+
+def test_no_misspelling_table_without_corrected(tmp_path):
+    results, out = site(tmp_path)
+    write_bundle(results, "meilisearch", groups={"keyword/keyword": 0.5})
+    build_site(results, out)
+    page = read(out, PAGE)
+    assert "Misspellings" not in page
+    # unchanged: the render goldens cover the rest of the page byte for byte
+    assert "By query group" not in page
