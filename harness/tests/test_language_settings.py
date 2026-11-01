@@ -237,3 +237,27 @@ def test_pgroonga_tokenizer_rejects_unknown():
     track = {"index": {"text_search": "pgroonga", "pgroonga_tokenizer": "x'); DROP TABLE t; --"}}
     with pytest.raises(ValueError, match="pgroonga_tokenizer"):
         make_adapter("postgres", track).text_index_ddl()
+
+
+def _keyword_sql(track):
+    adapter = make_adapter("postgres", track, synonyms=[])
+    return adapter.render(make_task("keyword", text="宝宝护肚"), None, 10).sql
+
+
+def test_pg_query_plain_uses_plainto_tsquery():
+    sql = _keyword_sql({"search": {"keyword": {"query": "plain"}}})
+    assert "plainto_tsquery(" in sql and "websearch_to_tsquery(" not in sql
+
+
+def test_pg_query_plain_with_match_any():
+    sql = _keyword_sql({"search": {"keyword": {"query": "plain", "match": "any"}}})
+    assert "replace(plainto_tsquery(" in sql and "' & ', ' | '" in sql
+
+
+def test_pg_query_default_is_websearch():
+    assert "websearch_to_tsquery(" in _keyword_sql({})
+
+
+def test_pg_query_rejects_unknown():
+    with pytest.raises(ValueError, match="query"):
+        _keyword_sql({"search": {"keyword": {"query": "fuzzy"}}})

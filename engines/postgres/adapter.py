@@ -23,6 +23,8 @@ PGROONGA_TOKENIZERS = frozenset({"TokenBigram", "TokenNgram"})
 # word) map to `simple`, as zhparser's README configures it.
 ZHPARSER = "zhparser"
 ZHPARSER_TOKENS = "n,v,a,i,e,l"
+# search.keyword.query: the Postgres function that turns the query text into a tsquery.
+QUERY_PARSERS = {"websearch": "websearch_to_tsquery", "plain": "plainto_tsquery"}
 # Token types english maps to english_stem (hyphenated words included).
 WORD_TOKENS = "asciiword, word, asciihword, hword, hword_asciipart, hword_part"
 
@@ -32,8 +34,11 @@ class Adapter(PostgresAdapter):
     host_port = 15432
     language_keys = ("index.text_search_config",)
     # rank: ts_rank (default) or ts_rank_cd; normalization: the rank functions' integer flags
-    # (default 0); match: all (websearch_to_tsquery, every word) or any (its words OR-ed).
-    search_keys = PostgresAdapter.search_keys | {"rank", "normalization", "match"}
+    # (default 0); match: all (every word) or any (its words OR-ed); query: websearch
+    # (websearch_to_tsquery, default) or plain (plainto_tsquery: the parser's words joined by
+    # `&`; websearch_to_tsquery reads an unspaced run a parser splits, such as Chinese under
+    # zhparser, as a phrase `<->`, words adjacent and in order).
+    search_keys = PostgresAdapter.search_keys | {"rank", "normalization", "match", "query"}
 
     @property
     def base_config(self) -> str:
@@ -182,7 +187,10 @@ class Adapter(PostgresAdapter):
     def keyword_match(self, q: Sql, text: str, options: dict[str, Any]) -> tuple[str, str]:
         if self.text_search == "pgroonga":
             return self._pgroonga_match(q, text, options)
-        query = f"websearch_to_tsquery('{self.ts_config}', {q.p(text)})"
+        parse = options.get("query", "websearch")
+        if parse not in QUERY_PARSERS:
+            raise ValueError(f"postgres: unknown query {parse!r}; one of {sorted(QUERY_PARSERS)}")
+        query = f"{QUERY_PARSERS[parse]}('{self.ts_config}', {q.p(text)})"
         match = options.get("match", "all")
         if match == "any":
             # The same parsed query with its AND operators turned into OR (phrases kept).

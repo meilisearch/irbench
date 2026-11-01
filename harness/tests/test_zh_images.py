@@ -37,8 +37,12 @@ def test_es_zh_analyzers():
 @pytest.mark.docker
 def test_pg_zh_parsers():
     cls = load_adapter_class(REPO_ROOT, "postgres")
-    # match: any, as a segmenter may cut the query differently from the title (护肚 / 护肚子).
-    track = {"index": {"text_search_config": "zhparser"}, "search": {"keyword": {"match": "any"}}}
+    # query: plain, since websearch_to_tsquery reads 宝宝护肚 as the phrase 宝宝 <-> 护 <-> 肚;
+    # match: any, as a segmenter may cut the query differently from the title.
+    track = {
+        "index": {"text_search_config": "zhparser"},
+        "search": {"keyword": {"query": "plain", "match": "any"}},
+    }
     adapter = make_adapter("postgres", track, dim=3, synonyms=[])
     runtime = DockerRuntime(
         REPO_ROOT, "postgres", load_hardware(REPO_ROOT, "local"), compose="compose.zh.yaml"

@@ -47,6 +47,8 @@ The non-English scenarios (Japanese, Spanish and Chinese) set the language in th
 
 `index.text_search_config: zhparser` creates the extension and a configuration on zhparser's parser (`PARSER = zhparser`) instead of copying a built-in one, and maps its content token types `n,v,a,i,e,l` (noun, verb, adjective, idiom, exclamation, temporary word) to `simple`, as zhparser's README configures it. It takes no thesaurus: a scenario with synonyms must declare a `synonyms:` reason. `index.pgroonga_tokenizer` (`TokenBigram`, PGroonga's default, or `TokenNgram`) adds `WITH (tokenizer='...')` to the PGroonga index.
 
+`search.keyword.query: plain` builds the tsquery with `plainto_tsquery` instead of `websearch_to_tsquery` (both documented Postgres functions). It matters for zhparser: `websearch_to_tsquery` reads an unspaced query that the parser splits into several words as a phrase (`'宝宝' <-> '护' <-> '肚'`: adjacent and in order), while `plainto_tsquery` joins the words with `&` (and `match: any` turns that into `|`).
+
 ## Modes
 
 Every mode is one SQL statement. Placeholders are `$n::text` plus a cast; the query text is always a parameter.
