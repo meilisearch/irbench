@@ -26,14 +26,14 @@ Search parameters only, found by a sweep scored on nDCG@10 per scenario and base
 
 ## Languages
 
-The non-English scenarios (`ecommerce/amazon-search-ja`, `ecommerce/amazon-search-es`) set the language in the config's `default` block. Each setting has a `justification:` entry.
+The non-English scenarios (`ecommerce/amazon-search-ja`, `ecommerce/amazon-search-es`) are planned: their scenario files and configs are not in the repository yet (they wait on the US ESCI scenario). Their configs will set the language in the `default` block, each setting with a `justification:` entry; the table below is that plan, and the config keys it names already work.
 
 | Scenario | default track | tuned track |
 |---|---|---|
 | Japanese | `index.searchable_fields.locale: ja` | no plugin; usual sweep |
 | Spanish | `index.searchable_fields.locale: es` | no plugin; usual sweep |
 
-`searchable_fields` is merged into every searchable field (see the last section), so the locale is set on all of them. With no `locale`, nothing changes (Typesense's default tokenization, no locale).
+`searchable_fields` is merged into every searchable field (see the last section), so the locale is set on all of them. With no `locale`, nothing changes (Typesense's default tokenization, no locale). A stopword set (`index.stopwords.<set>`) is created with the same locale; with none it is `en`, as before.
 
 ## Modes
 
@@ -56,6 +56,6 @@ All requests go through `POST /multi_search` (one search per request), so a 384-
 
 ## Changing this configuration
 
-`index` in a config is merged into the create-collection body, except three keys the adapter applies itself: `searchable_fields` (merged into every searchable field, e.g. `stem: true`), `fields.<name>` (merged into one field) and `stopwords.<set>` (a list of words created as a stopword set, then used with `search.<base>.stopwords: <set>`). `search.<base>` is merged into every search of that base, except `vector_query_options` (e.g. `{alpha: 0.9}`), which is appended inside `vector_query`.
+`index` in a config is merged into the create-collection body, except three keys the adapter applies itself: `searchable_fields` (merged into every searchable field, e.g. `stem: true`), `fields.<name>` (merged into one field) and `stopwords.<set>` (a list of words created as a stopword set, then used with `search.<base>.stopwords: <set>`; the set takes the locale of `searchable_fields.locale`, or `en` when none is set). `search.<base>` is merged into every search of that base, except `vector_query_options` (e.g. `{alpha: 0.9}`), which is appended inside `vector_query`.
 
 Edit `configs/<scenario>.yaml` and run `uv run pytest -m docker -k typesense` before opening a PR.

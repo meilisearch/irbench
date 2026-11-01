@@ -33,7 +33,7 @@ Config keys the adapter applies itself (`search.<base>`): `multi_match` (merged 
 
 ## Languages
 
-The non-English scenarios (`ecommerce/amazon-search-ja`, `ecommerce/amazon-search-es`) set the language in the config's `default` block. Each setting has a `justification:` entry.
+The non-English scenarios (`ecommerce/amazon-search-ja`, `ecommerce/amazon-search-es`) are planned: their scenario files and configs are not in the repository yet (they wait on the US ESCI scenario). Their configs will set the language in the `default` block, each setting with a `justification:` entry; the table below is that plan, and the config keys it names already work.
 
 | Scenario | default track | tuned track |
 |---|---|---|

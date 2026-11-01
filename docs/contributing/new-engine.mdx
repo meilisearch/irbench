@@ -42,6 +42,26 @@ It also sets the class attributes `name`, `host_port`, `health_path` and
 `search_params(task)` (both have working defaults backed by the engine
 config's `unsupported` and `search` maps).
 
+### Language keys
+
+An adapter also declares `language_keys`: the config key paths that carry
+the engine's language setting, such as `("index.analyzer",)` for
+Elasticsearch or `("index.text_search_config",)` for Postgres. Each must be
+a config key the adapter reads, so that a scenario in another language can
+choose the engine's built-in analysis for that language without code
+changes; with the key absent the adapter renders what it renders for
+English. For a scenario whose `language` is not `en`, `irbench lint`
+(`language-setting`) requires the config's `default` track to set one of
+these keys, so a config cannot silently fall back to English. An adapter
+that declares none cannot pass lint on such a scenario.
+
+The report's default-vs-tuned table shows the value of these keys for each
+track, plus the track's `compose` file. An adapter whose tuned track can
+change the language handling through another key sets
+`language_report_keys` to the full list the report should show (Postgres
+adds `index.text_search`, which switches to PGroonga); it defaults to
+`language_keys`, and lint still checks `language_keys` only.
+
 ## SQL engines
 
 An engine queried with SQL over the Postgres wire protocol sets
@@ -51,12 +71,17 @@ The simplest route is to subclass `irbench.engines.postgres.PostgresAdapter`,
 which already implements the schema, loading, and the semantic, hybrid,
 filtered, sorted and faceted statements. A subclass implements two abstract
 hooks, `keyword_match(q, text)` and `text_index_ddl()`, and may override
-`setup_ddl()`, `extra_columns()` and `keyword_tiebreak()`. The latter is the
+`setup_ddl()`, `extra_columns()`, `default_settings()` and
+`keyword_tiebreak()`. `default_settings()` returns planner or extension
+settings (GUCs) the adapter needs whatever the config says; they are applied
+per database and per session like `index.settings`, and an `index.settings`
+entry with the same name overrides them (Postgres turns `enable_seqscan` off
+under PGroonga). `keyword_tiebreak()` is the
 suffix after `score DESC` wherever the keyword base is ranked by score; it
 defaults to `, id` (a total order), and an engine whose BM25 scan can only
 push a bare score order down to its index returns `""`. The `postgres`
-adapter overrides `keyword_match`, `text_index_ddl`, `setup_ddl` and
-`extra_columns`; `postgres-paradedb` overrides `setup_ddl`, `text_index_ddl`,
+adapter overrides `keyword_match`, `text_index_ddl`, `setup_ddl`,
+`extra_columns` and `default_settings`; `postgres-paradedb` overrides `setup_ddl`, `text_index_ddl`,
 `keyword_match` and `keyword_tiebreak`.
 
 Rules for the SQL:

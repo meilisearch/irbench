@@ -16,6 +16,7 @@ default:
   search: {}
   unsupported: {}
   synonyms: null   # or a reason string
+  compose: null    # or a compose file name in engines/<engine>/docker/
   justification: {}
 tuned:
   # same shape, deep-merged over `default`
@@ -46,6 +47,13 @@ credits:
   `synonyms.txt` (e.g. "Qdrant has no synonym support"). It is not a setting,
   needs no justification, and is shown on the run page as "Synonyms not
   loaded: ...". The contract test for shared synonyms skips for that engine.
+- **`compose`** — optional file name in `engines/<engine>/docker/` that
+  replaces `compose.yaml` for this track, for an image with the vendor's
+  official language plugin (Elasticsearch's `compose.kuromoji.yaml`, Postgres's
+  `compose.pgroonga.yaml`). It is a file name, not a path. It counts as a
+  setting, so it needs a `justification.compose` entry; the file must exist
+  (`compose-missing`) and its engine image must be pinned (`image-pin`). The
+  report's *Engine configurations* page and the default-vs-tuned table show it.
 - **`justification`** — maps a setting path (e.g. `rankingRules`,
   `index.hnsw.ef`) to prose explaining why it departs from the engine's
   shipped defaults. Every leaf setting under `index` or `search` needs a

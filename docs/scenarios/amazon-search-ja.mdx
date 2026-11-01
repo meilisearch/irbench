@@ -3,6 +3,13 @@ title: "Scenario: amazon-search-ja"
 description: Japanese product search, real Amazon.co.jp queries against 339k products with graded human judgments (Amazon ESCI)
 ---
 
+<Note>
+This scenario is planned. Its scenario file, engine configs and runs are not
+available yet: they wait on the US ESCI scenario (`ecommerce/amazon-search`),
+which is not in the repository either. The dataset definition and the harness
+support described here are in place.
+</Note>
+
 Scenario id: `ecommerce/amazon-search-ja`. It tests product search in a language
 written without spaces between words. 51% of the queries contain a run of 6 or
 more Japanese characters with no space, so an engine has to split that text into
