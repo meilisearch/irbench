@@ -151,6 +151,36 @@ def judged_rows(s: ScenarioResults) -> list[dict[str, Any]]:
     return [r for r in rows if any(v is not None for v in r["cells"])]
 
 
+CLEAN_CUTOFFS = (1, 5, 20, 50)
+
+
+def clean_rows(s: ScenarioResults) -> list[dict[str, Any]]:
+    """clean@k and found@k per run and retrieval base (empty for bundles scored before them).
+    clean@k is None on scenarios whose qrels judge no document non-relevant."""
+    rows = []
+    for run in s.runs:
+        if run.failure:
+            continue
+        for group in BASE_GROUPS:
+            found = [run.metric(group, f"found@{k}") for k in CLEAN_CUTOFFS]
+            if all(v is None for v in found):
+                continue
+            clean = [run.metric(group, f"clean@{k}") for k in CLEAN_CUTOFFS]
+            precision = [run.metric(group, f"precision@{k}") for k in CLEAN_CUTOFFS]
+            recall = [run.metric(group, f"recall@{k}") for k in CLEAN_CUTOFFS]
+            rows.append(
+                {
+                    "run": run,
+                    "group": group,
+                    "clean": clean,
+                    "found": found,
+                    "precision": precision,
+                    "recall": recall,
+                }
+            )
+    return rows
+
+
 def _delta(value: float | None, base: float) -> float | None:
     return None if value is None else value - base
 
@@ -506,6 +536,8 @@ def scenario_view(s: ScenarioResults, slots: dict[str, int]) -> dict[str, Any]:
         ],
         "judged": judged_rows(s),
         "judged_groups": BASE_GROUPS,
+        "clean": clean_rows(s),
+        "clean_cutoffs": CLEAN_CUTOFFS,
         "na_notes": na_notes(s),
         "perturbations": perturbation_rows(s),
         "perturbation_kinds": [

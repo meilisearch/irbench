@@ -89,6 +89,11 @@ class RunResult:
         row = self._all_row(group)
         return row["metrics"].get("judged@10") if row else None
 
+    def metric(self, group: str, name: str) -> float | None:
+        """A metric of the overall row of a mode/base group, None when it was not scored."""
+        row = self._all_row(group)
+        return row["metrics"].get(name) if row else None
+
     def per_task(self, group: str) -> dict[str, float] | None:
         """nDCG@10 of each task of a mode/base group; None for bundles scored before
         per-task scores were recorded."""
