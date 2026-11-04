@@ -38,6 +38,11 @@ PREFIX_GROUPS = [LE25, G25_50, G50_75, G75_100, DIVERGES]
 QAC_COLUMNS = ["prefixes", "final_search_term"]
 QAC_BATCH_SIZE = 500_000
 
+# Block-level tags: a word boundary belongs between their content and whatever follows, so a
+# space is inserted at their start/end tags. Inline tags (b, span, ...) get no such space, so
+# `<b>cotton</b>&amp;wool` still strips to `cotton&wool` with no inserted space.
+BLOCK_TAGS = {"p", "br", "li", "div", "ul", "ol", "tr", "td", "h1", "h2", "h3", "h4", "h5", "h6"}
+
 
 def _normalize_key(text: str) -> str:
     return " ".join(text.lower().split())
@@ -50,6 +55,18 @@ class _TextExtractor(HTMLParser):
 
     def handle_data(self, data: str) -> None:
         self.parts.append(data)
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in BLOCK_TAGS:
+            self.parts.append(" ")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in BLOCK_TAGS:
+            self.parts.append(" ")
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in BLOCK_TAGS:
+            self.parts.append(" ")
 
 
 def _strip_html(value: Any) -> str | None:
@@ -98,12 +115,16 @@ def _product_doc(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _group_for(prefix: str, final: str) -> str | None:
-    """Spec §3.2 completion group, `None` for the literal-complete prefix (handled separately,
-    once per query, from the ESCI query text itself)."""
-    if not final.startswith(prefix.lower()):
-        return DIVERGES
+    """Spec §3.2 completion group, `None` for an empty/whitespace-only prefix or the
+    literal-complete prefix (handled separately, once per query, from the ESCI query text
+    itself) -- checked before the diverges test, so e.g. "yeti mug " (final plus a trailing
+    space) is skipped rather than misclassified as diverging."""
+    if not prefix.strip():
+        return None
     if prefix.strip().lower() == final:
         return None
+    if not final.startswith(prefix.lower()):
+        return DIVERGES
     ratio = len(prefix) / len(final)
     if ratio <= 0.25:
         return LE25
@@ -165,10 +186,11 @@ def normalize_amazon_esci(
                 "text": row["query"],
                 "small_version": row.get("small_version"),
                 "split": row.get("split"),
-                "labels": set(),
+                "positive_pids": set(),
             },
         )
-        info["labels"].add(row["esci_label"])
+        if row["esci_label"] in ("E", "S"):
+            info["positive_pids"].add(pid)
         judgments.setdefault(qid, []).append((pid, row["esci_label"]))
         if row.get("small_version") == 1 and row.get("split") == "test":
             pool_product_ids.add(pid)
@@ -192,11 +214,14 @@ def normalize_amazon_esci(
     docs_path = out / "docs.jsonl"
     n_docs = write_jsonl(docs_path, docs())
 
-    # --- Query pool: small_version==1, split==test, >=1 E/S, deduped by normalized text --
+    # --- Query pool: small_version==1, split==test, >=1 E/S product that survived the
+    # title-drop (and, under corpus:pool, the pool filter), deduped by normalized text ------
     candidates = [
         qid
         for qid, info in queries_by_id.items()
-        if info["small_version"] == 1 and info["split"] == "test" and ({"E", "S"} & info["labels"])
+        if info["small_version"] == 1
+        and info["split"] == "test"
+        and (info["positive_pids"] & kept_doc_ids)
     ]
 
     def qid_sort_key(qid: str) -> tuple[int, str]:
@@ -250,23 +275,34 @@ def normalize_amazon_esci(
     prefix_qrels: Qrels = {}
 
     for qid in sampled_sorted:
-        final = _normalize_key(queries_by_id[qid]["text"])
+        raw_text = queries_by_id[qid]["text"]
+        # `final_key` (lower-cased) is for matching and group classification only; the text
+        # written out keeps its case, whitespace-normalised like WANDS (spec §3.3).
+        final_key = _normalize_key(raw_text)
+        final_text = " ".join(raw_text.split())
         esci_qid = f"esci-{qid}"
-        query_rows.append({"qid": esci_qid, "text": final, "group": sources.get(qid, "")})
+        source = sources.get(qid)
+        query_row: dict[str, Any] = {"qid": esci_qid, "text": final_text}
+        if source is not None:
+            query_row["group"] = source
+        query_rows.append(query_row)
 
         # complete, from the ESCI query text itself, once per query.
         complete_id = f"{esci_qid}-{COMPLETE}"
-        prefix_rows.append({"qid": complete_id, "text": final, "group": COMPLETE})
+        prefix_rows.append({"qid": complete_id, "text": final_text, "group": COMPLETE})
         prefix_qrels[complete_id] = main_qrels.get(esci_qid, {})
 
-        sessions = sessions_by_key.get(final, [])
+        sessions = sessions_by_key.get(final_key, [])
         if not sessions:
             continue
         session = rng.choice(sessions)
+        # Duplicate prefixes in one session (e.g. typed twice) would otherwise weight the
+        # in-group choice toward them; de-duplicate, keeping first-typed order.
+        deduped_session = list(dict.fromkeys(session))
 
         by_group: dict[str, list[str]] = {}
-        for prefix in session:
-            group = _group_for(prefix, final)
+        for prefix in deduped_session:
+            group = _group_for(prefix, final_key)
             if group is None:
                 continue
             by_group.setdefault(group, []).append(prefix)
