@@ -22,6 +22,7 @@ from irbench.report.data import (
     load_results,
 )
 from irbench.report.stats import ALPHA, paired_randomization_p
+from irbench.score.relevance import CLEAN_CUTOFFS, NDCG_CUTOFFS, PRECISION_CUTOFFS, RECALL_CUTOFFS
 
 MARKER = ".irbench-report"
 DEFAULT_DOCS_URL = "https://github.com/meilisearch/irbench/tree/main/docs"
@@ -151,9 +152,6 @@ def judged_rows(s: ScenarioResults) -> list[dict[str, Any]]:
     return [r for r in rows if any(v is not None for v in r["cells"])]
 
 
-CLEAN_CUTOFFS = (1, 5, 20, 50)
-
-
 def clean_rows(s: ScenarioResults) -> list[dict[str, Any]]:
     """clean@k and found@k per run and retrieval base (empty for bundles scored before them).
     clean@k is None on scenarios whose qrels judge no document non-relevant."""
@@ -166,14 +164,16 @@ def clean_rows(s: ScenarioResults) -> list[dict[str, Any]]:
             if all(v is None for v in found):
                 continue
             clean = [run.metric(group, f"clean@{k}") for k in CLEAN_CUTOFFS]
-            precision = [run.metric(group, f"precision@{k}") for k in CLEAN_CUTOFFS]
-            recall = [run.metric(group, f"recall@{k}") for k in CLEAN_CUTOFFS]
+            ndcg = [run.metric(group, f"ndcg@{k}") for k in NDCG_CUTOFFS]
+            precision = [run.metric(group, f"precision@{k}") for k in PRECISION_CUTOFFS]
+            recall = [run.metric(group, f"recall@{k}") for k in RECALL_CUTOFFS]
             rows.append(
                 {
                     "run": run,
                     "group": group,
                     "clean": clean,
                     "found": found,
+                    "ndcg": ndcg,
                     "precision": precision,
                     "recall": recall,
                 }
@@ -538,6 +538,9 @@ def scenario_view(s: ScenarioResults, slots: dict[str, int]) -> dict[str, Any]:
         "judged_groups": BASE_GROUPS,
         "clean": clean_rows(s),
         "clean_cutoffs": CLEAN_CUTOFFS,
+        "ndcg_cutoffs": NDCG_CUTOFFS,
+        "precision_cutoffs": PRECISION_CUTOFFS,
+        "recall_cutoffs": RECALL_CUTOFFS,
         "na_notes": na_notes(s),
         "perturbations": perturbation_rows(s),
         "perturbation_kinds": [

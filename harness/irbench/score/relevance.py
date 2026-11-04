@@ -8,17 +8,18 @@ from ranx import evaluate
 
 from irbench.models import Qrels, QueryTask, RunResults
 
-# Cutoffs of clean@k, found@k, precision@k and recall@k (from the Meilisearch relevancy-bench
-# protocol).
-CLEAN_CUTOFFS = (1, 5, 20, 50)
+# Cutoffs reported per metric. clean@k and found@k come from the Meilisearch relevancy-bench
+# protocol; nDCG@10 stays the headline score.
+NDCG_CUTOFFS = (5, 10, 20, 100)
+CLEAN_CUTOFFS = (5, 10, 20, 100)
+PRECISION_CUTOFFS = (1, 5, 20, 100)
+RECALL_CUTOFFS = (10, 20, 100)
 METRICS = [
-    "ndcg@10",
-    "recall@10",
-    "recall@100",
+    *(f"ndcg@{k}" for k in NDCG_CUTOFFS),
+    *(f"precision@{k}" for k in PRECISION_CUTOFFS),
+    *(f"recall@{k}" for k in RECALL_CUTOFFS),
     "mrr@10",
     "hit_rate@1",
-    *(f"precision@{k}" for k in CLEAN_CUTOFFS),
-    *(f"recall@{k}" for k in CLEAN_CUTOFFS),
 ]
 REPORTED = {"hit_rate@1": "success@1"}
 JUDGED_DEPTH = 10

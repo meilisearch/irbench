@@ -41,11 +41,11 @@ def test_hand_computed_metrics():
     assert m["recall@10"] == pytest.approx(0.5)
     assert m["mrr@10"] == pytest.approx(0.5)
     assert m["success@1"] == pytest.approx(0.0)
-    # d1 at rank 2; d2 not returned. P@5 = 1/5, R@1 = 0, R@5 = 1/2.
+    # d1 at rank 2; d2 not returned. P@1 = 0, P@5 = 1/5, R@20 = 1/2; nDCG@k equal past rank 3.
     assert m["precision@1"] == pytest.approx(0.0)
     assert m["precision@5"] == pytest.approx(0.2)
-    assert m["recall@1"] == pytest.approx(0.0)
-    assert m["recall@5"] == pytest.approx(0.5)
+    assert m["recall@20"] == pytest.approx(0.5)
+    assert m["ndcg@5"] == m["ndcg@20"] == m["ndcg@100"] == pytest.approx(m["ndcg@10"])
 
 
 def test_missing_run_entry_scores_zero():
@@ -87,13 +87,13 @@ def test_empty_run_is_all_zero():
     scores = score_relevance([_task("t1")], QRELS, {})
     m = _group(scores).metrics
     assert all(v == 0.0 for name, v in m.items() if not name.startswith("clean@"))
-    assert all(m[f"clean@{k}"] == 1.0 for k in (1, 5, 20, 50))
+    assert all(m[f"clean@{k}"] == 1.0 for k in (5, 10, 20, 100))
 
 
 # t1: d1 grade 2, d2 grade 1, d3 judged not relevant (0).
 def test_found_is_gain_over_best_gain_in_k():
-    m = clean_and_found_at_k(["t1"], QRELS, {"t1": ["d3", "d2", "d9", "d1"]}, k=1)
-    assert m["found@1"] == pytest.approx(0.0)  # d3 first; best possible is d1 (2)
+    m = clean_and_found_at_k(["t1"], QRELS, {"t1": ["d3", "d9", "d2", "d1"]}, k=2)
+    assert m["found@2"] == pytest.approx(0.0)  # d3, d9 first; best possible is d1 + d2 (3)
     m = clean_and_found_at_k(["t1"], QRELS, {"t1": ["d3", "d2", "d9", "d1"]}, k=5)
     assert m["found@5"] == pytest.approx(1.0)  # d2 + d1 = 3 = best 3
 

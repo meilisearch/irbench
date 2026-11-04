@@ -115,7 +115,7 @@ documents and does not separate "unjudged" from "judged not relevant".
 nDCG@10 does not see what an engine shows once the good matches run out: two
 engines that rank the same relevant documents first score the same whether the
 rest of their results are weak partial matches or nothing. **clean@k** and
-**found@k** (k = 1, 5, 20, 50), adapted from the Meilisearch relevancy-bench
+**found@k** (k = 5, 10, 20, 100), adapted from the Meilisearch relevancy-bench
 protocol, separate the two.
 
 - **found@k** is the gain of the top k results (the sum of their grades) over the
@@ -135,9 +135,10 @@ relevant documents (community-qa and web-questions): with nothing judged
 non-relevant, every run would score 1. Even where it is reported, it only sees
 junk the assessors judged, so check judged@10 too.
 
-For comparison with the usual measures, **precision@k** (relevant results in the
-top k over k) and **recall@k** (relevant results in the top k over all relevant
-documents) are reported at the same cutoffs, from `ranx`, with grades above 0
+For comparison with the usual measures, **nDCG@k** (k = 5, 10, 20, 100),
+**precision@k** (relevant results in the top k over k; k = 1, 5, 20, 100) and
+**recall@k** (relevant results in the top k over all relevant documents;
+k = 10, 20, 100) are reported too, from `ranx`, with grades above 0
 counted as relevant and unjudged results as not relevant. Unlike clean@k,
 precision@k penalises an engine that returns fewer than k results, and it cannot
 reach 1 when a query has fewer than k relevant documents.

@@ -584,14 +584,15 @@ def _add_metrics(bundle, group, metrics):
 def test_clean_and_found_table(tmp_path):
     results, out = site(tmp_path)
     g = "keyword/keyword"
-    clean = {f"clean@{k}": v for k, v in zip((1, 5, 20, 50), (1.0, 0.91, 0.42, 0.31))}
-    found = {f"found@{k}": v for k, v in zip((1, 5, 20, 50), (0.6, 0.7, 0.8, 0.85))}
-    found |= {"precision@5": 0.333, "recall@50": 0.777}
+    clean = {f"clean@{k}": v for k, v in zip((5, 10, 20, 100), (1.0, 0.91, 0.42, 0.31))}
+    found = {f"found@{k}": v for k, v in zip((5, 10, 20, 100), (0.6, 0.7, 0.8, 0.85))}
+    found |= {"precision@5": 0.333, "recall@20": 0.777, "ndcg@100": 0.444}
     _add_metrics(write_bundle(results, "meilisearch", groups={g: 0.5}), g, clean | found)
     _add_metrics(write_bundle(results, "qdrant", groups={g: 0.5}), g, found)  # no negatives
     page = read(build_site(results, out).pages[1].parent, PAGE)
     assert "clean@20" in page and "0.420" in page and "0.850" in page
-    assert "P@5" in page and "0.333" in page and "0.777" in page
+    assert "P@5" in page and "0.333" in page and "0.777" in page and "0.444" in page
+    assert "R@20" in page and "nDCG@100" in page and "clean@100" in page
     assert page.count('<td class="num">—</td>') >= 4  # qdrant: clean@k n/a
 
 
