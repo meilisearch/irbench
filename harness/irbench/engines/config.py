@@ -10,6 +10,8 @@ from pydantic import BaseModel, ConfigDict, field_validator
 from irbench.models import BASE_MODES, QueryTask
 
 TRACKS = ("default", "tuned")
+# `tuned+<variant>`: a sweep variant merged over the tuned track (engines/<e>/sweeps/).
+SWEEP_PREFIX = "tuned+"
 
 
 def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -76,6 +78,8 @@ class EngineConfig:
     raw: dict[str, Any]
 
     def _data(self, name: str) -> dict[str, Any]:
+        if name.startswith(SWEEP_PREFIX):
+            return deep_merge(self._data("tuned"), self._sweep_variant(name[len(SWEEP_PREFIX) :]))
         if name not in TRACKS:
             raise ValueError(f"unknown track {name!r}; known: {', '.join(TRACKS)}")
         default = self.raw.get("default") or {}
@@ -84,6 +88,18 @@ class EngineConfig:
         if "tuned" not in self.raw:
             raise ValueError(f"{self.path}: no tuned track defined")
         return deep_merge(default, self.raw["tuned"] or {})
+
+    def _sweep_variant(self, variant: str) -> dict[str, Any]:
+        """A variant of `engines/<engine>/sweeps/<scenario>.yaml`, run as `tuned+<variant>`."""
+        path = sweep_path_for(self.path)
+        if not path.exists():
+            raise ValueError(f"{path} missing: no sweep file for track tuned+{variant}")
+        variants = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("variants") or {}
+        if variant not in variants:
+            raise ValueError(
+                f"{path}: unknown sweep variant {variant!r}; known: {sorted(variants)}"
+            )
+        return variants[variant] or {}
 
     def track(self, name: str) -> TrackConfig:
         data = self._data(name)
@@ -108,6 +124,13 @@ class EngineConfig:
         if not isinstance(items, list):
             raise ValueError("credits must be a list of {name, url}")
         return [Credit.model_validate(c) for c in items]
+
+
+def sweep_path_for(config: Path) -> Path:
+    """engines/<engine>/configs/<scenario>.yaml -> engines/<engine>/sweeps/<scenario>.yaml"""
+    parts = list(config.parts)
+    i = len(parts) - 1 - parts[::-1].index("configs")
+    return Path(*parts[:i], "sweeps", *parts[i + 1 :])
 
 
 def config_path(root: Path, engine: str, scenario_id: str) -> Path:

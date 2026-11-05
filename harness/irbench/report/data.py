@@ -170,7 +170,10 @@ def load_results(results_dir: Path) -> tuple[list[ScenarioResults], list[Unreada
     candidates = (
         p
         for p in results_dir.iterdir()
-        if (p / "manifest.json").is_file() and not p.name.endswith((".tmp", ".old"))
+        if (p / "manifest.json").is_file()
+        and not p.name.endswith((".tmp", ".old"))
+        # Sweep variants (`tuned+<name>`) are working runs, never published.
+        and "__tuned+" not in p.name
     )
     for d in sorted(candidates):
         try:
