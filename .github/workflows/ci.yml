@@ -37,6 +37,7 @@ jobs:
       - run: uv run irbench prepare --scenario knowledge-base/web-questions
       - run: uv run irbench prepare --scenario knowledge-base/community-qa
       - run: uv run irbench prepare --scenario knowledge-base/covid-papers
+      - run: uv run irbench prepare --scenario knowledge-base/covid-papers-abstracts
       - run: uv run irbench prepare --scenario entity-search/dbpedia
       - run: uv run irbench lint
 
