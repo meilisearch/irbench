@@ -1,7 +1,7 @@
 # Pinned engine image. The resolved digest is recorded in every run manifest.
 services:
   engine:
-    image: qdrant/qdrant:v1.19.2
+    image: qdrant/qdrant:v1.20.0
     container_name: irbench-qdrant
     ports:
       - "16333:6333"
