@@ -11,5 +11,6 @@ NORMALIZERS: dict[str, Callable[..., NormalizedDataset]] = {
     "cqadupstack": normalize_cqadupstack,
     "lotte-lifestyle": normalize_lotte,
     "trec-covid": normalize_trec_covid,
+    "trec-covid-abstracts": normalize_trec_covid,
     "amazon-esci": normalize_amazon_esci,
 }
