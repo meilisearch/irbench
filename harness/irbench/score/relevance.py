@@ -33,6 +33,9 @@ class GroupScore(BaseModel):
     n: int
     metrics: dict[str, float]
     group: str | None = None
+    # "tune" or "test" for a row scored on one half of the queries (irbench.score.halves);
+    # None for the row over every query.
+    half: str | None = None
     # 95% confidence interval of the mean nDCG@10 over the group's tasks (normal approximation).
     ndcg_ci95: tuple[float, float] | None = None
 
@@ -148,7 +151,26 @@ def per_task_ndcg(tasks: list[QueryTask], qrels: Qrels, run: RunResults) -> dict
     return _evaluate([t.task_id for t in tasks], qrels, run)[1]
 
 
-def score_relevance(tasks: list[QueryTask], qrels: Qrels, run: RunResults) -> list[GroupScore]:
+def score_relevance(
+    tasks: list[QueryTask],
+    qrels: Qrels,
+    run: RunResults,
+    halves: dict[str, str] | None = None,
+) -> list[GroupScore]:
+    """Rows over every task, then, when `halves` (task id -> half) is given, the same rows
+    for each half of the queries."""
+    rows = _score_rows(tasks, qrels, run, None)
+    if halves:
+        for half in sorted(set(halves.values())):
+            subset = [t for t in tasks if halves.get(t.task_id) == half]
+            if subset:
+                rows += _score_rows(subset, qrels, run, half)
+    return rows
+
+
+def _score_rows(
+    tasks: list[QueryTask], qrels: Qrels, run: RunResults, half: str | None
+) -> list[GroupScore]:
     groups: dict[tuple[str, str, str], list[str]] = defaultdict(list)
     by_query_group: dict[tuple[str, str, str], list[str]] = defaultdict(list)
     for task in tasks:
@@ -173,6 +195,7 @@ def score_relevance(tasks: list[QueryTask], qrels: Qrels, run: RunResults) -> li
                 perturbation=p,
                 n=len(ids),
                 metrics=metrics,
+                half=half,
                 ndcg_ci95=ci95(list(per_task.values())),
             )
         )
@@ -182,6 +205,7 @@ def score_relevance(tasks: list[QueryTask], qrels: Qrels, run: RunResults) -> li
             base=base,
             perturbation="all",
             group=group,
+            half=half,
             n=len(ids),
             metrics=_evaluate(ids, qrels, run, with_clean)[0],
         )

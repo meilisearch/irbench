@@ -10,6 +10,7 @@ from irbench.io import read_json
 from irbench.models import BASE_MODES, Mode
 from irbench.paths import slug
 from irbench.perf_files import perf_report_paths, read_perf_reports
+from irbench.score.halves import PUBLISHED_HALF
 
 MODES: tuple[str, ...] = get_args(Mode)
 PERTURBATIONS = ("original", "typo", "prefix", "synonym")
@@ -210,6 +211,8 @@ def _load_run(d: Path) -> RunResult:
     }
     files["perf"] = read_perf_reports(d) or None
     _validate_files(d, files)
+    if files["scores"] is not None:
+        files["scores"] = published_half(files["scores"])
     status, failure = manifest["status"], _failure(manifest)
     if status == "succeeded" and files["scores"] is None:
         status, failure = "incomplete", "the run succeeded but the bundle has no scores.json"
@@ -225,6 +228,26 @@ def _load_run(d: Path) -> RunResult:
         manifest=manifest,
         **files,
     )
+
+
+def published_half(scores: dict[str, Any]) -> dict[str, Any]:
+    """The scores the report shows: only the `test` half of the queries when the run was scored
+    by halves (settings are chosen on the `tune` half). Older bundles are returned unchanged."""
+    halves = scores.get("halves")
+    if not halves:
+        return scores
+    rows = [
+        {k: v for k, v in row.items() if k != "half"}
+        for row in scores["relevance"]
+        if row.get("half") == PUBLISHED_HALF
+    ]
+    out = {**scores, "relevance": rows, "published_half": PUBLISHED_HALF}
+    if "per_task" in scores:
+        out["per_task"] = {
+            metric: {t: v for t, v in values.items() if halves.get(t) == PUBLISHED_HALF}
+            for metric, values in scores["per_task"].items()
+        }
+    return out
 
 
 def _failure(manifest: dict[str, Any]) -> str | None:
