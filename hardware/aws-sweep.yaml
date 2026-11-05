@@ -1,0 +1,7 @@
+id: aws-sweep
+description: >-
+  The reference AWS c7i.4xlarge (16 vCPU, 32 GB) running several sweep lanes at once, one
+  engine per lane, each capped at 8 GB and unpinned. Relevance only: speed is never measured
+  or published on this profile.
+engine: {cpuset: null, memory: "8g"}
+loadgen: {cpuset: null}
