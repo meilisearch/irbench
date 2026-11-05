@@ -28,6 +28,8 @@ default:
 # search and stemming stay at the engine's defaults; hybrid stays the engine's native
 # fusion.
 tuned:
+  index:
+    rankingRules: [sort, words, attributeRank, typo, proximity, wordPosition, exactness]
   search:
     keyword:
       matchingStrategy: frequency
@@ -36,6 +38,14 @@ tuned:
       hybrid:
         semanticRatio: 0.45
   justification:
+    rankingRules: >-
+      `sort` first, as on the default track (strict sort on both bases; inactive without a sort
+      parameter). Then `attributeRank` moves up to right after `words`: among documents matching
+      the same number of query words, a match in a higher-priority field (the product name) ranks
+      before a typo-free or closer match in the description. `rankingRules` is a documented index
+      setting. The sweep tried 9 orders (2026-11-01); with `matchingStrategy: frequency`, keyword
+      nDCG@10 0.508 -> 0.533 and hybrid 0.621 -> 0.650. Also dropping `proximity` adds 0.003,
+      within noise, so every shipped rule is kept.
     matchingStrategy: With the default `last`, Meilisearch drops words from the end of the query
       until something matches, so the last word goes first. `frequency` drops the most frequent
       words first. A documented search parameter. Keyword nDCG@10 0.481 -> 0.508 (also the best

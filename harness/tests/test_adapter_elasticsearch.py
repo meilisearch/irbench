@@ -148,3 +148,28 @@ def test_hybrid_fusion_options():
         (3, "minmax"),
     ]
     assert linear["rank_window_size"] == 100
+
+
+def test_english_analysis_applies_at_index_and_search_time():
+    # Same chain as Elasticsearch's built-in `english` analyzer, with the scenario's synonyms
+    # added at search time after lowercasing (before stop words and stemming).
+    track = {"index": {"stop_words": "english", "stemming": "english"}}
+    body = make_adapter("elasticsearch", track).index_body()
+    analysis = body["settings"]["analysis"]
+    assert analysis["analyzer"]["irbench_index"]["filter"] == [
+        "irbench_possessive", "lowercase", "irbench_stop", "irbench_stemmer",
+    ]  # fmt: skip
+    assert analysis["analyzer"]["irbench_search"]["filter"] == [
+        "irbench_possessive", "lowercase", "irbench_synonyms", "irbench_stop", "irbench_stemmer",
+    ]  # fmt: skip
+    assert analysis["filter"]["irbench_stop"] == {"type": "stop", "stopwords": "_english_"}
+    assert analysis["filter"]["irbench_stemmer"] == {"type": "stemmer", "language": "english"}
+    name = body["mappings"]["properties"]["name"]
+    assert name["analyzer"] == "irbench_index" and name["search_analyzer"] == "irbench_search"
+    assert "stop_words" not in body["settings"] and "stemming" not in body
+
+
+def test_without_language_keys_the_index_analyzer_is_elasticsearchs_default():
+    body = make_adapter("elasticsearch").index_body()
+    assert "analyzer" not in body["mappings"]["properties"]["name"]
+    assert "irbench_index" not in body["settings"]["analysis"]["analyzer"]

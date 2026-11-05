@@ -105,3 +105,16 @@ def test_tuned_track_uses_frequency_matching_on_keyword_and_hybrid():
 
 def test_no_synonyms_creates_no_synonym_setting():
     assert make_adapter("meilisearch", synonyms=[]).index_settings()["synonyms"] == {}
+
+
+def test_english_stop_words_use_the_shared_list():
+    from irbench.engines.language import ENGLISH_STOP_WORDS
+
+    s = make_adapter("meilisearch", {"index": {"stop_words": "english"}}).index_settings()
+    assert s["stopWords"] == list(ENGLISH_STOP_WORDS) and "stop_words" not in s
+    assert "stopWords" not in make_adapter("meilisearch").index_settings()
+
+
+def test_stemming_is_rejected_meilisearch_has_none():
+    with pytest.raises(ValueError, match="stemming"):
+        make_adapter("meilisearch", {"index": {"stemming": "english"}}).index_settings()

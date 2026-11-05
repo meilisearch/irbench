@@ -3,6 +3,7 @@ from typing import Any
 from irbench.io import read_json, read_jsonl, read_run, write_json
 from irbench.perf_files import read_perf_reports
 from irbench.score.checks import CheckSummary, TaskCheck, summarize_checks
+from irbench.score.halves import task_halves
 from irbench.score.relevance import per_task_ndcg, score_relevance
 from irbench.stages.context import RunContext
 from irbench.stages.perf import summarize_perf
@@ -22,6 +23,7 @@ def score_stage(ctx: RunContext) -> dict[str, Any]:
         if task.task_id in na:
             not_applicable.setdefault(f"{task.mode}:{task.base}", na[task.task_id])
 
+    halves = task_halves(ctx.spec.scenario, ctx.all_tasks)
     checks = [TaskCheck.model_validate(r) for r in read_jsonl(run_dir / "checks.jsonl")]
     summaries = summarize_checks(checks)
     report = {
@@ -31,8 +33,11 @@ def score_stage(ctx: RunContext) -> dict[str, Any]:
         "model": ctx.spec.model,
         "track": ctx.spec.track,
         "relevance": [
-            g.model_dump(exclude_none=True) for g in score_relevance(supported, ctx.qrels, run)
+            g.model_dump(exclude_none=True)
+            for g in score_relevance(supported, ctx.qrels, run, halves)
         ],
+        # Task id -> "tune" or "test": settings are chosen on `tune`, scores published on `test`.
+        "halves": {t.task_id: halves[t.task_id] for t in supported},
         # Per-task nDCG@10 lets the report test whether two runs really differ (paired test).
         "per_task": {"ndcg@10": per_task_ndcg(supported, ctx.qrels, run)},
         "checks": [s.model_dump() for s in summaries],

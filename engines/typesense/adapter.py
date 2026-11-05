@@ -17,6 +17,7 @@ from irbench.engines.base import (
     require_vector,
 )
 from irbench.engines.config import deep_merge
+from irbench.engines.language import ENGLISH_STOP_WORDS, split_language
 from irbench.models import Filter, QueryTask
 
 API_KEY = "irbench"  # local benchmark only; set in docker/compose.yaml
@@ -65,9 +66,26 @@ class Adapter(EngineAdapter):
     def synonym_set(self) -> str:
         return f"{self.ctx.index}_synonyms"
 
+    @property
+    def english_stopword_set(self) -> str:
+        return f"{self.ctx.index}_english"
+
+    def stopword_sets(self) -> dict[str, list[str]]:
+        """Stopword sets to create: the config's own, plus the shared English list when
+        `stop_words: english` is set (language keys, irbench.engines.language)."""
+        sets = {k: list(v) for k, v in self.ctx.config.index.get(STOPWORDS, {}).items()}
+        if split_language(self.ctx.config.index)[1].stop_words:
+            sets[self.english_stopword_set] = list(ENGLISH_STOP_WORDS)
+        return sets
+
     def _index_config(self) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
-        config = dict(self.ctx.config.index)
+        index, lang = split_language(self.ctx.config.index)
+        config = dict(index)
         searchable = config.pop(SEARCHABLE_FIELDS, {})
+        if lang.stemming:
+            # `stem` needs a concrete string type: searchable fields become `string[]` and
+            # load_documents sends a single value as a one-element list.
+            searchable = deep_merge({"stem": True, "type": "string[]"}, searchable)
         fields = config.pop(FIELDS, {})
         config.pop(STOPWORDS, None)
         return config, searchable, fields
@@ -125,7 +143,7 @@ class Adapter(EngineAdapter):
         if self.ctx.synonyms:
             path = f"/synonym_sets/{self.synonym_set}"
             call(client, Request("PUT", path, body=self.synonyms_body(), headers=HEADERS))
-        for name, words in self.ctx.config.index.get(STOPWORDS, {}).items():
+        for name, words in self.stopword_sets().items():
             body = {"stopwords": list(words), "locale": "en"}
             call(client, Request("PUT", f"/stopwords/{name}", body=body, headers=HEADERS))
         call(client, Request("POST", "/collections", body=self.collection_body(), headers=HEADERS))
@@ -134,10 +152,16 @@ class Adapter(EngineAdapter):
         self, client: httpx.Client, docs: list[dict[str, Any]], vectors: np.ndarray
     ) -> None:
         id_field = self.ctx.scenario.id_field
+        searchable = self.ctx.scenario.index_fields.searchable
+        stem_lists = split_language(self.ctx.config.index)[1].stemming
         for start in range(0, len(docs), BATCH_SIZE):
             lines = []
             for i, doc in enumerate(docs[start : start + BATCH_SIZE], start=start):
                 body = {k: v for k, v in doc.items() if v is not None}
+                if stem_lists:
+                    for f in searchable:
+                        if isinstance(body.get(f), str):
+                            body[f] = [body[f]]
                 body["id"] = str(doc[id_field])
                 body[VECTOR_FIELD] = vectors[i].tolist()
                 lines.append(json.dumps(body))
@@ -171,6 +195,8 @@ class Adapter(EngineAdapter):
         s: dict[str, Any] = {"collection": self.ctx.index, "include_fields": "id"}
         if task.base in ("keyword", "hybrid"):
             s["q"] = task.text
+            if split_language(self.ctx.config.index)[1].stop_words:
+                s["stopwords"] = self.english_stopword_set
             s["query_by"] = ",".join(searchable)
             # Field priority as weights n - i, the same boosts the other engines get.
             s["query_by_weights"] = ",".join(str(n - i) for i in range(n))

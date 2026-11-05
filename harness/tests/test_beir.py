@@ -209,3 +209,37 @@ def test_trec_covid_joins_metadata_and_splits_query_forms(tmp_path):
     qrels = read_qrels(out.qrels)
     assert qrels["1-question"] == qrels["1-keyword"] == {"aaa": 2, "bbb": 0}
     assert out.dropped == {"docs": 1, "judgments": 2}  # zzz under both query forms
+
+
+def test_trec_covid_abstracts_variant_matches_the_relevancy_bench_files(tmp_path):
+    # The relevancy-bench corpus keeps papers whose abstract has at least 4 characters and
+    # lists relevant judgments only; it carries no CORD-19 metadata.
+    corpus = _jsonl(
+        tmp_path / "corpus.jsonl",
+        [
+            {"_id": "aaa", "title": "T1", "text": "A long abstract", "metadata": {}},
+            {"_id": "bbb", "title": "T2", "text": " NA. ", "metadata": {}},
+            {"_id": "ccc", "title": "T3", "text": "", "metadata": {}},
+            {"_id": "ddd", "title": "T4", "text": "Text", "metadata": {}},
+        ],
+    )
+    queries = _jsonl(
+        tmp_path / "queries.jsonl",
+        [{"_id": "1", "text": "what  is it", "metadata": {"query": "it"}}],
+    )
+    (tmp_path / "test.tsv").write_text(
+        "query-id\tcorpus-id\tscore\n1\taaa\t2\n1\tddd\t0\n1\tbbb\t1\n1\tccc\t1\n"
+    )
+    out = normalize_trec_covid(
+        {"corpus": corpus, "queries": queries, "qrels": tmp_path / "test.tsv"},
+        tmp_path / "out",
+        min_abstract_chars=4,
+        relevant_only=True,
+    )
+    docs = {d["id"]: d for d in read_jsonl(out.docs)}
+    assert docs == {
+        "aaa": {"id": "aaa", "title": "T1", "text": "A long abstract"},
+        "ddd": {"id": "ddd", "title": "T4", "text": "Text"},
+    }
+    assert read_qrels(out.qrels) == {"1-question": {"aaa": 2}, "1-keyword": {"aaa": 2}}
+    assert out.dropped == {"docs": 2, "judgments": 4}  # bbb, ccc under both forms

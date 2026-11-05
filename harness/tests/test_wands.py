@@ -40,3 +40,13 @@ def test_unknown_label_is_an_error(wands_raw, tmp_path):
     wands_raw["label"].write_text("id\tquery_id\tproduct_id\tlabel\n0\t0\t0\tMaybe\n")
     with pytest.raises(ValueError, match="Maybe"):
         NORMALIZERS["wands"](wands_raw, tmp_path / "out")
+
+
+def test_csv_escaped_query_is_unescaped(wands_raw, tmp_path):
+    # WANDS query.csv quotes a query field CSV-style when the query itself holds a quote:
+    # "fawkes 36"" blue vanity" is the query  fawkes 36" blue vanity  (3 such rows).
+    wands_raw["query"].write_text(
+        'query_id\tquery\tquery_class\n0\t"fawkes 36"" blue vanity"\tVanities\n', encoding="utf-8"
+    )
+    result = NORMALIZERS["wands"](wands_raw, tmp_path / "out")
+    assert next(read_jsonl(result.queries))["text"] == 'fawkes 36" blue vanity'

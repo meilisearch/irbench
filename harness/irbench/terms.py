@@ -24,3 +24,15 @@ def load_term_groups(path: Path) -> list[list[str]]:
 def scenario_term_groups(path: Path | None) -> list[list[str]]:
     """Term groups of a scenario file, or none when the scenario has no such file."""
     return [] if path is None else load_term_groups(path)
+
+
+def plain_query_text(text: str) -> str:
+    """A query as plain text, identical for every engine.
+
+    `"` (phrase search) and a leading `-` (exclusion) are query operators in Meilisearch,
+    Typesense and Postgres `websearch_to_tsquery`, and plain text in Elasticsearch
+    `multi_match`, Qdrant and ParadeDB. Removing them keeps one query meaning one thing
+    everywhere. Hyphens inside a word (covid-19) are kept.
+    """
+    words = (w.lstrip("-") for w in text.replace('"', " ").split())
+    return " ".join(w for w in words if w)

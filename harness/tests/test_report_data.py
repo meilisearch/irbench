@@ -320,3 +320,10 @@ def test_label_names_the_track_when_an_engine_has_two(tmp_path):
     write_bundle(tmp_path, "qdrant")
     labels = sorted(r.label for r in load_results(tmp_path)[0][0].runs)
     assert labels == ["qdrant", "qdrant (tuned)"]
+
+
+def test_sweep_variant_runs_are_not_published(tmp_path):
+    write_bundle(tmp_path, "meilisearch", track="tuned")
+    write_bundle(tmp_path, "meilisearch", track="tuned+stop_words")
+    (scenario,), unreadable = load_results(tmp_path)
+    assert [r.track for r in scenario.runs] == ["tuned"] and unreadable == []
