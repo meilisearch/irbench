@@ -1,7 +1,7 @@
 # Pinned engine image. The resolved digest is recorded in every run manifest.
 services:
   engine:
-    image: paradedb/paradedb:0.26.1-pg17
+    image: paradedb/paradedb:0.26.5-pg17@sha256:af82b608d85fccc315dcaa65fdeef63c94837906bb7984f378ab645c8d4e81b8
     container_name: irbench-postgres-paradedb
     ports:
       - "15433:5432"

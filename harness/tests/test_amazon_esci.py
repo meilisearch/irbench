@@ -113,7 +113,9 @@ def test_doc_fields(tmp_path):
         {"product_id": "P3", "title": "No brand widget", "brand": None},
         {"product_id": "P4", "title": ""},
     ]
+    # P1 keeps query 1 in the pool, so its judgment on the dropped P4 is counted.
     examples = [
+        {"query_id": 1, "query": "notitle product", "product_id": "P1", "esci_label": "E"},
         {"query_id": 1, "query": "notitle product", "product_id": "P4", "esci_label": "E"},
     ]
     qac = [{"final_search_term": "notitle product", "prefixes": ["notitle product"]}]
@@ -126,6 +128,38 @@ def test_doc_fields(tmp_path):
     assert docs["P3"]["brand"] is None
     assert "P4" not in docs
     assert result.dropped == {"docs": 1, "judgments": 1}
+
+
+def test_block_tags_split_words(tmp_path):
+    products = [
+        {
+            "product_id": "P1",
+            "title": "Product",
+            "description": "<p>one</p><p>two</p>three<br>four",
+        },
+    ]
+    examples = [{"query_id": 1, "query": "product", "product_id": "P1", "esci_label": "E"}]
+    result = normalize_amazon_esci(_raw(tmp_path, products, examples), tmp_path / "out")
+    docs = {d["id"]: d for d in read_jsonl(result.docs)}
+    assert docs["P1"]["description"] == "one two three four"
+
+
+def test_pool_needs_a_surviving_positive(tmp_path):
+    products = [
+        {"product_id": "P1", "title": "Kept product"},
+        {"product_id": "P2", "title": ""},  # dropped: no title
+    ]
+    examples = [
+        {"query_id": 1, "query": "kept", "product_id": "P1", "esci_label": "E"},
+        {"query_id": 2, "query": "lost", "product_id": "P2", "esci_label": "E"},
+        {"query_id": 2, "query": "lost", "product_id": "P1", "esci_label": "C"},
+    ]
+    qac = [
+        {"final_search_term": "kept", "prefixes": ["ke", "kept"]},
+        {"final_search_term": "lost", "prefixes": ["lo", "lost"]},
+    ]
+    result = normalize_amazon_esci(_raw(tmp_path, products, examples, qac=qac), tmp_path / "out")
+    assert {q["qid"] for q in read_jsonl(result.queries)} == {"esci-1"}
 
 
 def test_grades(tmp_path):
@@ -339,7 +373,8 @@ def test_text_not_width_folded(tmp_path):
     result = normalize_amazon_esci(raw, tmp_path / "out", locale="jp")
 
     (query,) = list(read_jsonl(result.queries))
-    assert query["text"] == "ａｂｃ 時計"
+    # Typed case is kept (main d73df47); full-width letters stay full-width.
+    assert query["text"] == "ＡＢＣ 時計"
     assert not query["text"].isascii()
     assert all(ord(c) > 127 or c == " " for c in query["text"])
 

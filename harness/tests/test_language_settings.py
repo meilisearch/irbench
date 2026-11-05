@@ -237,3 +237,15 @@ def test_pgroonga_seqscan_default_yields_to_the_config():
 def test_tsvector_sets_no_planner_default():
     for track in (None, {"index": {"text_search": "tsvector"}}):
         assert "enable_seqscan" not in _settings_sql(make_adapter("postgres", track))
+
+
+def test_es_analyzer_key_excludes_the_english_language_keys():
+    track = {"index": {"analyzer": "cjk", "stemming": "english"}}
+    with pytest.raises(ValueError, match="exclusive"):
+        make_adapter("elasticsearch", track, synonyms=[]).index_body()
+
+
+def test_paradedb_tokenizer_key_excludes_the_english_language_keys():
+    track = {"index": {"tokenizer": "pdb.lindera(japanese)", "stop_words": "english"}}
+    with pytest.raises(ValueError, match="exclusive"):
+        make_adapter("postgres-paradedb", track).text_index_ddl()

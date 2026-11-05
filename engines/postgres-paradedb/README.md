@@ -1,6 +1,6 @@
 # ParadeDB (Postgres + pg_search + pgvector)
 
-Image: `paradedb/paradedb:0.26.1-pg17` (Postgres 17, pg_search 0.26.1 BM25, pgvector 0.8, host port 15433, database `irbench`). Adapter: `adapter.py`, built on the shared `irbench.engines.postgres.PostgresAdapter`; only keyword search, the extension setup, `plan_cache_mode = force_custom_plan` and the keyword ordering (by score alone, with no `id` tie-break) differ from the `postgres` engine.
+Image: `paradedb/paradedb:0.26.5-pg17`, pinned by digest (Postgres 17, pg_search 0.26.5 BM25, pgvector 0.8, host port 15433, database `irbench`). Adapter: `adapter.py`, built on the shared `irbench.engines.postgres.PostgresAdapter`; only keyword search, the extension setup, `plan_cache_mode = force_custom_plan` and the keyword ordering (by score alone, with no `id` tie-break) differ from the `postgres` engine.
 
 ## What the default track sends
 

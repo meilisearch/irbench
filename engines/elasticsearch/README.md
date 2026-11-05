@@ -1,6 +1,6 @@
 # Elasticsearch
 
-Image: `elasticsearch:9.5.5`, single node, security disabled (host port 19200), self-generated trial license (see Hybrid below). Adapter: `adapter.py`.
+Image: `docker.elastic.co/elasticsearch/elasticsearch:9.5.6` (pinned by digest), single node, security disabled (host port 19200), self-generated trial license (see Hybrid below). Adapter: `adapter.py`.
 
 ## What the default track sends
 

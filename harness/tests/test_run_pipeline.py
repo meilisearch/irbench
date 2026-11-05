@@ -347,3 +347,28 @@ def test_manifest_records_the_synonyms_reason(tmp_path, wands_raw):
         prepare_client=fixture_client(wands_raw),
     )
     assert manifest["config"]["synonyms"] == "no synonyms.txt"
+
+
+def test_each_stage_records_the_commit_it_ran_at(tmp_path, wands_raw, monkeypatch):
+    # Re-running only `score` must not re-stamp when and from which commit the
+    # results were retrieved: provenance is kept per stage.
+    import irbench.stages.run as run_mod
+
+    root = fake_root(tmp_path, wands_raw)
+    server, runtime = _server(root), FakeRuntime()
+    kwargs = dict(
+        runtime_factory=lambda *a: runtime,
+        client_factory=server.client_factory,
+        prepare_client=fixture_client(wands_raw),
+        embedder=FakeEmbedder(),
+        loadgen_runner=fake_loadgen(),
+    )
+    monkeypatch.setattr(run_mod, "git_state", lambda root: {"git_sha": "aaa", "git_dirty": False})
+    run_pipeline(root, FAKE_SPEC, list(STAGES), **kwargs)
+    monkeypatch.setattr(run_mod, "git_state", lambda root: {"git_sha": "bbb", "git_dirty": True})
+    manifest = run_pipeline(root, FAKE_SPEC, ["score"], **kwargs)
+
+    relevance, score = manifest["stages"]["relevance"], manifest["stages"]["score"]
+    assert (relevance["git_sha"], relevance["git_dirty"]) == ("aaa", False)
+    assert (score["git_sha"], score["git_dirty"]) == ("bbb", True)
+    assert relevance["config_hash"] == score["config_hash"] and len(score["config_hash"]) == 64

@@ -125,6 +125,39 @@ relevant); CQADupStack and LoTTE list only relevant documents, so on
 community-qa and web-questions judged@10 is the share of known relevant
 documents and does not separate "unjudged" from "judged not relevant".
 
+### Junk in the results: clean@k and found@k
+
+nDCG@10 does not see what an engine shows once the good matches run out: two
+engines that rank the same relevant documents first score the same whether the
+rest of their results are weak partial matches or nothing. **clean@k** and
+**found@k** (k = 5, 10, 20, 100), adapted from the Meilisearch relevancy-bench
+protocol, separate the two.
+
+- **found@k** is the gain of the top k results (the sum of their grades) over the
+  best gain possible in k results, with no rank discount. With yes/no grades it is
+  the relevant documents found over min(relevant, k).
+- **clean@k** is the mean grade of the judged results among the top k, over the
+  best mean grade possible for that many results. It drops when an engine pads its
+  results with documents judged not relevant instead of returning fewer.
+  Unjudged results are left out (they are not counted as junk), and a query
+  whose top k holds no judged result scores 1: it showed no junk, and found@k
+  shows what it missed.
+
+Both are means over the tasks that have at least one relevant document. Returning
+nothing scores better on clean@k than returning weak matches, so read clean@k
+next to found@k, never alone. clean@k is left out when the qrels list only
+relevant documents (community-qa and web-questions): with nothing judged
+non-relevant, every run would score 1. Even where it is reported, it only sees
+junk the assessors judged, so check judged@10 too.
+
+For comparison with the usual measures, **nDCG@k** (k = 5, 10, 20, 100),
+**precision@k** (relevant results in the top k over k; k = 1, 5, 20, 100) and
+**recall@k** (relevant results in the top k over all relevant documents;
+k = 10, 20, 100) are reported too, from `ranx`, with grades above 0
+counted as relevant and unjudged results as not relevant. Unlike clean@k,
+precision@k penalises an engine that returns fewer than k results, and it cannot
+reach 1 when a query has fewer than k relevant documents.
+
 ### Confidence intervals and significance
 
 Each nDCG@10 row of a mode (overall and per perturbation; not the query-group

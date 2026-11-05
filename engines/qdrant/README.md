@@ -1,6 +1,6 @@
 # Qdrant
 
-Image: `qdrant/qdrant:v1.19.2` (host port 16333). Adapter: `adapter.py`.
+Image: `qdrant/qdrant:v1.20.0` (host port 16333). Adapter: `adapter.py`.
 
 ## What the default track sends
 

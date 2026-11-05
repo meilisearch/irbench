@@ -16,11 +16,13 @@ from irbench.engines.base import (
     require_vector,
 )
 from irbench.engines.config import deep_merge
+from irbench.engines.language import split_language
 from irbench.models import Filter, QueryTask
 
 VECTOR_FIELD = "vector"
 SYNONYMS_FILTER = "irbench_synonyms"
 SEARCH_ANALYZER = "irbench_search"
+INDEX_ANALYZER = "irbench_index"
 BATCH_SIZE = 1000
 # Reciprocal rank fusion constant, the same k = 60 as Qdrant and the two Postgres engines.
 RRF_RANK_CONSTANT = 60
@@ -63,10 +65,13 @@ class Adapter(EngineAdapter):
         f = self.ctx.scenario.index_fields
         exact = self._exact_fields()
         props: dict[str, Any] = {}
+        _, lang = split_language(self.ctx.config.index)
         for name in f.searchable:
             props[name] = {"type": "text", "search_analyzer": self._search_analyzer}
             if self._language_analyzer:
                 props[name]["analyzer"] = self._language_analyzer
+            elif lang.stop_words or lang.stemming:
+                props[name]["analyzer"] = INDEX_ANALYZER
             if name in exact:
                 props[name]["fields"] = {"raw": {"type": "keyword"}}
         for name in sorted(exact - set(f.searchable)):
@@ -82,25 +87,56 @@ class Adapter(EngineAdapter):
         return {"dynamic": False, "properties": props}
 
     def index_body(self) -> dict[str, Any]:
-        filters = ["lowercase"]
-        analysis: dict[str, Any] = {}
+        index, lang = split_language(self.ctx.config.index)
+        if self._language_analyzer and (lang.stop_words or lang.stemming):
+            raise ValueError(
+                "elasticsearch: index.analyzer and index.stop_words/stemming are exclusive; "
+                "a language analyzer brings its own stop words and stemmer"
+            )
+        # Language keys follow Elasticsearch's built-in `english` analyzer chain
+        # (possessive stemmer, lowercase, `_english_` stop words, english stemmer).
+        before = ["irbench_possessive"] if lang.stemming else []
+        after = (["irbench_stop"] if lang.stop_words else []) + (
+            ["irbench_stemmer"] if lang.stemming else []
+        )
+        token_filters: dict[str, Any] = {}
+        if lang.stemming:
+            token_filters["irbench_possessive"] = {
+                "type": "stemmer",
+                "language": "possessive_english",
+            }
+            token_filters["irbench_stemmer"] = {"type": "stemmer", "language": "english"}
+        if lang.stop_words:
+            token_filters["irbench_stop"] = {"type": "stop", "stopwords": "_english_"}
+        search = [*before, "lowercase"]
         if self.ctx.synonyms:
-            analysis["filter"] = {
-                SYNONYMS_FILTER: {
-                    "type": "synonym_graph",
-                    "synonyms": [", ".join(group) for group in self.ctx.synonyms],
-                }
+            token_filters[SYNONYMS_FILTER] = {
+                "type": "synonym_graph",
+                "synonyms": [", ".join(group) for group in self.ctx.synonyms],
             }
-            filters.append(SYNONYMS_FILTER)
+            search.append(SYNONYMS_FILTER)
+        analyzers: dict[str, Any] = {}
+        # Without synonyms, a language analyzer (index.analyzer) also serves the search side.
         if self._search_analyzer == SEARCH_ANALYZER:
-            analysis["analyzer"] = {
-                SEARCH_ANALYZER: {"type": "custom", "tokenizer": "standard", "filter": filters}
+            analyzers[SEARCH_ANALYZER] = {
+                "type": "custom",
+                "tokenizer": "standard",
+                "filter": search + after,
             }
+        if lang.stop_words or lang.stemming:
+            analyzers[INDEX_ANALYZER] = {
+                "type": "custom",
+                "tokenizer": "standard",
+                "filter": [*before, "lowercase", *after],
+            }
+        analysis: dict[str, Any] = {"analyzer": analyzers}
+        if token_filters:
+            analysis["filter"] = token_filters
         body = {
             "settings": {"number_of_replicas": 0, "analysis": analysis},
             "mappings": self.mappings(),
         }
-        overrides = {k: v for k, v in self.ctx.config.index.items() if k != ANALYZER}
+        overrides = {k: v for k, v in index.items() if k != ANALYZER}
         return deep_merge(body, overrides)
 
     def create_index(self, client: httpx.Client) -> None:

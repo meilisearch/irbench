@@ -49,7 +49,7 @@ tuned:
       instead of requiring all of them, the way BM25 engines match: Postgres as shipped needs
       every query word, so a long or partly-off query matches nothing. Written in the SQL the
       engine runs, no harness-side rewriting. Costs speed: every matching document is ranked.
-      Keyword nDCG@10 0.174 -> 0.174.'
+      Keyword nDCG@10 0.174 -> 0.456 on covid-papers (2026-10-20 runs, all query variants).'
     rrf: Reciprocal rank fusion still runs in one SQL statement inside the database (k = 60);
       `weights` scales each side's 1 / (k + rank) term, [keyword, vector]. Hybrid nDCG@10 0.573
       -> 0.585 with the vector ranking weighted 2x; the hybrid keyword side keeps AND matching

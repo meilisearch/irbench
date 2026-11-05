@@ -1,7 +1,13 @@
 import pytest
 
 from irbench.models import QueryTask
-from irbench.score.relevance import ci95, judged_at_k, per_task_ndcg, score_relevance
+from irbench.score.relevance import (
+    ci95,
+    clean_and_found_at_k,
+    judged_at_k,
+    per_task_ndcg,
+    score_relevance,
+)
 
 
 def _task(
@@ -35,6 +41,11 @@ def test_hand_computed_metrics():
     assert m["recall@10"] == pytest.approx(0.5)
     assert m["mrr@10"] == pytest.approx(0.5)
     assert m["success@1"] == pytest.approx(0.0)
+    # d1 at rank 2; d2 not returned. P@1 = 0, P@5 = 1/5, R@20 = 1/2; nDCG@k equal past rank 3.
+    assert m["precision@1"] == pytest.approx(0.0)
+    assert m["precision@5"] == pytest.approx(0.2)
+    assert m["recall@20"] == pytest.approx(0.5)
+    assert m["ndcg@5"] == m["ndcg@20"] == m["ndcg@100"] == pytest.approx(m["ndcg@10"])
 
 
 def test_missing_run_entry_scores_zero():
@@ -72,8 +83,49 @@ def test_groups_by_mode_and_perturbation():
 
 
 def test_empty_run_is_all_zero():
+    # Except clean@k: a run that shows nothing shows no junk.
     scores = score_relevance([_task("t1")], QRELS, {})
-    assert all(v == 0.0 for v in _group(scores).metrics.values())
+    m = _group(scores).metrics
+    assert all(v == 0.0 for name, v in m.items() if not name.startswith("clean@"))
+    assert all(m[f"clean@{k}"] == 1.0 for k in (5, 10, 20, 100))
+
+
+# t1: d1 grade 2, d2 grade 1, d3 judged not relevant (0).
+def test_found_is_gain_over_best_gain_in_k():
+    m = clean_and_found_at_k(["t1"], QRELS, {"t1": ["d3", "d9", "d2", "d1"]}, k=2)
+    assert m["found@2"] == pytest.approx(0.0)  # d3, d9 first; best possible is d1 + d2 (3)
+    m = clean_and_found_at_k(["t1"], QRELS, {"t1": ["d3", "d2", "d9", "d1"]}, k=5)
+    assert m["found@5"] == pytest.approx(1.0)  # d2 + d1 = 3 = best 3
+
+
+def test_clean_drops_with_judged_junk_only():
+    # Only the two relevant docs: no junk.
+    assert clean_and_found_at_k(["t1"], QRELS, {"t1": ["d1", "d2"]}, k=5)["clean@5"] == 1.0
+    # Unjudged d9 is ignored.
+    assert clean_and_found_at_k(["t1"], QRELS, {"t1": ["d1", "d9"]}, k=5)["clean@5"] == 1.0
+    # d1 then judged-irrelevant d3: mean grade 1, best for 2 results is (2 + 1) / 2.
+    m = clean_and_found_at_k(["t1"], QRELS, {"t1": ["d1", "d3"]}, k=5)
+    assert m["clean@5"] == pytest.approx(1 / 1.5)
+    # Showing only the best doc is perfect, not over 1.
+    assert clean_and_found_at_k(["t1"], QRELS, {"t1": ["d1"]}, k=5)["clean@5"] == 1.0
+
+
+def test_clean_is_one_when_nothing_judged_is_shown():
+    m = clean_and_found_at_k(["t1"], QRELS, {"t1": ["d9"]}, k=5)
+    assert m == {"found@5": 0.0, "clean@5": 1.0}
+
+
+def test_clean_skips_tasks_without_relevant_documents():
+    qrels = {"t1": {"d1": 1}, "t2": {"d2": 0}}
+    m = clean_and_found_at_k(["t1", "t2"], qrels, {"t1": ["d1"], "t2": ["d2"]}, k=5)
+    assert m == {"found@5": 1.0, "clean@5": 1.0}
+
+
+def test_clean_left_out_when_qrels_list_only_relevant_documents():
+    qrels = {"t1": {"d1": 1}}
+    m = _group(score_relevance([_task("t1")], qrels, {"t1": ["d1", "d9"]})).metrics
+    assert "found@20" in m
+    assert not any(name.startswith("clean@") for name in m)
 
 
 def test_group_rows_are_added_after_the_existing_rows():

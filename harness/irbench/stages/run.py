@@ -10,7 +10,7 @@ import httpx
 
 from irbench.embed.base import Embedder
 from irbench.io import read_json
-from irbench.manifest import write_manifest
+from irbench.manifest import git_state, write_manifest
 from irbench.runs import STAGES, RunSpec
 from irbench.runtime.docker import DockerRuntime, Runner, Runtime, run_command
 from irbench.runtime.hardware import HardwareProfile, load_hardware
@@ -116,7 +116,13 @@ def run_pipeline(
 
     def record(stage: str, fn: Callable[[], Any]) -> bool:
         started, t0 = _now(), time.perf_counter()
-        entry: dict[str, Any] = {"started_at": started}
+        # Provenance per stage: a later re-run of `score` alone must not re-stamp the commit
+        # and config the results were retrieved with.
+        entry: dict[str, Any] = {"started_at": started, **git_state(root)}
+        try:
+            entry["config_hash"] = ctx.config.hash(ctx.spec.track)
+        except (FileNotFoundError, ValueError):
+            entry["config_hash"] = None
         try:
             result = fn()
         except Exception as e:  # spec §9: a failed stage is recorded, never a crash
