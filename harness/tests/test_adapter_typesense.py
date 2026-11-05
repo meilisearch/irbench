@@ -154,3 +154,18 @@ def test_parse_raises_on_an_error_inside_a_200_response():
     payload = {"results": [{"code": 422, "error": "Only upto 250 hits can be fetched per page."}]}
     with pytest.raises(EngineError, match="422"):
         make_adapter("typesense").parse(make_task("keyword"), payload)
+
+
+def test_language_keys_map_to_stem_and_a_stopword_set():
+    from irbench.engines.language import ENGLISH_STOP_WORDS
+
+    track = {"index": {"stop_words": "english", "stemming": "english"}}
+    adapter = make_adapter("typesense", track)
+    fields = {f["name"]: f for f in adapter.collection_body()["fields"]}
+    assert fields["name"]["stem"] is True and fields["name"]["type"] == "string[]"
+    assert "stem" not in fields.get("average_rating", {})
+    assert "stop_words" not in adapter.collection_body()
+    assert adapter.stopword_sets() == {"idx_english": list(ENGLISH_STOP_WORDS)}
+    assert _search(make_task("keyword"), track=track)["stopwords"] == "idx_english"
+    assert "stopwords" not in _search(make_task("semantic"), V, track=track)
+    assert "stopwords" not in _search(make_task("keyword"))

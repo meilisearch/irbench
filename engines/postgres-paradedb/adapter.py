@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from irbench.engines.language import split_language
 from irbench.engines.postgres import PostgresAdapter, Sql
 
 
@@ -17,7 +18,14 @@ class Adapter(PostgresAdapter):
 
     def text_index_ddl(self) -> str:
         # No key_field: deprecated no-op in pg_search 0.26 (the primary key is used).
-        return f"CREATE INDEX ON {self.table} USING bm25 (id, {', '.join(self.searchable)})"
+        _, lang = split_language(self.ctx.config.index)
+        filters = (["'stemmer=english'"] if lang.stemming else []) + (
+            ["'stopwords_language=english'"] if lang.stop_words else []
+        )
+        # Token filters go on the default tokenizer (unicode_words), cast per field.
+        tok = f"::pdb.unicode_words({', '.join(filters)})" if filters else ""
+        cols = [f"({f}{tok})" if tok else f for f in self.searchable]
+        return f"CREATE INDEX ON {self.table} USING bm25 (id, {', '.join(cols)})"
 
     def keyword_tiebreak(self) -> str:
         # pg_search pushes a Top-K order down to the BM25 index only when the whole ORDER BY

@@ -17,6 +17,7 @@ from irbench.engines.base import (
     require_vector,
 )
 from irbench.engines.config import deep_merge
+from irbench.engines.language import ENGLISH_STOP_WORDS, split_language
 from irbench.models import Filter, QueryTask
 
 EMBEDDER = "default"
@@ -59,7 +60,12 @@ class Adapter(EngineAdapter):
             "faceting": {"maxValuesPerFacet": s.max_facet_values},
             "embedders": {EMBEDDER: {"source": "userProvided", "dimensions": self.ctx.dim}},
         }
-        return deep_merge(settings, self.ctx.config.index)
+        index, lang = split_language(self.ctx.config.index)
+        if lang.stemming:
+            raise ValueError("index.stemming: Meilisearch has no stemming")
+        if lang.stop_words:
+            settings["stopWords"] = list(ENGLISH_STOP_WORDS)
+        return deep_merge(settings, index)
 
     def _wait(self, client: httpx.Client, uid: int, timeout_s: float) -> None:
         def done() -> bool:

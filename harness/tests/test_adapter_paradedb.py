@@ -93,3 +93,12 @@ def test_conjunction_and_fuzzy_options():
     a = make_adapter("postgres-paradedb", {"search": {"keyword": {"match": "all", "fuzzy": 1}}})
     sql = a.render(make_task("keyword"), None, 10).sql
     assert "name &&& $1::text::pdb.fuzzy(1)::pdb.boost(5)" in sql
+
+
+def test_language_keys_become_token_filters_on_every_searchable_field():
+    from adapter_helpers import make_adapter
+
+    track = {"index": {"stop_words": "english", "stemming": "english"}}
+    ddl = make_adapter("postgres-paradedb", track).text_index_ddl()
+    tok = "::pdb.unicode_words('stemmer=english', 'stopwords_language=english'))"
+    assert f"USING bm25 (id, (name{tok}, (product_class{tok}," in ddl
