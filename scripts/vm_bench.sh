@@ -5,6 +5,7 @@
 #   scripts/vm_bench.sh sweeps    three engine lanes in parallel; each runs its engines' default
 #                                 track (relevance only, not published for speed) then their sweep
 #                                 variants (tune half, relevance only, aws-sweep profile)
+#   scripts/vm_bench.sh lane E...  rerun the sweeps lane of the given engines
 #   scripts/vm_bench.sh finals    tuned track, every stage including speed, one run at a time
 #                                 on the pinned aws-c7i-4xlarge profile
 #
@@ -72,6 +73,11 @@ case "${1:-}" in
     wait
     touch "$LOGS/sweeps.done"
     ;;
+  lane)  # rerun one lane: scripts/vm_bench.sh lane <engine>...
+    shift
+    lane "$@"
+    touch "$LOGS/lane-${1}.done"
+    ;;
   finals)
     for s in "${SCENARIOS[@]}"; do
       for engine in meilisearch elasticsearch typesense qdrant postgres-paradedb postgres; do
@@ -86,7 +92,7 @@ case "${1:-}" in
     touch "$LOGS/finals.done"
     ;;
   *)
-    sed -n 2,12p "$0"
+    sed -n 2,13p "$0"
     exit 2
     ;;
 esac

@@ -3,6 +3,9 @@ services:
   engine:
     image: paradedb/paradedb:0.26.5-pg17@sha256:af82b608d85fccc315dcaa65fdeef63c94837906bb7984f378ab645c8d4e81b8
     container_name: irbench-postgres-paradedb
+    # Docker's default /dev/shm (64 MB) is too small for parallel index builds and
+    # parallel queries, which allocate dynamic shared memory; both Postgres engines get 2 GB.
+    shm_size: 2gb
     ports:
       - "15433:5432"
     environment:
