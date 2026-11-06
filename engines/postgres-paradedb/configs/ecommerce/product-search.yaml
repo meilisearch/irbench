@@ -48,12 +48,19 @@ default:
 # in sweeps/ on the tune half of the queries (2026-11-06; selection rule in
 # docs/methodology/parity). Hybrid stays the engine's native fusion.
 tuned:
+  index:
+    stemming: english
+    stop_words: english
   search:
     keyword:
       fuzzy: 1
     hybrid:
       fuzzy: 1
   justification:
+    stemming: See stop_words.
+    stop_words: '`stemming: english, stop_words: english`: pg_search''s English tokenizer filters,
+      part of what it ships (the parity rules turn on each engine''s language features). Keyword
+      nDCG@10 0.558 -> 0.589, hybrid 0.610 -> 0.617 (2026-11-06 sweep, tune half); stemming alone scored keyword 0.581.'
     fuzzy: '`fuzzy: 1` turns on pg_search''s fuzzy matching (off by default; the parity rules
       allow settings that only turn a feature on): query words match within one edit, through
       `::pdb.fuzzy(1)`. Keyword nDCG@10 0.522 -> 0.564; it lowers relevance on the knowledge-base
