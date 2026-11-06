@@ -22,7 +22,8 @@ Search parameters only, found by a sweep scored on nDCG@10 per scenario and base
 
 - keyword: keep dropping query words, the first ones first (`drop_tokens_mode: left_to_right`), until 250 documents match, with `text_match_type: max_weight` on WANDS and covid-papers and the default `max_score` on community-qa; on web-questions until 10 match, with `prioritize_token_position`. The default (`drop_tokens_threshold: 1`) needs every query word to match, which hurts long or partly-off queries most.
 - hybrid, per scenario: the fusion weight `alpha` (through `vector_query_options`), `rerank_hybrid_matches`, and `text_match_type`; on WANDS also word dropping. Word dropping lowers hybrid relevance on the three knowledge-base scenarios, so it stays off there.
-- Stemming and stop words stay off: the parity rules keep stemming at each engine's language default, and no other engine removes stop words.
+- English stop words (`stop_words: english`) on WANDS, community-qa, covid-papers-abstracts and web-questions, and English stemming (`stemming: english`) on WANDS and covid-papers-abstracts, chosen by the committed sweeps (2026-11-06, tune half). Neither helped on covid-papers, so both stay off there.
+- On covid-papers-abstracts, keyword drops words until 10 documents match and hybrid uses `alpha` 0.7.
 
 ## Languages
 

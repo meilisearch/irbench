@@ -43,18 +43,24 @@ default:
       always prepares) the `|||` right-hand side is no longer a constant and
       pg_search fails with "must be a text or text array value".
       force_custom_plan keeps every execution on a custom plan.
-# tuned: the best settings found by a sweep of the engine's documented search settings,
-# scored on nDCG@10 per scenario and retrieval base (2026-10-20). Typo tolerance, prefix
-# search and stemming stay at the engine's defaults, except where turning on typo tolerance
-# the engine ships off is allowed by the parity rules; hybrid stays the engine's native
-# fusion.
+# tuned: the best settings found by sweeps of the engine's documented settings, scored on
+# nDCG@10 per scenario and retrieval base (2026-10-20), then re-checked by the committed sweep
+# in sweeps/ on the tune half of the queries (2026-11-06; selection rule in
+# docs/methodology/parity). Hybrid stays the engine's native fusion.
 tuned:
+  index:
+    stemming: english
+    stop_words: english
   search:
     keyword:
       fuzzy: 1
     hybrid:
       fuzzy: 1
   justification:
+    stemming: See stop_words.
+    stop_words: '`stemming: english, stop_words: english`: pg_search''s English tokenizer filters,
+      part of what it ships (the parity rules turn on each engine''s language features). Keyword
+      nDCG@10 0.558 -> 0.589, hybrid 0.610 -> 0.617 (2026-11-06 sweep, tune half); stemming alone scored keyword 0.581.'
     fuzzy: '`fuzzy: 1` turns on pg_search''s fuzzy matching (off by default; the parity rules
       allow settings that only turn a feature on): query words match within one edit, through
       `::pdb.fuzzy(1)`. Keyword nDCG@10 0.522 -> 0.564; it lowers relevance on the knowledge-base

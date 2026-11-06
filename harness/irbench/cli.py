@@ -8,7 +8,7 @@ from irbench.embed.publish import DEFAULT_RELEASE, REGISTRY, RELEASE_REPO, pack_
 from irbench.io import read_json, read_jsonl, read_qrels, read_run
 from irbench.lint import lint_repo
 from irbench.models import QueryTask
-from irbench.paths import Workspace
+from irbench.paths import Workspace, slug
 from irbench.perf_files import LEGACY_PAGE_SIZE
 from irbench.publish import publish_run
 from irbench.report.render import DEFAULT_DOCS_URL, build_site
@@ -178,7 +178,8 @@ def run(
         for g in scores["relevance"]:
             if g["perturbation"] == "all" and "group" not in g:
                 ndcg = g["metrics"]["ndcg@10"]
-                typer.echo(f"{g['mode']}/{g['base']}: nDCG@10={ndcg:.4f} n={g['n']}")
+                half = f" [{g['half']} half]" if "half" in g else ""
+                typer.echo(f"{g['mode']}/{g['base']}{half}: nDCG@10={ndcg:.4f} n={g['n']}")
         for key, reason in scores["not_applicable"].items():
             typer.echo(f"{key.replace(':', '/')}: N/A ({reason})")
         for key, what in scores["constraint_violations"].items():
@@ -220,6 +221,42 @@ def publish(
             typer.echo(f"published {dest.relative_to(root) if dest.is_relative_to(root) else dest}")
     if failed:
         raise typer.Exit(code=1)
+
+
+@app.command("sweep-summary")
+def sweep_summary(
+    scenario: str = typer.Option(..., "--scenario"),
+    engine: str = typer.Option(..., "--engine"),
+    model: str = typer.Option(..., "--model"),
+    hardware: str = typer.Option("local", "--hardware"),
+    half: str = typer.Option("tune", "--half", help="Half of the queries to rank on."),
+    root: Path = ROOT_OPTION,
+) -> None:
+    """nDCG@10 of the tuned track and every sweep variant on one half of the queries.
+
+    Settings are chosen on the `tune` half; the report publishes the `test` half."""
+    runs = Workspace(root).cache / "runs"
+    prefix = "__".join([slug(scenario), engine, slug(model)]) + "__"
+    rows: dict[str, dict[str, float]] = {}
+    for d in sorted(runs.glob(f"{prefix}tuned*__{hardware}")):
+        track = d.name[len(prefix) : -len(f"__{hardware}")]
+        if not (d / "scores.json").exists():
+            continue
+        for g in read_json(d / "scores.json")["relevance"]:
+            if g.get("half") == half and g["perturbation"] in ("all", "original"):
+                if "group" in g:
+                    key = f"{g['mode']}/{g['base']}:{g['group']}:{g['perturbation']}"
+                else:
+                    key = f"{g['mode']}/{g['base']}:{g['perturbation']}"
+                rows.setdefault(track, {})[key] = g["metrics"]["ndcg@10"]
+    if not rows:
+        typer.echo(f"no scored runs with {half}-half rows under {runs}/{prefix}tuned*", err=True)
+        raise typer.Exit(code=1)
+    columns = sorted({k for r in rows.values() for k in r})
+    typer.echo("\t".join(["track", *columns]))
+    for track, values in sorted(rows.items()):
+        cells = [f"{values[c]:.4f}" if c in values else "-" for c in columns]
+        typer.echo("\t".join([track, *cells]))
 
 
 @app.command()

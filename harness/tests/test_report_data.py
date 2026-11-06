@@ -355,3 +355,10 @@ def test_accents_is_a_known_perturbation():
     from irbench.report.data import PERTURBATIONS
 
     assert "accents" in PERTURBATIONS
+
+
+def test_sweep_variant_runs_are_not_published(tmp_path):
+    write_bundle(tmp_path, "meilisearch", track="tuned")
+    write_bundle(tmp_path, "meilisearch", track="tuned+stop_words")
+    (scenario,), unreadable = load_results(tmp_path)
+    assert [r.track for r in scenario.runs] == ["tuned"] and unreadable == []

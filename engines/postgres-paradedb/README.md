@@ -1,6 +1,6 @@
 # ParadeDB (Postgres + pg_search + pgvector)
 
-Image: `paradedb/paradedb:0.26.1-pg17` (Postgres 17, pg_search 0.26.1 BM25, pgvector 0.8, host port 15433, database `irbench`). Adapter: `adapter.py`, built on the shared `irbench.engines.postgres.PostgresAdapter`; only keyword search, the extension setup, `plan_cache_mode = force_custom_plan` and the keyword ordering (by score alone, with no `id` tie-break) differ from the `postgres` engine.
+Image: `paradedb/paradedb:0.26.5-pg17`, pinned by digest (Postgres 17, pg_search 0.26.5 BM25, pgvector 0.8, host port 15433, database `irbench`). Adapter: `adapter.py`, built on the shared `irbench.engines.postgres.PostgresAdapter`; only keyword search, the extension setup, `plan_cache_mode = force_custom_plan` and the keyword ordering (by score alone, with no `id` tie-break) differ from the `postgres` engine.
 
 ## What the default track sends
 
@@ -8,7 +8,7 @@ Image: `paradedb/paradedb:0.26.1-pg17` (Postgres 17, pg_search 0.26.1 BM25, pgve
 |---|---|
 | Searchable fields | `text` columns plus one `bm25` index: `CREATE INDEX ... USING bm25 (id, name, product_class, category, features, description)`. No `key_field` (a deprecated no-op in pg_search 0.26; the primary key `id` is used) |
 | Field priority | Per-field boost `n - i` in scenario order: `name` 5, `product_class` 4, `category` 3, `features` 2, `description` 1. One clause per field, and the scores of the matching clauses are summed by `OR`, like Qdrant (sum of boosted fields); Elasticsearch's `multi_match` `best_fields` takes the best field instead |
-| Analysis | pg_search's default tokenizer: no stemming (like Elasticsearch's standard analyzer); fuzzy matching is opt-in in pg_search and left off |
+| Analysis | default track: pg_search's default tokenizer, no stemming (like Elasticsearch's standard analyzer). Tuned track: English stemming and stop words on every scenario, chosen by the committed sweeps. Fuzzy matching is opt-in in pg_search; the tuned track turns it on for WANDS only |
 | Synonyms | Not loaded: pg_search 0.26.1 has no synonym feature, and expanding queries in the harness would break the parity rules. Declared as `synonyms:` in the config and shown on the run page |
 | Filterable / facet text fields | `<field>__terms text[]` with a GIN index |
 | Numeric filterable / sortable fields | `double precision` columns with a B-tree index |
@@ -54,7 +54,7 @@ Every mode is one SQL statement. Placeholders are `$n::text` plus a cast; the qu
 
 - Score ties are broken arbitrarily. The shared SQL orders keyword results by `score DESC, id`, but pg_search only pushes a Top-K order down to the BM25 index when the whole `ORDER BY` is the score (a partial prefix is not enough), so on this engine plain, filtered and hybrid-keyword-side queries order by score alone and use `TopKScanExecState` (verified with EXPLAIN on 0.26.1-pg17). Documents with equal scores can appear in any order. Pushdown still cannot happen for sorted keyword (`ORDER BY <field>`, every match is sorted by Postgres) and for faceted keyword (the counts need every match, so the scan is `NormalScanExecState` and the hits are sorted from the match set).
 - No synonyms (see above), so synonym-dependent queries score lower here than on engines that load `synonyms.txt`.
-- No stemming with the default tokenizer.
+- No stemming with the default tokenizer (default track); the tuned track adds English stemming and stop words.
 - Disjunctive keyword matching with per-field boosts is not identical to BM25F: scores are per-field BM25 sums.
 - Faceted on the semantic base scans every filtered document (the spec's definition of the match set).
 - Hybrid fusion over `depth` per side can return fewer than `limit` documents if the sides overlap heavily.

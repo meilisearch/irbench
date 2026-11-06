@@ -49,10 +49,27 @@ Run the pipeline for one scenario × engine × model × track.
 | `--scenario <str>` **required** | |
 | `--engine <str>` **required** | Folder name under `engines/`. |
 | `--model <str>` **required** | |
-| `--track <str>` | `default` or `tuned`. Default: `default`. |
+| `--track <str>` | `default`, `tuned`, or `tuned+<variant>` (a sweep variant from `engines/<engine>/sweeps/<scenario>.yaml`, merged over `tuned`; retrieves only the tune half of the queries). Default: `default`. |
 | `--hardware <str>` | Profile under `hardware/`. Default: `local`. |
 | `--host <str>` | Host publishing the engine port. Default: `localhost`. |
 | `--stages <str>` | Comma-separated stages. Default: `prepare,embed,up,index,render,relevance,perf,score,down`. |
+| `--root <path>` | Repository root. |
+
+## `irbench sweep-summary`
+
+nDCG@10 of the tuned track and every `tuned+<variant>` run of one engine and
+scenario, on one half of the queries. Prints a TSV: one row per track, one
+column per mode/base for all query variants and for the original queries, plus
+per query group where the scenario has groups. Settings are chosen on the
+`tune` half; the report publishes the `test` half.
+
+| Flag | Description |
+|---|---|
+| `--scenario <str>` **required** | |
+| `--engine <str>` **required** | |
+| `--model <str>` **required** | |
+| `--hardware <str>` | Profile the sweep ran on. Default: `local`. |
+| `--half <str>` | `tune` or `test`. Default: `tune`. |
 | `--root <path>` | Repository root. |
 
 ## `irbench score`

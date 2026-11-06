@@ -14,13 +14,14 @@ from irbench.engines.base import (
     index_name,
     load_adapter_class,
 )
-from irbench.engines.config import EngineConfig, TrackConfig, load_engine_config
+from irbench.engines.config import SWEEP_PREFIX, EngineConfig, TrackConfig, load_engine_config
 from irbench.engines.pg import PostgresClient
 from irbench.io import read_jsonl, read_qrels
 from irbench.models import Qrels, QueryTask
 from irbench.paths import Workspace
 from irbench.runs import RunSpec
 from irbench.scenario import Scenario, load_scenario
+from irbench.score.halves import task_halves
 from irbench.terms import scenario_term_groups
 
 ClientFactory = Callable[[str], Any]
@@ -93,13 +94,23 @@ class RunContext:
         return dict(zip(ids, vectors))
 
     @cached_property
-    def tasks(self) -> list[QueryTask]:
+    def all_tasks(self) -> list[QueryTask]:
+        """Every task of the scenario."""
         path = self.ws.scenario_dir(self.spec.scenario) / "tasks.jsonl"
         if not path.exists():
             raise FileNotFoundError(
                 f"{path} missing: run `irbench prepare --scenario {self.spec.scenario}`"
             )
         return [QueryTask.model_validate(r) for r in read_jsonl(path)]
+
+    @cached_property
+    def tasks(self) -> list[QueryTask]:
+        """The tasks this run retrieves: all of them, except for a sweep variant
+        (`tuned+<variant>`), which only runs the `tune` half its settings are chosen on."""
+        if not self.spec.track.startswith(SWEEP_PREFIX):
+            return self.all_tasks
+        halves = task_halves(self.spec.scenario, self.all_tasks)
+        return [t for t in self.all_tasks if halves[t.task_id] == "tune"]
 
     @cached_property
     def qrels(self) -> Qrels:

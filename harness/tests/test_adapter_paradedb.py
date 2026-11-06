@@ -129,3 +129,12 @@ def test_paradedb_lindera_japanese():
     finally:
         client.close()
         runtime.down()
+
+
+def test_language_keys_become_token_filters_on_every_searchable_field():
+    from adapter_helpers import make_adapter
+
+    track = {"index": {"stop_words": "english", "stemming": "english"}}
+    ddl = make_adapter("postgres-paradedb", track).text_index_ddl()
+    tok = "::pdb.unicode_words('stemmer=english', 'stopwords_language=english'))"
+    assert f"USING bm25 (id, (name{tok}, (product_class{tok}," in ddl

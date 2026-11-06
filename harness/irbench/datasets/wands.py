@@ -32,6 +32,13 @@ def _read_tsv(path: Path) -> Iterator[dict[str, str]]:
         yield from csv.DictReader(f, delimiter="\t", quoting=csv.QUOTE_NONE)
 
 
+def _unquote(value: str) -> str:
+    """A field the file quoted CSV-style ("fawkes 36"" blue vanity"), as its plain text."""
+    if len(value) >= 2 and value[0] == value[-1] == '"':
+        return value[1:-1].replace('""', '"')
+    return value
+
+
 def _split(value: str, sep: str) -> list[str]:
     return [part.strip() for part in value.split(sep) if part.strip()]
 
@@ -66,7 +73,7 @@ def normalize_wands(raw: dict[str, Path], out_dir: Path) -> NormalizedDataset:
         (
             {
                 "qid": r["query_id"].strip(),
-                "text": " ".join(r["query"].split()),
+                "text": " ".join(_unquote(r["query"].strip()).split()),
                 "query_class": r["query_class"].strip(),
             }
             for r in _read_tsv(raw["query"])

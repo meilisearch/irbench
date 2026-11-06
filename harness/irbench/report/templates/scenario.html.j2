@@ -70,6 +70,47 @@ its nDCG@10 says: it returns documents nobody assessed.</p>
   </tbody>
 </table></div>
 {% endif %}
+{% if view.clean %}
+<h3>Junk in the results: clean@k and found@k</h3>
+<p class="note"><strong>clean@k</strong>: mean grade of the judged results among the top k, over
+the best mean grade possible for that many results. It drops when an engine pads its results with
+documents judged not relevant, instead of returning fewer. Unjudged results are left out, and a
+query with no judged result scores 1. <strong>found@k</strong>: relevance gained in the top k over
+the best possible in k results (no rank discount), so an engine returning too little shows here.
+Read them together. clean@k is n/a when the qrels list only relevant documents.</p>
+<div class="scroll"><table>
+  <thead><tr><th>Engine</th><th>Model</th><th>Mode</th>{% for k in view.clean_cutoffs %}<th>clean@{{ k }}</th>{% endfor %}{% for k in view.clean_cutoffs %}<th>found@{{ k }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for r in view.clean %}
+    <tr>
+      <th scope="row">{{ r.run.label }}</th><td>{{ r.run.model }}</td><td>{{ r.group|group }}</td>
+      {% for v in r.clean %}<td class="num">{{ v|score }}</td>{% endfor %}
+      {% for v in r.found %}<td class="num">{{ v|score }}</td>{% endfor %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+<h3>nDCG, precision and recall</h3>
+<p class="note"><strong>nDCG@k</strong>: the ranking score above at other depths.
+<strong>precision@k</strong>: relevant results in the top k over k (unjudged count
+as not relevant, and a run returning fewer than k results is not excused).
+<strong>recall@k</strong>: relevant results in the top k over all relevant documents of the
+query, so it stays below 1 when a query has more than k relevant documents. Grades above 0 count
+as relevant.</p>
+<div class="scroll"><table>
+  <thead><tr><th>Engine</th><th>Model</th><th>Mode</th>{% for k in view.ndcg_cutoffs %}<th>nDCG@{{ k }}</th>{% endfor %}{% for k in view.precision_cutoffs %}<th>P@{{ k }}</th>{% endfor %}{% for k in view.recall_cutoffs %}<th>R@{{ k }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for r in view.clean %}
+    <tr>
+      <th scope="row">{{ r.run.label }}</th><td>{{ r.run.model }}</td><td>{{ r.group|group }}</td>
+      {% for v in r.ndcg %}<td class="num">{{ v|score }}</td>{% endfor %}
+      {% for v in r.precision %}<td class="num">{{ v|score }}</td>{% endfor %}
+      {% for v in r.recall %}<td class="num">{{ v|score }}</td>{% endfor %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% endif %}
 {% if view.na_notes %}
 <h3>Not applicable</h3>
 <ul class="notes">

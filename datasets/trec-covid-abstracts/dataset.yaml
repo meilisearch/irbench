@@ -1,0 +1,27 @@
+# TREC-COVID as the Meilisearch relevancy-bench files define it (Notion "Benchmark (kero,
+# many, Louis)"): the BEIR corpus without papers whose abstract is shorter than 4 characters
+# (42,153 of 171,332, most with no abstract at all), and only the judgments graded above 0.
+# Checked against their corpus.jsonl, query_set.json and question-set.json (2026-11-04): the
+# same 129,179 papers (one id differs by a character in their file: 129608f4 for BEIR's
+# 129608e4, judged 0 for one topic), the same 50 keyword and 50 question queries, the same
+# 21,538 relevant judgments with the same grades. No CORD-19 metadata: their files have none.
+id: trec-covid-abstracts
+version: "beir-2021"
+license: CC BY-SA 4.0 (BEIR); CORD-19 papers carry their own licenses
+source: https://github.com/beir-cellar/beir
+params:
+  min_abstract_chars: 4
+  relevant_only: true
+files:
+  corpus:
+    url: https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/trec-covid.zip
+    member: trec-covid/corpus.jsonl
+    sha256: aded69896598665082316d00df487d22212cc5a8611db05db34eb40d04ed00d7
+  queries:
+    url: https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/trec-covid.zip
+    member: trec-covid/queries.jsonl
+    sha256: 78f4b76bfef251a0baf37a6cea5c4ba8376cb4536c34635709aaa4a2783b208c
+  qrels:
+    url: https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/trec-covid.zip
+    member: trec-covid/qrels/test.tsv
+    sha256: 10669ab7d526cb04f52079139fd88c3d467a0776441b046567f540582798982b

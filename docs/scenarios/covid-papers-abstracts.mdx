@@ -1,0 +1,41 @@
+---
+title: "Scenario: covid-papers-abstracts"
+description: TREC-COVID as the Meilisearch relevancy-bench builds it (abstracts only, relevant judgments only)
+---
+
+Scenario id: `knowledge-base/covid-papers-abstracts`. It reproduces the TREC-COVID files of
+the Meilisearch relevancy-bench protocol, so its numbers can be read next to
+[covid-papers](/scenarios/covid-papers), which uses the same queries on the full corpus.
+
+## Source
+
+- **Dataset:** `trec-covid-abstracts`, built from the same BEIR files as `trec-covid`, with no
+  CORD-19 metadata.
+- **Size:** 129,179 documents, 100 queries (50 keyword, 50 question forms), 21,538 relevant
+  judgments per query form.
+
+## How it differs from covid-papers
+
+| | covid-papers-abstracts | covid-papers |
+|---|---|---|
+| Documents | abstract of at least 4 characters (129,179) | title or abstract (171,331) |
+| Judgments | grades 1 and 2 only | grades 0, 1 and 2 |
+| Modes | keyword, semantic, hybrid | also filtered, sorted, faceted |
+| Perturbations | none | typo, prefix |
+| Speed | not measured | measured |
+
+Dropping papers without an abstract removes 3,135 relevant judgments per query form. With no
+document judged not relevant, `clean@k` is not computed, and `judged@10` equals precision@10.
+
+## Checked against the relevancy-bench files
+
+On 2026-11-04 the prepared data was compared with the protocol's `corpus.jsonl`,
+`query_set.json` and `question-set.json`: the same papers with the same text (one paper has id
+`129608f4` in their file and `129608e4` in BEIR; it is judged not relevant for one topic, so it
+is absent from both judgment sets), the same queries, and the same relevant judgments with the
+same grades. Their question file ends 9 questions with a `?` that BEIR's text lacks.
+
+## Engine settings
+
+Each engine uses its `covid-papers` settings, copied unchanged; the tuned values were not
+re-swept on this corpus.

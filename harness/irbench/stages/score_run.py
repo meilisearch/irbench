@@ -3,6 +3,7 @@ from typing import Any
 from irbench.io import read_json, read_jsonl, read_run, write_json
 from irbench.perf_files import read_perf_reports
 from irbench.score.checks import CheckSummary, TaskCheck, summarize_checks
+from irbench.score.halves import task_halves
 from irbench.score.relevance import per_task_scores, score_relevance, single_judgment
 from irbench.stages.context import RunContext
 from irbench.stages.perf import summarize_perf
@@ -27,6 +28,7 @@ def score_stage(ctx: RunContext) -> dict[str, Any]:
         m: per_task_scores(supported, ctx.qrels, run, m)
         for m in dict.fromkeys(["ndcg@10", headline])
     }
+    halves = task_halves(ctx.spec.scenario, ctx.all_tasks)
     checks = [TaskCheck.model_validate(r) for r in read_jsonl(run_dir / "checks.jsonl")]
     summaries = summarize_checks(checks)
     report = {
@@ -36,12 +38,15 @@ def score_stage(ctx: RunContext) -> dict[str, Any]:
         "model": ctx.spec.model,
         "track": ctx.spec.track,
         "relevance": [
-            g.model_dump(exclude_none=True) for g in score_relevance(supported, ctx.qrels, run)
+            g.model_dump(exclude_none=True)
+            for g in score_relevance(supported, ctx.qrels, run, halves)
         ],
         # The report's matrix, interval and tie marks use this metric (scenario setting).
         "headline_metric": headline,
         # One judged document per query: judged@10 is capped at 0.1, so the report hides it.
         "single_judgment": single_judgment(ctx.qrels, [t.task_id for t in supported]),
+        # Task id -> "tune" or "test": settings are chosen on `tune`, scores published on `test`.
+        "halves": {t.task_id: halves[t.task_id] for t in supported},
         # Per-task scores let the report test whether two runs really differ (paired test):
         # nDCG@10 always, and the headline metric.
         "per_task": per_task,
