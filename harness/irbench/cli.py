@@ -64,7 +64,11 @@ def embed(
 ) -> None:
     """Embed docs and query variants with one model: reuse local vectors that already
     match the prepared data, otherwise download its published vectors, otherwise compute."""
-    r = embed_scenario(root, scenario, model, compute=compute)
+    try:
+        r = embed_scenario(root, scenario, model, compute=compute)
+    except FileNotFoundError as e:  # a typo'd scenario id, or a scenario not prepared yet
+        typer.echo(str(e), err=True)
+        raise typer.Exit(code=1) from e
     typer.echo(
         f"{model}: {r.n_docs} docs, {r.n_queries} queries, {r.n_computed} newly embedded "
         f"({r.source})"
@@ -163,7 +167,7 @@ def run(
     names = [s.strip() for s in stages.split(",") if s.strip()]
     try:
         manifest = run_pipeline(root, spec, names)
-    except ValueError as e:
+    except (ValueError, FileNotFoundError) as e:  # FileNotFoundError: no such scenario or config
         typer.echo(str(e), err=True)
         raise typer.Exit(code=1) from e
 
@@ -264,10 +268,11 @@ def report(
     results: Path = typer.Option(..., "--results", help="results/ or .irbench/runs for a preview."),
     out: Path = typer.Option(..., "--out", help="Output directory (replaced on every build)."),
     docs_url: str = typer.Option(DEFAULT_DOCS_URL, "--docs-url"),
+    root: Path = ROOT_OPTION,
 ) -> None:
     """Build the static HTML report from run bundles."""
     try:
-        site = build_site(results, out, docs_url)
+        site = build_site(results, out, docs_url, root)
     except (FileNotFoundError, FileExistsError) as e:
         typer.echo(str(e), err=True)
         raise typer.Exit(code=1) from e

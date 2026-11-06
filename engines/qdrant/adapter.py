@@ -42,6 +42,7 @@ class Adapter(EngineAdapter):
     host_port = 16333
     health_path = "/readyz"
     data_dir = "/qdrant/storage"
+    language_keys = ("index.bm25_options",)
 
     @property
     def _index_config(self) -> dict[str, Any]:

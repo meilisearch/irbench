@@ -1,6 +1,7 @@
 import random
 
 from irbench.models import Query
+from irbench.perturb.accents import accents
 from irbench.perturb.prefix import prefix
 from irbench.perturb.synonym import synonym
 from irbench.perturb.typo import typo
@@ -17,6 +18,8 @@ def _apply(kind: str, text: str, rng: random.Random, vocabulary: list[list[str]]
         return prefix(text, rng)
     if kind == "synonym":
         return synonym(text, rng, vocabulary)
+    if kind == "accents":
+        return accents(text, rng)
     raise ValueError(f"unknown perturbation kind {kind!r}")
 
 

@@ -23,6 +23,23 @@ Found by a sweep scored on nDCG@10 per scenario and base; each value is justifie
 
 Config keys (`search.<base>`): `match` (`all` | `any`), `rank` (`ts_rank` | `ts_rank_cd`), `normalization` (the rank functions' integer flags) and `rrf` (`{k, weights: [keyword, vector]}`, hybrid). Any other key is refused.
 
+## Languages
+
+The non-English scenarios (`ecommerce/amazon-search-ja`, `ecommerce/amazon-search-es`) are planned: their scenario files and configs are not in the repository yet (they wait on the US ESCI scenario). Their configs will set the language in the `default` block, each setting with a `justification:` entry; the table below is that plan, and the config keys it names already work.
+
+| Scenario | default track | tuned track |
+|---|---|---|
+| Japanese | `index.text_search_config: simple`. Postgres has no Japanese configuration, so a Japanese phrase with no spaces stays one token | may use PGroonga (`index.text_search: pgroonga` with `compose: compose.pgroonga.yaml`, justified). It is kept only if it wins on nDCG@10 |
+| Spanish | `index.text_search_config: spanish`, the built-in configuration | no plugin; usual sweep |
+
+`index.text_search_config` names the built-in configuration that the scenario's configuration is copied from. With no key, it is `english`, as before. The stemmer in the thesaurus dictionary follows it (`spanish_stem` for `spanish`); a configuration with no built-in stemmer, such as `simple`, uses the `simple` dictionary.
+
+### PGroonga (tuned Japanese track)
+
+`docker/Dockerfile.pgroonga` builds on the same `pgvector/pgvector:0.8.7-pg17` image as `compose.yaml` (pgvector comes from that official image, where the pgvector project builds it from source; `dpkg -l` in the image lists no pgvector package) and installs `postgresql-17-pgdg-pgroonga=4.0.6-1` from PGroonga's official apt repository (`packages.groonga.org`, the `groonga-apt-source` package for Debian bookworm). `docker/compose.pgroonga.yaml` is `compose.yaml` with `build:` and the local tag `irbench-postgres-pgroonga:0.8.7-pg17`; ports, healthcheck and volumes are the same.
+
+`index.text_search` is `tsvector` (default) or `pgroonga`. With `pgroonga` there is no `tsv` column and no text search configuration; the text index is `USING pgroonga ((ARRAY[<searchable columns>]))`, and the keyword predicate is `ARRAY[<columns>] &@~ pgroonga_condition($1, weights => ARRAY[5,4,3,2,1], index_name => ...)`, scored by `pgroonga_score(tableoid, ctid)`. The weights are the scenario's field boosts. `&@~` is PGroonga's query syntax: every word is required, as with `websearch_to_tsquery`. The default tokenizer (`TokenBigram`) is used. `search.keyword.match: any`, `rank` and `normalization` are tsvector features and are rejected with PGroonga; the synonym thesaurus is not loaded either. PGroonga only scores rows reached through its index: a sequential scan scores every row 0, and the ranking then falls back to `id` (a three-row table in the docker test got exactly that plan). So with `text_search: pgroonga` the adapter sets `enable_seqscan = off` per database and per session, like an `index.settings` entry (`default_settings()` in `adapter.py`); a config that sets `index.settings.enable_seqscan` itself overrides it. In every plan checked, the keyword statements keep the PGroonga index: alone, with the filter checked on its rows (`eq` filters on `__terms`), or ANDed in a bitmap scan with a filter's B-tree index (numeric ranges); both keep the scores (`EXPLAIN` of plain, filtered, faceted and hybrid statements on a 3,000-row table, and `test_pgroonga_filtered_and_faceted_keyword_are_scored` in Docker). The setting applies to every statement of that database, vector and facet queries included; they are planned without sequential scans where an index applies.
+
 ## Modes
 
 Every mode is one SQL statement. Placeholders are `$n::text` plus a cast; the query text is always a parameter.

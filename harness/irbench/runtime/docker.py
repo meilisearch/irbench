@@ -42,13 +42,14 @@ class DockerRuntime:
         root: Path,
         engine: str,
         profile: HardwareProfile,
+        compose: str = "compose.yaml",
         runner: Runner = run_command,
         state_dir: Path | None = None,
     ):
         self.engine = engine
         self.profile = profile
         self.runner = runner
-        self.compose_file = root / "engines" / engine / "docker" / "compose.yaml"
+        self.compose_file = root / "engines" / engine / "docker" / compose
         self.project = f"irbench-{engine}"
         self.container = f"irbench-{engine}"
         self.override_file = (state_dir or Workspace(root).cache / "runtime") / (

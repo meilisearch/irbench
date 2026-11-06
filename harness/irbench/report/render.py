@@ -11,6 +11,7 @@ from typing import Any
 
 import jinja2
 
+from irbench.engines.base import load_adapter_class
 from irbench.publish import UNPUBLISHABLE_PROFILES as UNPUBLISHED_PROFILES
 from irbench.report.charts import Dot, Point, Series, qps_chart, tradeoff_chart
 from irbench.report.data import (
@@ -25,6 +26,7 @@ from irbench.report.stats import ALPHA, paired_randomization_p
 from irbench.score.relevance import CLEAN_CUTOFFS, NDCG_CUTOFFS, PRECISION_CUTOFFS, RECALL_CUTOFFS
 
 MARKER = ".irbench-report"
+REPO_ROOT = Path(__file__).resolve().parents[3]  # fallback root to find engine adapters
 DEFAULT_DOCS_URL = "https://github.com/meilisearch/irbench/tree/main/docs"
 BASE_GROUPS = ("keyword/keyword", "semantic/semantic", "hybrid/hybrid")
 VECTOR_GROUPS = ("semantic/semantic", "hybrid/hybrid")
@@ -147,7 +149,9 @@ def mark_winners(runs: list[RunResult], groups: list[str]) -> list[list[Cell]]:
 def judged_rows(s: ScenarioResults) -> list[dict[str, Any]]:
     """judged@10 per run on the retrieval bases (empty for bundles scored before it existed)."""
     rows = [
-        {"run": r, "cells": [r.judged(g) for g in BASE_GROUPS]} for r in s.runs if not r.failure
+        {"run": r, "cells": [r.judged(g) for g in BASE_GROUPS]}
+        for r in s.ranked_runs
+        if not r.failure
     ]
     return [r for r in rows if any(v is not None for v in r["cells"])]
 
@@ -187,7 +191,7 @@ def _delta(value: float | None, base: float) -> float | None:
 
 def perturbation_rows(s: ScenarioResults) -> list[dict[str, Any]]:
     rows = []
-    for run in s.runs:
+    for run in s.ranked_runs:
         if run.failure:
             continue
         for group in BASE_GROUPS:
@@ -212,7 +216,7 @@ def model_comparison(s: ScenarioResults) -> list[dict[str, Any]]:
     tables = []
     for group in VECTOR_GROUPS:
         by_label: dict[str, dict[str, Cell]] = defaultdict(dict)
-        for run in s.runs:
+        for run in s.ranked_runs:
             if not run.failure:
                 by_label[run.label][run.model] = relevance_cell(run, group)
         rows = [
@@ -228,25 +232,28 @@ def model_comparison(s: ScenarioResults) -> list[dict[str, Any]]:
 
 def query_group_tables(s: ScenarioResults) -> list[dict[str, Any]]:
     """nDCG@10 per query group, per retrieval base (empty when the scenario has no groups)."""
-    names = sorted({q for r in s.runs for q in r.query_groups})
+    names = sorted({q for r in s.ranked_runs for q in r.query_groups})
     if not names:
         return []
     tables = []
     for group in BASE_GROUPS:
         rows = [
             {"run": r, "cells": [r.group_ndcg(group, q) for q in names]}
-            for r in s.runs
+            for r in s.ranked_runs
             if not r.failure and any(r.group_ndcg(group, q) is not None for q in names)
         ]
         if rows:
-            ns = [next((n for r in s.runs if (n := r.group_n(q)) is not None), None) for q in names]
+            ns = [
+                next((n for r in s.ranked_runs if (n := r.group_n(q)) is not None), None)
+                for q in names
+            ]
             tables.append({"group": group, "names": names, "ns": ns, "rows": rows})
     return tables
 
 
 def na_notes(s: ScenarioResults) -> list[dict[str, Any]]:
     notes: dict[tuple[str, str], list[str]] = defaultdict(list)
-    for run in s.runs:
+    for run in s.ranked_runs:
         for group in run.groups:
             reason = run.na_reason(group)
             if reason and group not in notes[(run.label, reason)]:
@@ -377,7 +384,7 @@ def _perf_size_view(
 
 
 def perf_view(s: ScenarioResults, slots: dict[str, int]) -> dict[str, Any]:
-    measured = [r for r in s.runs if r.perf is not None and not r.failure]
+    measured = [r for r in s.ranked_runs if r.perf is not None and not r.failure]
     sizes = sorted({n for r in measured for n in (r.perf or {})})
     views = [
         {**_perf_size_view(measured, s.models, slots, n), "headline": i == 0}
@@ -385,15 +392,15 @@ def perf_view(s: ScenarioResults, slots: dict[str, int]) -> dict[str, Any]:
     ]
     return {
         "sizes": views,
-        "indexing": [r for r in s.runs if r.index and not r.failure],
-        "unmeasured": [r.label for r in s.runs if r.perf is None and not r.failure],
+        "indexing": [r for r in s.ranked_runs if r.index and not r.failure],
+        "unmeasured": [r.label for r in s.ranked_runs if r.perf is None and not r.failure],
     }
 
 
 def tradeoff_view(s: ScenarioResults, slots: dict[str, int]) -> dict[str, Any]:
     """nDCG@10 against median latency per retrieval base, at the smallest measured page size
     (a search results page). One dot per run with both numbers."""
-    runs = [r for r in s.runs if r.perf and not r.failure]
+    runs = [r for r in s.ranked_runs if r.perf and not r.failure]
     sizes = sorted({n for r in runs for n in (r.perf or {})})
     if not sizes:
         return {"size": None, "charts": []}
@@ -463,7 +470,7 @@ def configs_view(scenarios: list[ScenarioResults], repo_url: str) -> list[dict[s
     its value per scenario, and why it is set."""
     by_engine: dict[str, list[RunResult]] = defaultdict(list)
     for s in scenarios:
-        for r in s.runs:
+        for r in s.ranked_runs:
             if not r.failure:
                 by_engine[r.engine].append(r)
     engines = []
@@ -484,6 +491,10 @@ def configs_view(scenarios: list[ScenarioResults], repo_url: str) -> list[dict[s
                     text = _justification(path, justifications)
                     if text:
                         why.setdefault(path, text)
+            if eff.get("compose"):  # a track that runs its own compose file
+                values.setdefault("compose", [None] * len(runs))[i] = eff["compose"]
+                if justifications.get("compose"):
+                    why.setdefault("compose", justifications["compose"])
             for mode, reason in (eff.get("unsupported") or {}).items():
                 notes[f"N/A: {mode}: {reason}"].add(r.scenario)
             if eff.get("synonyms"):
@@ -528,11 +539,89 @@ def _fmt_setting(value: Any) -> str:
     return str(value)
 
 
-def scenario_view(s: ScenarioResults, slots: dict[str, int]) -> dict[str, Any]:
+PERTURBATION_PHRASES = {
+    "typo": "carry a typo",
+    "prefix": "are cut short (search as you type)",
+    "synonym": "use a synonym",
+    "accents": "are typed without accents",
+}
+
+
+def perturbation_phrase(kinds: list[str]) -> str:
+    """ "carry a typo, are cut short (search as you type) or use a synonym" for the kinds shown."""
+    phrases = [PERTURBATION_PHRASES[k] for k in kinds]
+    if len(phrases) < 2:
+        return "".join(phrases)
+    return f"{', '.join(phrases[:-1])} or {phrases[-1]}"
+
+
+def _effective(run: RunResult) -> dict[str, Any]:
+    """The track config the run used, with its justifications (empty for older bundles)."""
+    return (run.manifest.get("config") or {}).get("effective") or {}
+
+
+def _language_setting(run: RunResult, keys: tuple[str, ...]) -> str:
+    """The values of the engine's language keys that the run's effective config sets, as
+    compact JSON; a dash when it sets none."""
+    eff = _effective(run)
+    found: dict[str, Any] = {}
+    for key in keys:
+        node: Any = eff
+        for part in key.split("."):
+            node = node.get(part) if isinstance(node, dict) else None
+        if node not in (None, {}, []):
+            found[key] = node
+    if not found:
+        return "—"
+    value = next(iter(found.values())) if len(found) == 1 else found
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def track_comparison_view(s: ScenarioResults, root: Path | None = None) -> list[dict[str, Any]]:
+    """One row per engine and model that has both a default and a tuned run: nDCG@10 per base
+    with the change (tuned − default), and the language setting and compose file each track
+    sets. Empty when no engine has both."""
+    root = root or REPO_ROOT
+    by_key: dict[tuple[str, str], dict[str, RunResult]] = defaultdict(dict)
+    for r in s.runs:
+        by_key[(r.engine, r.model)][r.track] = r
+    rows = []
+    for (engine, model), tracks in sorted(by_key.items(), key=lambda kv: (kv[0][1], kv[0][0])):
+        default, tuned = tracks.get("default"), tracks.get("tuned")
+        if default is None or tuned is None:
+            continue
+        try:
+            keys = load_adapter_class(root, engine).report_keys()
+        except (OSError, ImportError, TypeError, ValueError, SyntaxError):
+            keys = ()  # an engine this checkout has no adapter for: no setting to show
+        row: dict[str, Any] = {"engine": engine, "model": model}
+        for group in BASE_GROUPS:
+            base = group.partition("/")[0]
+            before, after = default.ndcg(group), tuned.ndcg(group)
+            row[f"{base}_default"], row[f"{base}_tuned"] = before, after
+            row[f"{base}_change"] = None if before is None or after is None else after - before
+        for track, run in (("default", default), ("tuned", tuned)):
+            row[f"{track}_setting"] = _language_setting(run, keys)
+            row[f"{track}_compose"] = _effective(run).get("compose")
+        rows.append(row)
+    return rows
+
+
+def scenario_view(
+    s: ScenarioResults, slots: dict[str, int], root: Path | None = None
+) -> dict[str, Any]:
+    kinds = [
+        p
+        for p in PERTURBATIONS[1:]
+        if any(r["deltas"].get(p) is not None for r in perturbation_rows(s))
+    ]
     return {
+        "perturbation_phrase": perturbation_phrase(kinds),
+        "track_comparison": track_comparison_view(s, root),
         "columns": s.groups,
         "matrix": [
-            {"run": r, "cells": cells} for r, cells in zip(s.runs, mark_winners(s.runs, s.groups))
+            {"run": r, "cells": cells}
+            for r, cells in zip(s.ranked_runs, mark_winners(s.ranked_runs, s.groups))
         ],
         "judged": judged_rows(s),
         "judged_groups": BASE_GROUPS,
@@ -543,11 +632,7 @@ def scenario_view(s: ScenarioResults, slots: dict[str, int]) -> dict[str, Any]:
         "recall_cutoffs": RECALL_CUTOFFS,
         "na_notes": na_notes(s),
         "perturbations": perturbation_rows(s),
-        "perturbation_kinds": [
-            p
-            for p in ("typo", "prefix", "synonym")
-            if any(r["deltas"].get(p) is not None for r in perturbation_rows(s))
-        ],
+        "perturbation_kinds": kinds,
         "query_groups": query_group_tables(s),
         "models": model_comparison(s),
         "comparable": s.hardware not in UNPUBLISHED_PROFILES,
@@ -647,7 +732,9 @@ def _prepare_out(out: Path) -> None:
     (out / MARKER).write_text("written by `irbench report`; replaced on every build\n")
 
 
-def build_site(results_dir: Path, out: Path, docs_url: str = DEFAULT_DOCS_URL) -> SiteResult:
+def build_site(
+    results_dir: Path, out: Path, docs_url: str = DEFAULT_DOCS_URL, root: Path | None = None
+) -> SiteResult:
     scenarios, unreadable = load_results(results_dir)
     _prepare_out(out)
     env = _env()
@@ -667,7 +754,7 @@ def build_site(results_dir: Path, out: Path, docs_url: str = DEFAULT_DOCS_URL) -
     write("index.html", "index.html.j2", scenarios=scenarios, unreadable=unreadable)
     write("configs.html", "configs.html.j2", engines=configs_view(scenarios, repo_url))
     for s in scenarios:
-        write(f"{s.slug}.html", "scenario.html.j2", s=s, view=scenario_view(s, slots))
+        write(f"{s.slug}.html", "scenario.html.j2", s=s, view=scenario_view(s, slots, root))
         for run in s.runs:
             write(f"runs/{run.run_id}.html", "run.html.j2", run=run, s=s, view=run_view(run))
     style = resources.files("irbench.report").joinpath("static/style.css")

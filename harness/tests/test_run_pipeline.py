@@ -10,6 +10,7 @@ from fake_engine import (
     fake_loadgen,
     fake_root,
     perfect_answers,
+    set_scenario,
 )
 from irbench.cli import app
 from irbench.io import read_json
@@ -48,6 +49,7 @@ def test_pipeline_end_to_end_with_fake_engine(tmp_path, wands_raw):
     assert len(manifest["config"]["hash"]) == 64 and manifest["config"]["diff_vs_default"] == {}
     assert manifest["dataset"]["version"] == "fixture" and manifest["seed"] == 20261009
     assert manifest["hardware"]["id"] == "local"
+    assert manifest["language"] == "en"  # the report labels non-English scenario pages
 
     run_dir = RunContext(root, FAKE_SPEC).run_dir
     assert read_json(run_dir / "manifest.json")["status"] == "succeeded"
@@ -94,6 +96,25 @@ def test_unknown_stage_is_rejected_before_anything_runs(tmp_path, wands_raw):
     assert runtime.calls == []
 
 
+def test_run_rejects_other_model(tmp_path, wands_raw):
+    root = fake_root(tmp_path, wands_raw)
+    set_scenario(root, embedding_model="multilingual-e5-small")
+    runtime, embedder = FakeRuntime(), FakeEmbedder()
+    spec = RunSpec(scenario=SCENARIO, engine="fake", model="bge-small-en-v1.5")
+    with pytest.raises(ValueError, match="multilingual-e5-small.*bge-small-en-v1.5"):
+        run_pipeline(
+            root,
+            spec,
+            list(STAGES),
+            runtime_factory=lambda *a: runtime,
+            client_factory=_server(root).client_factory,
+            prepare_client=fixture_client(wands_raw),
+            embedder=embedder,
+        )
+    assert runtime.calls == []
+    assert embedder.calls == []
+
+
 def test_tuned_track_records_its_diff(tmp_path, wands_raw):
     config = {**FAKE_CONFIG, "tuned": {"search": {"keyword": {"boost": 2}}}}
     root = fake_root(tmp_path, wands_raw, config=config)
@@ -104,6 +125,35 @@ def test_tuned_track_records_its_diff(tmp_path, wands_raw):
     assert manifest["config"]["diff_vs_default"] == {
         "search.keyword": {"default": None, "effective": {"boost": 2}}
     }
+
+
+def test_runtime_factory_receives_the_track_compose_file(tmp_path, wands_raw):
+    config = {**FAKE_CONFIG, "tuned": {"compose": "compose.kuromoji.yaml"}}
+    root = fake_root(tmp_path, wands_raw, config=config)
+    seen = []
+
+    def factory(*args):
+        seen.append(args[3:])
+        return FakeRuntime()
+
+    for track in ("default", "tuned"):
+        spec = RunSpec(scenario=SCENARIO, engine="fake", model="fake", track=track)
+        run_pipeline(root, spec, ["render"], runtime_factory=factory)
+    assert seen == [("compose.yaml",), ("compose.kuromoji.yaml",)]
+
+
+def test_prepare_only_run_does_not_need_an_engine_config(tmp_path, wands_raw):
+    root = fake_root(tmp_path, wands_raw)
+    (root / "engines/fake/configs/ecommerce/product-search.yaml").unlink()
+    spec = RunSpec(scenario=SCENARIO, engine="fake", model="fake")
+    manifest = run_pipeline(
+        root,
+        spec,
+        ["prepare"],
+        runtime_factory=lambda *a: FakeRuntime(),
+        prepare_client=fixture_client(wands_raw),
+    )
+    assert manifest["status"] == "succeeded"
 
 
 def test_cli_run_prints_scores_and_na(tmp_path, wands_raw, monkeypatch):
@@ -125,6 +175,35 @@ def test_cli_run_rejects_unknown_stage(tmp_path, wands_raw):
     result = CliRunner().invoke(app, args)
     assert result.exit_code == 1
     assert "bogus" in result.output
+
+
+def test_cli_run_reports_an_unknown_scenario_without_a_traceback(tmp_path, wands_raw):
+    args = ["run", "--scenario", "ecommerce/no-such", "--engine", "fake", "--model", "fake"]
+    args += ["--root", str(fake_root(tmp_path, wands_raw))]
+    result = CliRunner().invoke(app, args)
+    assert result.exit_code == 1
+    assert "no-such" in result.output and "Traceback" not in result.output
+    assert not isinstance(result.exception, FileNotFoundError)
+
+
+def test_cli_run_reports_a_missing_engine_config(tmp_path, wands_raw):
+    root = fake_root(tmp_path, wands_raw)
+    (root / "engines/fake/configs/ecommerce/product-search.yaml").unlink()
+    args = ["run", "--scenario", SCENARIO, "--engine", "fake", "--model", "fake"]
+    args += ["--root", str(root)]
+    result = CliRunner().invoke(app, args)
+    assert result.exit_code == 1
+    assert "has no config for" in result.output
+    assert not isinstance(result.exception, FileNotFoundError)
+
+
+def test_cli_embed_reports_an_unknown_scenario(tmp_path, wands_raw):
+    args = ["embed", "--scenario", "ecommerce/no-such", "--model", "fake"]
+    args += ["--root", str(fake_root(tmp_path, wands_raw))]
+    result = CliRunner().invoke(app, args)
+    assert result.exit_code == 1
+    assert "no-such" in result.output
+    assert not isinstance(result.exception, FileNotFoundError)
 
 
 ENGINE_STAGES = ["up", "index", "render", "relevance", "score", "down"]

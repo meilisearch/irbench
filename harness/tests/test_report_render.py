@@ -4,6 +4,7 @@ import shutil
 import pytest
 from typer.testing import CliRunner
 
+from conftest import REPO_ROOT
 from irbench.cli import app
 from irbench.report.data import load_results
 from irbench.report.render import (
@@ -641,3 +642,321 @@ def test_config_page_lists_settings_and_why(tmp_path):
     assert "postgres:1" in page  # image
     assert 'id="qdrant"' in page and "Every setting at the engine" in page
     assert 'href="configs.html"' in read(out, "index.html")
+
+
+def _with_perturbation_rows(bundle, name, drop):
+    """Add `name` rows copied from the `original` rows, `drop` lower."""
+
+    def add(d):
+        rows = [
+            {
+                **r,
+                "perturbation": name,
+                "metrics": {**r["metrics"], "ndcg@10": r["metrics"]["ndcg@10"] - drop},
+            }
+            for r in d["relevance"]
+            if r["perturbation"] == "original"
+        ]
+        return {**d, "relevance": d["relevance"] + rows}
+
+    _edit_json(bundle / "scores.json", add)
+
+
+def _matrix(page):
+    return page.split('<table class="matrix">')[1].split("</table>")[0]
+
+
+def test_default_runs_not_ranked(tmp_path):
+    results, out = site(tmp_path)
+    write_bundle(results, "elasticsearch", groups={"keyword/keyword": 0.70})
+    write_bundle(results, "elasticsearch", track="tuned", groups={"keyword/keyword": 0.60})
+    write_bundle(results, "meilisearch", track="tuned", groups={"keyword/keyword": 0.65})
+    build_site(results, out)
+    matrix = _matrix(read(out, PAGE))
+    assert "<strong>0.650</strong>" in matrix  # the best tuned run
+    assert "0.700" not in matrix  # the default run is out of the ranking
+    assert "<strong>0.600</strong>" not in matrix
+    assert "elasticsearch (tuned)" in matrix
+    # the run page of a default run still exists and the runs list keeps it
+    assert list((out / "runs").glob("*elasticsearch__bge-small-en-v1.5__default*"))
+    assert "elasticsearch ·" in read(out, PAGE).split("<h2>Runs</h2>")[1]
+
+
+def test_default_runs_never_enter_significance_notes():
+    from irbench.report.data import RunResult, ScenarioResults
+    from irbench.report.render import mark_winners
+
+    def run(track, ndcg, per_task):
+        scores = {
+            "relevance": [
+                {
+                    "mode": "keyword",
+                    "base": "keyword",
+                    "perturbation": "all",
+                    "n": 3,
+                    "metrics": {"ndcg@10": ndcg},
+                }
+            ],
+            "not_applicable": {},
+            "constraint_violations": {},
+            "per_task": {"ndcg@10": {f"t{i}:keyword:keyword": v for i, v in enumerate(per_task)}},
+        }
+        return RunResult(
+            "id-" + track, "s", "elasticsearch", "m", track, "hw", "succeeded", None, {}, scores
+        )
+
+    default = run("default", 0.9, [0.9, 0.9, 0.9])
+    tuned = run("tuned", 0.5, [0.5, 0.5, 0.5])
+    s = ScenarioResults("s", "hw", [default, tuned])
+    cells = mark_winners(s.ranked_runs, ["keyword/keyword"])
+    assert len(cells) == 1 and cells[0][0].best and "significantly" not in cells[0][0].note
+
+
+def test_default_only_engine_still_ranked(tmp_path):
+    results, out = site(tmp_path)
+    write_bundle(results, "qdrant", groups={"keyword/keyword": 0.55})
+    write_bundle(results, "elasticsearch", groups={"keyword/keyword": 0.70})
+    write_bundle(results, "elasticsearch", track="tuned", groups={"keyword/keyword": 0.60})
+    build_site(results, out)
+    matrix = _matrix(read(out, PAGE))
+    assert "qdrant" in matrix and "0.550" in matrix
+    assert "<strong>0.600</strong>" in matrix
+
+
+def test_track_comparison_section(tmp_path):
+    results, out = site(tmp_path)
+    write_bundle(results, "elasticsearch", groups={"keyword/keyword": 0.70})
+    write_bundle(results, "elasticsearch", track="tuned", groups={"keyword/keyword": 0.60})
+    write_bundle(results, "qdrant", groups={"semantic/semantic": 0.4})
+    build_site(results, out)
+    page = read(out, PAGE)
+    assert "Built-in settings vs tuned" in page
+    section = page.split("Built-in settings vs tuned")[1].split("</section>")[0]
+    assert "Each engine with only its built-in language setting (default)" in section
+    assert "official language plugins allowed (tuned). nDCG@10." in section
+    assert section.count("<tbody>") == 1
+    body = section.split("<tbody>")[1]
+    assert body.count("<tr>") == 1  # one row per engine with both tracks; qdrant has one
+    assert "elasticsearch" in body and "0.700" in body and "0.600" in body
+
+    (tmp_path / "b").mkdir()
+    results2, out2 = site(tmp_path / "b")
+    write_bundle(results2, "elasticsearch", track="tuned")
+    write_bundle(results2, "qdrant")
+    build_site(results2, out2)
+    assert "Built-in settings vs tuned" not in read(out2, PAGE)
+
+
+def test_comparison_shows_settings(tmp_path):
+    from irbench.report.data import load_results
+    from irbench.report.render import track_comparison_view
+
+    results = tmp_path / "results"
+    results.mkdir()
+    write_bundle(
+        results,
+        "elasticsearch",
+        effective={"index": {"analyzer": "cjk", "shards": 1}, "search": {}},
+    )
+    write_bundle(
+        results,
+        "elasticsearch",
+        track="tuned",
+        effective={"index": {"analyzer": "kuromoji"}, "search": {}},
+    )
+    scenarios, _ = load_results(results)
+    rows = track_comparison_view(scenarios[0], REPO_ROOT)
+    assert len(rows) == 1
+    assert rows[0]["engine"] == "elasticsearch" and rows[0]["model"] == "bge-small-en-v1.5"
+    assert rows[0]["default_setting"] == '"cjk"'
+    assert rows[0]["tuned_setting"] == '"kuromoji"'
+    assert rows[0]["keyword_default"] == 0.5 and rows[0]["semantic_tuned"] is None
+
+
+def test_comparison_settings_dash_when_none_set(tmp_path):
+    from irbench.report.render import track_comparison_view
+
+    results = tmp_path / "results"
+    results.mkdir()
+    write_bundle(results, "elasticsearch", effective={"index": {"shards": 1}, "search": {}})
+    write_bundle(results, "elasticsearch", track="tuned")  # an older bundle without `effective`
+    scenarios, _ = load_results(results)
+    (row,) = track_comparison_view(scenarios[0], REPO_ROOT)
+    assert row["default_setting"] == "—" and row["tuned_setting"] == "—"
+
+
+def test_comparison_names_pgroonga_and_the_compose_file(tmp_path):
+    from irbench.report.render import track_comparison_view
+
+    results, out = site(tmp_path)
+    ja = "ecommerce/amazon-search-ja"
+    write_bundle(
+        results,
+        "postgres",
+        scenario=ja,
+        effective={"index": {"text_search_config": "simple"}, "search": {}},
+    )
+    write_bundle(
+        results,
+        "postgres",
+        scenario=ja,
+        track="tuned",
+        effective={
+            "index": {"text_search": "pgroonga", "text_search_config": "simple"},
+            "search": {},
+            "compose": "compose.pgroonga.yaml",
+        },
+    )
+    scenarios, _ = load_results(results)
+    (row,) = track_comparison_view(scenarios[0], REPO_ROOT)
+    assert row["default_setting"] == '"simple"' and row["default_compose"] is None
+    assert '"index.text_search":"pgroonga"' in row["tuned_setting"]
+    assert row["tuned_compose"] == "compose.pgroonga.yaml"
+    build_site(results, out, root=REPO_ROOT)
+    page = read(out, "ecommerce__amazon-search-ja__aws-c7i-4xlarge.html")
+    section = page.split("Built-in settings vs tuned")[1].split("</section>")[0]
+    assert "pgroonga" in section and "<code>compose.pgroonga.yaml</code>" in section
+
+
+def test_comparison_shows_the_change(tmp_path):
+    from irbench.report.render import track_comparison_view
+
+    results, out = site(tmp_path)
+    write_bundle(results, "elasticsearch", groups={"keyword/keyword": 0.70})
+    write_bundle(
+        results,
+        "elasticsearch",
+        track="tuned",
+        groups={"keyword/keyword": 0.60, "semantic/semantic": 0.5},
+    )
+    scenarios, _ = load_results(results)
+    (row,) = track_comparison_view(scenarios[0], REPO_ROOT)
+    assert row["keyword_change"] == pytest.approx(-0.1)
+    assert row["semantic_change"] is None and row["hybrid_change"] is None
+    build_site(results, out)
+    section = read(out, PAGE).split("Built-in settings vs tuned")[1].split("</section>")[0]
+    assert section.count("<th>change</th>") == 3
+    body = section.split("<tbody>")[1]
+    assert '<td class="num">−0.100</td>' in body
+    # semantic default and change; hybrid default, tuned and change
+    assert body.count('<td class="num">—</td>') == 5
+
+
+def test_scenario_header_states_a_non_english_language(tmp_path):
+    results, out = site(tmp_path)
+    write_bundle(results, "elasticsearch", scenario="ecommerce/amazon-search-es", language="es")
+    write_bundle(results, "qdrant", language="en")
+    build_site(results, out)
+    es = read(out, "ecommerce__amazon-search-es__aws-c7i-4xlarge.html")
+    meta = es.split('<p class="meta">')[1].split("</p>")[0]
+    assert "language <code>es</code>" in meta
+    en = read(out, PAGE).split('<p class="meta">')[1].split("</p>")[0]
+    assert "language" not in en
+
+
+def test_comparison_view_empty_without_both_tracks(tmp_path):
+    from irbench.report.render import track_comparison_view
+
+    results = tmp_path / "results"
+    results.mkdir()
+    write_bundle(results, "elasticsearch")
+    write_bundle(results, "qdrant", track="tuned")
+    scenarios, _ = load_results(results)
+    assert track_comparison_view(scenarios[0], REPO_ROOT) == []
+
+
+def test_configs_page_tuned_only(tmp_path):
+    results, out = site(tmp_path)
+    write_bundle(
+        results,
+        "elasticsearch",
+        scenario="ecommerce/amazon-search-ja",
+        effective={"index": {"analyzer": "cjk"}, "search": {}},
+    )
+    write_bundle(
+        results,
+        "elasticsearch",
+        scenario="ecommerce/amazon-search-ja",
+        track="tuned",
+        effective={"index": {"analyzer": "kuromoji"}, "search": {}},
+    )
+    write_bundle(
+        results,
+        "qdrant",
+        scenario="ecommerce/amazon-search-ja",
+        effective={"index": {"hnsw": {"m": 8}}, "search": {}},
+    )  # default only: listed
+    build_site(results, out)
+    page = read(out, "configs.html")
+    es = page.split('id="elasticsearch"')[1].split("</section>")[0]
+    assert "ecommerce/amazon-search-ja (tuned)" in es
+    assert "kuromoji" in es and "cjk" not in es
+    assert "ecommerce/amazon-search-ja (default)" not in page
+    assert "index.hnsw.m" in page.split('id="qdrant"')[1]
+
+
+def test_configs_page_shows_compose_and_why(tmp_path):
+    results, out = site(tmp_path)
+    write_bundle(
+        results,
+        "elasticsearch",
+        track="tuned",
+        effective={
+            "index": {"analyzer": "kuromoji"},
+            "search": {},
+            "compose": "compose.kuromoji.yaml",
+            "justification": {"compose": "the analysis-kuromoji plugin needs its own image"},
+        },
+    )
+    write_bundle(
+        results,
+        "qdrant",
+        track="tuned",
+        effective={"index": {}, "search": {}, "compose": None},
+    )
+    build_site(results, out)
+    page = read(out, "configs.html")
+    es = page.split('id="elasticsearch"')[1].split("</section>")[0]
+    assert "<code>compose</code>" in es and "compose.kuromoji.yaml" in es
+    assert "the analysis-kuromoji plugin needs its own image" in es
+    qdrant = page.split('id="qdrant"')[1]
+    assert "<code>compose</code>" not in qdrant
+
+
+def test_accents_column_in_perturbation_tables(tmp_path):
+    results, out = site(tmp_path)
+    bundle = write_bundle(results, "meilisearch", groups={"keyword/keyword": 0.5})
+    _with_perturbation_rows(bundle, "accents", 0.12)
+    build_site(results, out)
+    page = read(out, PAGE)
+    header = next(h for h in page.split("<thead>")[1:] if "<th>typo</th>" in h).split("</thead>")[0]
+    assert "<th>accents</th>" in header
+    assert "−0.120" in page.split("Imperfect queries")[1].split("</section>")[0]
+    assert "typed without accents" in page.split("Imperfect queries")[1].split("</p>")[0]
+    run_page = read(out, "runs/" + next(p.name for p in (out / "runs").glob("*meilisearch*.html")))
+    assert "<th>accents</th>" in run_page
+
+
+def test_no_accents_column_without_accents_rows(tmp_path):
+    results, out = site(tmp_path)
+    write_bundle(results, "meilisearch", groups={"keyword/keyword": 0.5})
+    build_site(results, out)
+    page = read(out, PAGE)
+    assert "<th>accents</th>" not in page and "accents" not in page
+
+
+def test_non_bge_model_renders(tmp_path):
+    results, out = site(tmp_path)
+    for engine in ("meilisearch", "elasticsearch"):
+        write_bundle(
+            results,
+            engine,
+            model="multilingual-e5-small",
+            scenario="ecommerce/amazon-search-ja",
+            groups={"keyword/keyword": 0.5, "semantic/semantic": 0.4},
+        )
+    build_site(results, out)
+    page = read(out, "ecommerce__amazon-search-ja__aws-c7i-4xlarge.html")
+    header = page.split("</h1>")[1].split("</p>")[0]
+    assert "multilingual-e5-small" in header
+    assert "multilingual-e5-small" in read(out, "index.html")

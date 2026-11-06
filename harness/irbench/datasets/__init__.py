@@ -13,4 +13,6 @@ NORMALIZERS: dict[str, Callable[..., NormalizedDataset]] = {
     "trec-covid": normalize_trec_covid,
     "trec-covid-abstracts": normalize_trec_covid,
     "amazon-esci": normalize_amazon_esci,
+    "amazon-esci-jp": normalize_amazon_esci,
+    "amazon-esci-es": normalize_amazon_esci,
 }

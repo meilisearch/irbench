@@ -14,6 +14,7 @@ from irbench.manifest import git_state, write_manifest
 from irbench.runs import STAGES, RunSpec
 from irbench.runtime.docker import DockerRuntime, Runner, Runtime, run_command
 from irbench.runtime.hardware import HardwareProfile, load_hardware
+from irbench.scenario import check_model, load_scenario
 from irbench.stages.context import ClientFactory, RunContext, default_client
 from irbench.stages.embed import embed_scenario
 from irbench.stages.index import index_stage
@@ -23,7 +24,8 @@ from irbench.stages.relevance import relevance_stage
 from irbench.stages.render import render_stage
 from irbench.stages.score_run import score_stage
 
-RuntimeFactory = Callable[[Path, str, HardwareProfile], Runtime]
+# (root, engine, hardware profile, compose file name in the engine's docker/ folder)
+RuntimeFactory = Callable[[Path, str, HardwareProfile, str], Runtime]
 GENERATED_KEYS = ("irbench_version", "git_sha", "created_at")
 # Files each stage writes in the run dir; re-running a stage invalidates its own
 # outputs and those of every later stage.
@@ -55,10 +57,15 @@ def run_pipeline(
     if unknown:
         raise ValueError(f"unknown stage(s) {unknown}; known: {', '.join(STAGES)}")
     ordered = [s for s in STAGES if s in stages]
+    scenario = load_scenario(root, spec.scenario)
+    check_model(scenario, spec.model)
 
     ctx = RunContext(root, spec, client_factory or default_client)
     profile = load_hardware(root, spec.hardware)
-    runtime = (runtime_factory or DockerRuntime)(root, spec.engine, profile)
+    # prepare and embed never touch the engine: they must not need its config to exist.
+    needs_engine = any(s not in ("prepare", "embed") for s in ordered)
+    compose = (ctx.track.compose if needs_engine else None) or "compose.yaml"
+    runtime = (runtime_factory or DockerRuntime)(root, spec.engine, profile, compose)
 
     manifest_path = ctx.run_dir / "manifest.json"
     manifest: dict[str, Any] = read_json(manifest_path) if manifest_path.exists() else {}
@@ -71,6 +78,7 @@ def run_pipeline(
         model=spec.model,
         track=spec.track,
         hardware=profile.model_dump(),
+        language=scenario.language,  # the report labels non-English scenario pages
     )
     log: dict[str, Any] = manifest.setdefault("stages", {})
     _invalidate_from(ctx.run_dir, log, ordered[0] if ordered else None)

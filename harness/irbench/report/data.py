@@ -13,7 +13,7 @@ from irbench.perf_files import perf_report_paths, read_perf_reports
 from irbench.score.halves import PUBLISHED_HALF
 
 MODES: tuple[str, ...] = get_args(Mode)
-PERTURBATIONS = ("original", "typo", "prefix", "synonym")
+PERTURBATIONS = ("original", "typo", "prefix", "synonym", "accents")
 REQUIRED_KEYS = ("run_id", "scenario", "engine", "model", "track", "hardware", "status")
 REQUIRED_RELEVANCE_KEYS = ("mode", "base", "perturbation", "n", "metrics")
 # run_id and hardware.id become path components (runs/{run_id}.html, the scenario slug);
@@ -149,8 +149,20 @@ class ScenarioResults:
         return f"{slug(self.scenario)}__{self.hardware}"
 
     @property
+    def ranked_runs(self) -> list[RunResult]:
+        """The runs that compete in rankings: every run except a default run whose engine and
+        model also have a tuned run here (the pair is shown in a default-vs-tuned table)."""
+        tuned = {(r.engine, r.model) for r in self.runs if r.track == "tuned"}
+        return [r for r in self.runs if r.track != "default" or (r.engine, r.model) not in tuned]
+
+    @property
     def models(self) -> list[str]:
         return sorted({r.model for r in self.runs})
+
+    @property
+    def language(self) -> str | None:
+        """The scenario's language as its run manifests record it (None in older bundles)."""
+        return next((r.manifest["language"] for r in self.runs if r.manifest.get("language")), None)
 
     @property
     def groups(self) -> list[str]:

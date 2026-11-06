@@ -80,8 +80,8 @@ class PostgresAdapter(EngineAdapter):
 
     def apply_settings(self, client: Any) -> None:
         """index.settings from the config (dotted extension GUCs like hnsw.ef_search, or core GUCs like
-        plan_cache_mode): per database and this session."""
-        settings = self.ctx.config.index.get("settings") or {}
+        plan_cache_mode) over the adapter's default_settings: per database and this session."""
+        settings = {**self.default_settings(), **(self.ctx.config.index.get("settings") or {})}
         stmts = ["ALTER DATABASE {db} RESET ALL"]
         session = []
         for name, value in settings.items():
@@ -127,6 +127,10 @@ class PostgresAdapter(EngineAdapter):
             raise RuntimeError(f"{t} has {count} rows, expected {n_docs}")
 
     # --- hooks ----------------------------------------------------------------
+    def default_settings(self) -> dict[str, str]:
+        """GUCs the adapter needs whatever the config says; an index.settings entry overrides."""
+        return {}
+
     def setup_ddl(self) -> str:
         return "CREATE EXTENSION IF NOT EXISTS vector;"
 

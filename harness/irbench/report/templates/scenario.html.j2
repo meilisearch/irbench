@@ -2,7 +2,7 @@
 {% block title %}{{ s.scenario }} · {{ s.hardware }} · IRBench{% endblock %}
 {% block main %}
 <h1>{{ s.scenario }}</h1>
-<p class="meta">Hardware profile <code>{{ s.hardware }}</code> · {{ s.runs|length }} runs ·
+<p class="meta">Hardware profile <code>{{ s.hardware }}</code> · embedding model{% if s.models|length > 1 %}s{% endif %} <code>{{ s.models|join("</code>, <code>"|safe) }}</code>{% if s.language and s.language != "en" %} · language <code>{{ s.language }}</code>{% endif %} · {{ s.runs|length }} runs ·
 <a href="{{ docs_url }}">how this is measured</a></p>
 {% if not view.comparable %}
 <p class="alert">Profile <code>{{ s.hardware }}</code> is a developer machine. These numbers check
@@ -102,6 +102,34 @@ as relevant.</p>
 {% endif %}
 </section>
 
+{% if view.track_comparison %}
+<section>
+<h2>Built-in settings vs tuned</h2>
+<p class="note">Each engine with only its built-in language setting (default) and with the best
+settings found, official language plugins allowed (tuned). nDCG@10. Change is tuned minus
+default. Default runs are published here only: they are not ranked in the tables of this page.</p>
+<div class="scroll"><table>
+  <thead>
+    <tr><th rowspan="2">Engine</th>{% if s.models|length > 1 %}<th rowspan="2">Model</th>{% endif %}<th colspan="3">keyword</th><th colspan="3">semantic</th><th colspan="3">hybrid</th><th colspan="2">Language setting</th></tr>
+    <tr>{% for _ in range(3) %}<th>default</th><th>tuned</th><th>change</th>{% endfor %}<th>default</th><th>tuned</th></tr>
+  </thead>
+  <tbody>
+  {% for row in view.track_comparison %}
+    <tr>
+      <th scope="row">{{ row.engine }}</th>{% if s.models|length > 1 %}<td>{{ row.model }}</td>{% endif %}
+      {% for base in ("keyword", "semantic", "hybrid") %}
+      <td class="num">{{ row[base ~ "_default"]|score }}</td><td class="num">{{ row[base ~ "_tuned"]|score }}</td><td class="num">{{ row[base ~ "_change"]|delta }}</td>
+      {% endfor %}
+      {% for track in ("default", "tuned") %}
+      <td><code>{{ row[track ~ "_setting"] }}</code>{% if row[track ~ "_compose"] %} with <code>{{ row[track ~ "_compose"] }}</code>{% endif %}</td>
+      {% endfor %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+</section>
+{% endif %}
+
 {% if view.tradeoff.charts %}
 <section>
 <h2>Relevance against speed</h2>
@@ -127,8 +155,7 @@ Hover a dot for p99.</p>
 
 <section>
 <h2>Imperfect queries</h2>
-<p class="note">nDCG@10 on the original queries, and the change when the same queries carry a
-typo, are cut short (search as you type){% if "synonym" in view.perturbation_kinds %} or use a synonym{% endif %}. Perturbation rules are in the methodology.</p>
+<p class="note">nDCG@10 on the original queries, and the change when the same queries {{ view.perturbation_phrase }}. Perturbation rules are in the methodology.</p>
 <div class="scroll"><table>
   <thead><tr><th>Engine</th><th>Model</th><th>Mode</th><th>original</th>{% for p in view.perturbation_kinds %}<th>{{ p }}</th>{% endfor %}</tr></thead>
   <tbody>

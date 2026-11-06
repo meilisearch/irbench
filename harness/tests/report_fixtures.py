@@ -120,6 +120,8 @@ def write_bundle(
     synonyms=None,
     checks=None,
     effective=None,
+    engine_image=None,
+    language=None,
 ) -> Path:
     run_id = "__".join([scenario.replace("/", "__"), engine, model, track, hardware])
     d = results / run_id
@@ -138,7 +140,7 @@ def write_bundle(
         "stages": stages,
         "git_sha": "abc123",
         "irbench_version": "0.1.0",
-        "engine_image": {"image": f"{engine}:1", "digest": f"{engine}@sha256:00"},
+        "engine_image": engine_image or {"image": f"{engine}:1", "digest": f"{engine}@sha256:00"},
         "config": {
             "path": f"engines/{engine}/configs/{scenario}.yaml",
             "hash": "f" * 64,
@@ -149,6 +151,7 @@ def write_bundle(
         },
         "dataset": {"id": "wands", "version": "3b74dcf4"},
         "seed": 20261009,
+        **({"language": language} if language is not None else {}),
     }
     (d / "manifest.json").write_text(json.dumps(manifest))
     if status == "succeeded":

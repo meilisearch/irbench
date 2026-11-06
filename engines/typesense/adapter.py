@@ -61,6 +61,7 @@ class Adapter(EngineAdapter):
     host_port = 18108
     health_path = "/health"
     data_dir = "/data"
+    language_keys = ("index.searchable_fields.locale",)
 
     @property
     def synonym_set(self) -> str:
@@ -143,8 +144,10 @@ class Adapter(EngineAdapter):
         if self.ctx.synonyms:
             path = f"/synonym_sets/{self.synonym_set}"
             call(client, Request("PUT", path, body=self.synonyms_body(), headers=HEADERS))
+        # A stopword set takes the searchable fields' locale (index.searchable_fields.locale).
+        locale = self.ctx.config.index.get(SEARCHABLE_FIELDS, {}).get("locale") or "en"
         for name, words in self.stopword_sets().items():
-            body = {"stopwords": list(words), "locale": "en"}
+            body = {"stopwords": list(words), "locale": locale}
             call(client, Request("PUT", f"/stopwords/{name}", body=body, headers=HEADERS))
         call(client, Request("POST", "/collections", body=self.collection_body(), headers=HEADERS))
 

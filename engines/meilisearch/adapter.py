@@ -44,6 +44,7 @@ class Adapter(EngineAdapter):
     host_port = 17700
     health_path = "/health"
     data_dir = "/meili_data"
+    language_keys = ("index.localizedAttributes",)
 
     def __init__(self, ctx: IndexContext):
         super().__init__(ctx)
