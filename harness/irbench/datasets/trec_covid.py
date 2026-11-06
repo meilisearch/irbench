@@ -1,5 +1,6 @@
 import csv
 import re
+from collections.abc import Iterator
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -48,17 +49,31 @@ def _metadata(path: Path) -> dict[str, dict[str, Any]]:
 EMPTY: dict[str, Any] = {"publish_year": None, "publish_date": None, "source": [], "journal": None}
 
 
-def normalize_trec_covid(raw: dict[str, Path], out_dir: Path) -> NormalizedDataset:
-    meta = _metadata(raw["metadata"])
-    docs = (
-        {
-            "id": r["_id"],
-            "title": r.get("title") or "",
-            "text": r.get("text") or "",
-            **meta.get(r["_id"], EMPTY),
-        }
-        for r in read_jsonl_rows(raw["corpus"])
-    )
+def normalize_trec_covid(
+    raw: dict[str, Path],
+    out_dir: Path,
+    min_abstract_chars: int = 0,
+    relevant_only: bool = False,
+) -> NormalizedDataset:
+    """BEIR TREC-COVID, joined with CORD-19 metadata when `raw` has a `metadata` file.
+
+    `min_abstract_chars` and `relevant_only` reproduce the relevancy-bench files: papers whose
+    abstract (stripped) is shorter are dropped, and only judgments with a grade above 0 kept."""
+    meta = _metadata(raw["metadata"]) if "metadata" in raw else None
+    short = 0
+
+    def docs() -> Iterator[dict[str, Any]]:
+        nonlocal short
+        for r in read_jsonl_rows(raw["corpus"]):
+            text = r.get("text") or ""
+            if len(text.strip()) < min_abstract_chars:
+                short += 1
+                continue
+            doc = {"id": r["_id"], "title": r.get("title") or "", "text": text}
+            if meta is not None:
+                doc.update(meta.get(r["_id"], EMPTY))
+            yield doc
+
     topic_qrels = read_qrels_tsv(raw["qrels"])
     queries: list[dict[str, Any]] = []
     qrels: dict[str, dict[str, int]] = {}
@@ -70,5 +85,8 @@ def normalize_trec_covid(raw: dict[str, Path], out_dir: Path) -> NormalizedDatas
                 continue
             qid = f"{topic}-{group}"
             queries.append({"qid": qid, "text": " ".join(text.split()), "group": group})
-            qrels[qid] = dict(topic_qrels.get(topic, {}))
-    return write_normalized(out_dir, docs, queries, qrels, ["title", "text"])
+            grades = topic_qrels.get(topic, {})
+            qrels[qid] = {d: g for d, g in grades.items() if g > 0 or not relevant_only}
+    out = write_normalized(out_dir, docs(), queries, qrels, ["title", "text"])
+    out.dropped["docs"] += short
+    return out

@@ -1,6 +1,6 @@
 # Meilisearch
 
-Image: `getmeili/meilisearch:v1.54.3` (host port 17700). Adapter: `adapter.py`.
+Image: `getmeili/meilisearch:v1.56.1` (host port 17700). Adapter: `adapter.py`.
 
 ## What the default track sends
 

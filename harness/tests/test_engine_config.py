@@ -177,3 +177,29 @@ def test_hash_changes_when_synonyms_is_set(tmp_path):
     _write(tmp_path / "other", "e", {"default": {"synonyms": "no support"}})
     other = load_engine_config(tmp_path / "other", "e", SCENARIO).hash("default")
     assert plain != other
+
+
+def _write_sweep(root, engine, raw):
+    path = root / "engines" / engine / "sweeps" / "ecommerce" / "product-search.yaml"
+    path.parent.mkdir(parents=True)
+    path.write_text(yaml.safe_dump(raw))
+    return path
+
+
+def test_sweep_variant_merges_over_the_tuned_track(tmp_path):
+    # Sweep variants live in a committed file next to the configs and run as
+    # `tuned+<name>`, each in its own run dir, so the sweep is reproducible.
+    _write(tmp_path, "e", {"default": {"index": {"k": 1}}, "tuned": {"index": {"t": 1}}})
+    _write_sweep(tmp_path, "e", {"variants": {"stem": {"index": {"stemming": "english"}}}})
+    cfg = load_engine_config(tmp_path, "e", SCENARIO)
+    assert cfg.track("tuned+stem").index == {"k": 1, "t": 1, "stemming": "english"}
+    assert cfg.hash("tuned+stem") != cfg.hash("tuned")
+
+
+def test_unknown_sweep_variant_is_an_error(tmp_path):
+    _write(tmp_path, "e", {"default": {}, "tuned": {}})
+    with pytest.raises(ValueError, match="sweep"):
+        load_engine_config(tmp_path, "e", SCENARIO).track("tuned+nope")
+    _write_sweep(tmp_path, "e", {"variants": {"a": {}}})
+    with pytest.raises(ValueError, match="nope"):
+        load_engine_config(tmp_path, "e", SCENARIO).track("tuned+nope")

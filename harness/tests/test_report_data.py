@@ -446,3 +446,10 @@ def test_group_judged_and_n_follow_the_mode_and_base(tmp_path):
     assert run.group_n("misspelled", "original", "keyword/keyword") == 30
     assert run.group_n("misspelled", "original", "faceted/keyword") == 4
     assert run.group_n("misspelled", "original", "hybrid/keyword") is None
+
+
+def test_sweep_variant_runs_are_not_published(tmp_path):
+    write_bundle(tmp_path, "meilisearch", track="tuned")
+    write_bundle(tmp_path, "meilisearch", track="tuned+stop_words")
+    (scenario,), unreadable = load_results(tmp_path)
+    assert [r.track for r in scenario.runs] == ["tuned"] and unreadable == []

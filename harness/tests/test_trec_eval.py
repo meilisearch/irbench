@@ -9,8 +9,16 @@ from irbench.models import QueryTask
 from irbench.score.relevance import score_relevance
 
 OURS_TO_TREC = {
+    "ndcg@5": "ndcg_cut_5",
     "ndcg@10": "ndcg_cut_10",
+    "ndcg@20": "ndcg_cut_20",
+    "ndcg@100": "ndcg_cut_100",
+    "precision@1": "P_1",
+    "precision@5": "P_5",
+    "precision@20": "P_20",
+    "precision@100": "P_100",
     "recall@10": "recall_10",
+    "recall@20": "recall_20",
     "recall@100": "recall_100",
     "mrr@10": "recip_rank",  # computed on the top 10 only, below
     "success@1": "success_1",
@@ -38,7 +46,14 @@ def _trec_eval(qrels, run, task_ids):
     full = {t: {d: float(1000 - r) for r, d in enumerate(run.get(t, []))} for t in task_ids}
     top10 = {t: {d: float(1000 - r) for r, d in enumerate(run.get(t, [])[:10])} for t in task_ids}
     evaluator = pytrec_eval.RelevanceEvaluator(
-        qrels, {"ndcg_cut.10", "recall.10", "recall.100", "recip_rank", "success.1"}
+        qrels,
+        {
+            "ndcg_cut.5,10,20,100",
+            "P.1,5,20,100",
+            "recall.10,20,100",
+            "recip_rank",
+            "success.1",
+        },
     )
     on_full, on_top10 = evaluator.evaluate(full), evaluator.evaluate(top10)
     out = {}

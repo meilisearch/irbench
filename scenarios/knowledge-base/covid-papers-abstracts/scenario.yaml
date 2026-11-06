@@ -1,0 +1,34 @@
+# TREC-COVID exactly as the Meilisearch relevancy-bench protocol builds it, to compare with
+# knowledge-base/covid-papers (the IRBench version) on the same queries:
+# - corpus: papers with an abstract of at least 4 characters (129,179 of 171,332);
+# - judgments: relevant only (grades 1 and 2), so clean@k is not computed;
+# - queries: the 50 keyword and 50 question forms, as written, with no typo or prefix variants;
+# - modes: keyword, semantic and hybrid only (their files carry no metadata to filter or sort).
+id: knowledge-base/covid-papers-abstracts
+dataset: trec-covid-abstracts
+id_field: id
+
+index_fields:
+  searchable: [title, text]
+  filterable: []
+  sortable: []
+  facets: []
+modes: [keyword, semantic, hybrid]
+structured_bases: []
+embedding_fields: [title, text]
+filter_templates: []
+sort_templates: []
+
+top_k: 100
+request_timeout_s: 10
+max_error_rate: 0.001
+index_timeout_s: 3600
+
+perturbations:
+  seed: 20261014
+  kinds: []
+
+# Speed is measured on knowledge-base/covid-papers; this scenario is run for relevance only.
+perf:
+  throughput_groups: [keyword/keyword, semantic/semantic, hybrid/hybrid]
+  page_sizes: [20, 100]

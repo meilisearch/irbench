@@ -12,7 +12,7 @@ from irbench.paths import Workspace
 from irbench.perturb.variants import make_variants
 from irbench.scenario import load_scenario
 from irbench.tasks import build_tasks
-from irbench.terms import scenario_term_groups
+from irbench.terms import plain_query_text, scenario_term_groups
 
 FLOAT32_EXACT = 2**24
 
@@ -54,7 +54,7 @@ def prepare(root: Path, scenario_id: str, client: httpx.Client | None = None) ->
     queries = [
         Query(
             qid=r["qid"],
-            text=r["text"],
+            text=plain_query_text(r["text"]),
             variant_of=r["qid"],
             perturbation="original",
             group=r.get("group"),

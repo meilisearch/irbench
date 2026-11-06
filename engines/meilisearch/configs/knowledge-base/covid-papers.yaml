@@ -23,21 +23,37 @@ default:
       `sort` strict on both bases. Requests without `sort` are unaffected: the
       rule is inactive without a sort parameter (checked on v1.54.3 for keyword,
       semantic and hybrid queries).
-# tuned: the best settings found by a sweep of the engine's documented search settings,
-# scored on nDCG@10 per scenario and retrieval base (2026-10-20). Typo tolerance, prefix
-# search and stemming stay at the engine's defaults; hybrid stays the engine's native
-# fusion.
+# tuned: the best settings found by sweeps of the engine's documented settings, scored on
+# nDCG@10 per scenario and retrieval base (2026-10-20), then re-checked by the committed sweep
+# in sweeps/ on the tune half of the queries (2026-11-06; selection rule in
+# docs/methodology/parity). Hybrid stays the engine's native fusion.
 tuned:
+  index:
+    typoTolerance:
+      minWordSizeForTypos: {oneTypo: 3, twoTypos: 6}
+    rankingRules: [sort, words, attributeRank, typo, proximity, wordPosition, exactness]
   search:
     keyword:
       matchingStrategy: frequency
     hybrid:
       hybrid:
-        semanticRatio: 0.95
+        semanticRatio: 0.65
   justification:
+    typoTolerance: 'One typo allowed from 3 letters and two from 6 (defaults 5 and 9), a documented
+      index setting. Keyword nDCG@10 0.326 -> 0.337, hybrid unchanged (2026-11-06 sweep, tune half).'
+    rankingRules: >-
+      `sort` first, as on the default track (strict sort on both bases; inactive without a sort
+      parameter). Then `attributeRank` moves up to right after `words`: among documents matching
+      the same number of query words, a match in a higher-priority field (the title) ranks before
+      a typo-free or closer match in the abstract. `rankingRules` is a documented index setting.
+      The sweep tried 9 orders (2026-11-01); with `matchingStrategy: frequency`, keyword nDCG@10
+      0.336 -> 0.365. Hybrid is unchanged (0.576): at this `semanticRatio` the keyword side does
+      not move the ranking. Also dropping `proximity` adds 0.002, within noise, so every shipped
+      rule is kept.
     matchingStrategy: With the default `last`, Meilisearch drops words from the end of the query
       until something matches, so the last word goes first. `frequency` drops the most frequent
       words first. A documented search parameter. Keyword nDCG@10 0.310 -> 0.336; hybrid keeps
       `last`.
-    hybrid.semanticRatio: '`semanticRatio` 0.95 (default 0.5): the vector side leads; every ratio from
-      0.55 up ranks within 0.001 of this one. Hybrid nDCG@10 0.532 -> 0.575.'
+    hybrid.semanticRatio: '`semanticRatio` 0.65 (default 0.5): the vector side leads. 0.65, 0.8 and
+      0.95 rank within 0.001 of each other (2026-11-06 sweep, tune half), so the value closest to the default
+      is kept. Hybrid nDCG@10 0.532 -> 0.575 (2026-10-20).'

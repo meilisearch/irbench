@@ -43,5 +43,5 @@ tuned:
     vector_query_options: >-
       `alpha` 0.5 (default 0.3) is the vector side's weight in Typesense's native rank
       fusion; hybrid nDCG@10 0.507 -> 0.602 in the sweep; dropping words lowers hybrid here.
-  # Stemming and stop words stay off: the parity rules keep stemming at each engine's
-  # language default, and no other engine removes stop words.
+  # Stemming and stop words stay off: the sweep tried both (2026-11-06, tune half) and
+  # neither helped here (keyword nDCG@10 0.373 -> 0.359 with both, 0.373 with stop words alone).

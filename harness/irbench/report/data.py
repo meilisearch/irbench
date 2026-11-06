@@ -11,6 +11,7 @@ from irbench.io import read_json
 from irbench.models import BASE_MODES, Mode
 from irbench.paths import slug
 from irbench.perf_files import perf_report_paths, read_perf_reports
+from irbench.score.halves import PUBLISHED_HALF
 
 MODES: tuple[str, ...] = get_args(Mode)
 PERTURBATIONS = ("original", "typo", "prefix", "synonym")
@@ -94,6 +95,11 @@ class RunResult:
     def judged(self, group: str) -> float | None:
         row = self._all_row(group)
         return row["metrics"].get("judged@10") if row else None
+
+    def metric(self, group: str, name: str) -> float | None:
+        """A metric of the overall row of a mode/base group, None when it was not scored."""
+        row = self._all_row(group)
+        return row["metrics"].get(name) if row else None
 
     def per_task(self, group: str) -> dict[str, float] | None:
         """nDCG@10 of each task of a mode/base group; None for bundles scored before
@@ -204,7 +210,10 @@ def load_results(results_dir: Path) -> tuple[list[ScenarioResults], list[Unreada
     candidates = (
         p
         for p in results_dir.iterdir()
-        if (p / "manifest.json").is_file() and not p.name.endswith((".tmp", ".old"))
+        if (p / "manifest.json").is_file()
+        and not p.name.endswith((".tmp", ".old"))
+        # Sweep variants (`tuned+<name>`) are working runs, never published.
+        and "__tuned+" not in p.name
     )
     for d in sorted(candidates):
         try:
@@ -241,6 +250,8 @@ def _load_run(d: Path) -> RunResult:
     }
     files["perf"] = read_perf_reports(d) or None
     _validate_files(d, files)
+    if files["scores"] is not None:
+        files["scores"] = published_half(files["scores"])
     status, failure = manifest["status"], _failure(manifest)
     if status == "succeeded" and files["scores"] is None:
         status, failure = "incomplete", "the run succeeded but the bundle has no scores.json"
@@ -256,6 +267,32 @@ def _load_run(d: Path) -> RunResult:
         manifest=manifest,
         **files,
     )
+
+
+def published_half(scores: dict[str, Any]) -> dict[str, Any]:
+    """The scores the report shows: only the `test` half of the queries when the run was scored
+    by halves (settings are chosen on the `tune` half). Older bundles are returned unchanged."""
+    halves = scores.get("halves")
+    if not halves:
+        return scores
+    rows = [
+        {k: v for k, v in row.items() if k != "half"}
+        for row in scores["relevance"]
+        if row.get("half") == PUBLISHED_HALF
+    ]
+    out = {**scores, "relevance": rows, "published_half": PUBLISHED_HALF}
+    if "paired" in scores:
+        out["paired"] = [
+            {k: v for k, v in row.items() if k != "half"}
+            for row in scores["paired"]
+            if row.get("half") == PUBLISHED_HALF
+        ]
+    if "per_task" in scores:
+        out["per_task"] = {
+            metric: {t: v for t, v in values.items() if halves.get(t) == PUBLISHED_HALF}
+            for metric, values in scores["per_task"].items()
+        }
+    return out
 
 
 def _failure(manifest: dict[str, Any]) -> str | None:
