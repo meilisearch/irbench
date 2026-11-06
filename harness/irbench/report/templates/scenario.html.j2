@@ -169,6 +169,38 @@ typo, are cut short (search as you type){% if "synonym" in view.perturbation_kin
 </section>
 {% endif %}
 
+{% if view.misspellings %}
+<section>
+<h2>Misspellings</h2>
+<p class="note">nDCG@10 on real misspelled queries as typed, and after correction. Both cost columns
+give the nDCG@10 lost to the mistake, so a positive figure is a loss: for a real misspelling,
+corrected minus as typed; for a synthetic typo added to clean queries, clean minus typo. Intervals are
+95% confidence intervals of the paired change; n/a when only one query backs the change. judged@10 is
+that of the misspelled queries as typed / corrected.</p>
+{% for t in view.misspellings %}
+<h3>{{ t.group|group }}: nDCG@10</h3>
+<div class="scroll"><table>
+  <thead><tr><th>Engine</th><th>Model</th><th>misspelled{% if t.n_misspelled is not none %}<br><small>n={{ t.n_misspelled }}</small>{% endif %}</th><th>corrected</th><th>cost of real misspelling</th><th>cost of synthetic typo<br><small>on clean{% if t.n_clean is not none %}, n={{ t.n_clean }}{% endif %}</small></th><th>judged@10<br><small>typed / corrected</small></th></tr></thead>
+  <tbody>
+  {% for r in t.rows %}
+    <tr>
+      <th scope="row">{{ r.run.label }}</th><td>{{ r.run.model }}</td>
+      <td class="num">{{ r.original|score }}</td>
+      <td class="num">{{ r.corrected_ndcg|score }}</td>
+      <td class="num delta">{{ r.corrected.delta|delta }}{% if r.corrected.interval %} <small class="ci">{{ r.corrected.interval }}</small>{% else %} <small class="ci">n/a</small>{% endif %}</td>
+      <td class="num delta">{{ r.typo.delta|delta }}{% if r.typo.interval %} <small class="ci">{{ r.typo.interval }}</small>{% elif r.typo.delta is not none %} <small class="ci">n/a</small>{% endif %}</td>
+      <td class="num">{{ r.judged_original|score }} / {{ r.judged_corrected|score }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% endfor %}
+{% for note in view.misspelling_notes %}
+<p class="note">{{ note }}</p>
+{% endfor %}
+</section>
+{% endif %}
+
 {% if view.models %}
 <section>
 <h2>Embedding models</h2>

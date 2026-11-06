@@ -46,7 +46,7 @@ def prepare(root: Path, scenario_id: str, client: httpx.Client | None = None) ->
     scenario = load_scenario(root, scenario_id)
     spec = load_dataset_spec(root, scenario.dataset)
 
-    raw = fetch_dataset(spec, ws.raw_dir(spec.id), client)
+    raw = fetch_dataset(spec, ws.raw_dir(spec.raw_from or spec.id), client)
     normalized = NORMALIZERS[spec.id](raw, ws.dataset_dir(spec.id), **spec.params)
 
     docs_by_id = {d[scenario.id_field]: d for d in read_jsonl(normalized.docs)}
@@ -58,6 +58,7 @@ def prepare(root: Path, scenario_id: str, client: httpx.Client | None = None) ->
             variant_of=r["qid"],
             perturbation="original",
             group=r.get("group"),
+            corrected=r.get("corrected"),
         )
         for r in read_jsonl(normalized.queries)
     ]
@@ -92,6 +93,7 @@ def prepare(root: Path, scenario_id: str, client: httpx.Client | None = None) ->
             "dataset": {
                 "id": spec.id,
                 "version": spec.version,
+                "distribution": spec.distribution,
                 "files": {name: f.sha256 for name, f in spec.files.items()},
             },
             "seed": p.seed,

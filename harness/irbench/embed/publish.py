@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict
 from irbench.datasets.fetch import ChecksumError, fetch_file, sha256_file
 from irbench.embed.base import render_doc_text
 from irbench.embed.vectors import read_vectors
+from irbench.internal import refuse_if_internal
 from irbench.io import read_json, read_jsonl
 from irbench.paths import Workspace, slug
 from irbench.scenario import load_scenario
@@ -94,6 +95,7 @@ def pack_vectors(
         load_scenario(root, scenario_id),
         _prepared(root, scenario_id),
     )
+    refuse_if_internal(root, scenario_id, info, "pack its vectors")
     sources = {
         "docs": ws.doc_vectors_path(scenario.dataset, model_id),
         "queries": ws.query_vectors_path(scenario_id, model_id),

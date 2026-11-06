@@ -14,9 +14,10 @@ from irbench.embed.publish import (
     write_sidecar,
 )
 from irbench.embed.vectors import write_vectors
+from irbench.internal import is_internal
 from irbench.io import read_jsonl
 from irbench.paths import Workspace
-from irbench.scenario import load_scenario
+from irbench.scenario import check_model, load_scenario
 
 BATCH_SIZE = 64
 SAVE_EVERY = 50
@@ -47,6 +48,8 @@ def embed_scenario(
         raise FileNotFoundError(
             f"{variants_path} missing: run `irbench prepare --scenario {scenario_id}` first"
         )
+    scenario = load_scenario(root, scenario_id)
+    check_model(scenario, model_id)
 
     # An injected embedder or --compute means "compute". Otherwise: reuse local vectors that
     # already match the prepared data (never touching the network), else consult the
@@ -58,14 +61,16 @@ def embed_scenario(
         if local is not None:
             docs_path, queries_path, n_docs, n_queries = local
             return EmbedResult(docs_path, queries_path, n_docs, n_queries, 0, "local")
-        entry = find_published(root, scenario_id, model_id)
+        # Internal data is never published, so it is never downloaded either.
+        entry = (
+            None if is_internal(root, scenario_id) else find_published(root, scenario_id, model_id)
+        )
         if entry is not None:
             docs_path, queries_path = download_published(root, entry, client)
             return EmbedResult(
                 docs_path, queries_path, entry.docs.count, entry.queries.count, 0, "published"
             )
 
-    scenario = load_scenario(root, scenario_id)
     emb = embedder or get_embedder(model_id)
     emb_dir = ws.embeddings_dir(scenario.dataset, model_id)
     cache = VectorCache(emb_dir / "cache.parquet")

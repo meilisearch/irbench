@@ -8,6 +8,7 @@ from irbench.cli import app
 from irbench.report.data import load_results
 from irbench.report.render import (
     MARKER,
+    InternalRunsError,
     build_site,
     engine_slots,
     fmt_bytes,
@@ -641,3 +642,188 @@ def test_config_page_lists_settings_and_why(tmp_path):
     assert "postgres:1" in page  # image
     assert 'id="qdrant"' in page and "Every setting at the engine" in page
     assert 'href="configs.html"' in read(out, "index.html")
+
+
+BANNER = "Internal: not for publication (Kaggle competition data)"
+INTERNAL_SCENARIO = "ecommerce/internal-search"
+INTERNAL_PAGE = "ecommerce__internal-search__aws-c7i-4xlarge.html"
+
+
+def internal_site(tmp_path):
+    results, out = site(tmp_path)
+    write_bundle(results, "meilisearch")
+    internal = write_bundle(
+        results, "meilisearch", scenario=INTERNAL_SCENARIO, distribution="internal"
+    )
+    return results, out, internal
+
+
+def test_build_site_refuses_internal_by_default(tmp_path):
+    results, out, internal = internal_site(tmp_path)
+    with pytest.raises(InternalRunsError, match=internal.name) as e:
+        build_site(results, out)
+    assert "--internal" in str(e.value)
+    assert not out.exists()
+
+    out.mkdir()
+    (out / "keep.txt").write_text("x")
+    with pytest.raises(InternalRunsError):
+        build_site(results, out)
+    assert (out / "keep.txt").exists()
+
+
+def test_build_site_internal_banner(tmp_path):
+    results, out, internal = internal_site(tmp_path)
+    build_site(results, out, allow_internal=True)
+    assert BANNER in read(out, "index.html")
+    assert BANNER in read(out, INTERNAL_PAGE)
+    assert BANNER in read(out, f"runs/{internal.name}.html")
+    assert BANNER in read(out, "configs.html")
+    public_run = next(p.name for p in results.iterdir() if p != internal)
+    assert BANNER not in read(out, PAGE)
+    assert BANNER not in read(out, f"runs/{public_run}.html")
+
+
+def test_public_build_unchanged(tmp_path):
+    results, out = site(tmp_path)
+    write_bundle(results, "meilisearch", groups={"keyword/keyword": 0.481})
+    write_bundle(results, "qdrant", groups={"semantic/semantic": 0.55})
+    build_site(results, out)
+    out2 = tmp_path / "site2"
+    build_site(results, out2, allow_internal=True)
+    names = sorted(p.relative_to(out).as_posix() for p in out.rglob("*.html"))
+    assert names
+    for name in names:
+        assert read(out, name) == read(out2, name)
+        assert "Internal:" not in read(out, name)
+
+
+HD_SCENARIO = "ecommerce/home-depot-search"
+HD_PAGE = "ecommerce__home-depot-search__aws-c7i-4xlarge.html"
+
+
+def _with_misspelling_rows(bundle, *, corrected_n=30, typo_n=40):
+    """Group rows (misspelled original/corrected, clean original) and paired rows for keyword."""
+
+    def add(d):
+        base = next(
+            r for r in d["relevance"] if (r["mode"], r["perturbation"]) == ("keyword", "all")
+        )
+
+        def group_row(group, perturbation, n, ndcg, judged, mode="keyword"):
+            metrics = {**base["metrics"], "ndcg@10": ndcg, "judged@10": judged}
+            return {
+                **base,
+                "mode": mode,
+                "group": group,
+                "perturbation": perturbation,
+                "n": n,
+                "metrics": metrics,
+            }
+
+        def paired(perturbation, group, n, delta, ci):
+            return {
+                "mode": "keyword",
+                "base": "keyword",
+                "perturbation": perturbation,
+                "group": group,
+                "n": n,
+                "delta": delta,
+                "ci95": ci,
+            }
+
+        return {
+            **d,
+            "relevance": [
+                # another mode over the same base, first: its n and judged@10 must not be used
+                group_row("misspelled", "original", 11, 0.9, 0.5, mode="faceted"),
+                group_row("clean", "original", 12, 0.9, 0.5, mode="faceted"),
+                *d["relevance"],
+                group_row("misspelled", "original", 30, 0.271, 0.801),
+                group_row("misspelled", "corrected", 30, 0.352, 0.823),
+                group_row("clean", "original", 70, 0.488, 0.777),
+            ],
+            "paired": [
+                paired("corrected", "misspelled", corrected_n, 0.081, [0.044, 0.118]),
+                paired("typo", "clean", typo_n, -0.137, [-0.19, -0.083]),
+            ],
+        }
+
+    _edit_json(bundle / "scores.json", add)
+
+
+def test_misspelling_table_values(tmp_path):
+    results, out = site(tmp_path)
+    bundle = write_bundle(
+        results, "meilisearch", scenario=HD_SCENARIO, groups={"keyword/keyword": 0.5}
+    )
+    _add_per_task(bundle, "keyword/keyword", [0.4, 0.6], judged=0.912)
+    _with_misspelling_rows(bundle)
+    build_site(results, out)
+    page = read(out, HD_PAGE)
+    assert "<h2>Misspellings</h2>" in page
+    section = page.split("<h2>Misspellings</h2>")[1].split("</section>")[0]
+    assert "n=30" in section and "n=70" in section
+    # both costs are positive when the mistake hurts: corrected − original, original − typo
+    for cell in ("0.271", "0.352", "+0.081", "[+0.044, +0.118]", "+0.137", "[+0.083, +0.190]"):
+        assert cell in section
+    assert "−0.137" not in section
+    assert "cost of real misspelling" in section and "cost of synthetic typo" in section
+    # judged@10 of the two sets whose nDCG is shown, not the base's overall judged@10
+    assert "0.801 / 0.823" in section
+    assert "0.912" not in section
+    # n comes from this table's mode and base, not from the faceted rows
+    assert "n=11" not in section and "n=12" not in section
+    # the caveats are fixed copy of this scenario
+    assert "speller changed the query" in section
+    assert "1,086 / 415 / 100 / 39 of 1,640" in section
+    # the figures describe every training query the dictionary corrects, not the sample
+    assert "all 1,640 training queries" in section and "not the sample" in section
+
+
+def _misspelling_section(tmp_path, **n):
+    tmp_path.mkdir(exist_ok=True)
+    results, out = site(tmp_path)
+    bundle = write_bundle(
+        results, "meilisearch", scenario=HD_SCENARIO, groups={"keyword/keyword": 0.5}
+    )
+    _with_misspelling_rows(bundle, **n)
+    build_site(results, out)
+    return read(out, HD_PAGE).split("<h2>Misspellings</h2>")[1].split("</section>")[0]
+
+
+NA_CELL = '<small class="ci">n/a</small>'
+
+
+def test_a_single_pair_has_no_interval(tmp_path):
+    # a single-query pair has a zero-width interval, which is not an interval
+    section = _misspelling_section(tmp_path, typo_n=1)
+    assert section.count(NA_CELL) == 1
+    assert "+0.137 " + NA_CELL in section and "[+0.083, +0.190]" not in section
+    assert "[+0.044, +0.118]" in section
+
+    section = _misspelling_section(tmp_path / "b", corrected_n=1)
+    assert section.count(NA_CELL) == 1
+    assert "+0.081 " + NA_CELL in section and "[+0.044, +0.118]" not in section
+    assert "[+0.083, +0.190]" in section
+
+
+def test_misspelling_copy_only_for_the_home_depot_scenario(tmp_path):
+    results, out = site(tmp_path)
+    bundle = write_bundle(results, "meilisearch", groups={"keyword/keyword": 0.5})
+    _with_misspelling_rows(bundle)
+    build_site(results, out)
+    section = read(out, PAGE).split("<h2>Misspellings</h2>")[1].split("</section>")[0]
+    assert "0.352" in section
+    assert "speller" not in section and "1,086" not in section
+    assert "all 1,640" not in section
+
+
+def test_no_misspelling_table_without_corrected(tmp_path):
+    results, out = site(tmp_path)
+    write_bundle(results, "meilisearch", groups={"keyword/keyword": 0.5})
+    build_site(results, out)
+    page = read(out, PAGE)
+    assert "Misspellings" not in page
+    # unchanged: the render goldens cover the rest of the page byte for byte
+    assert "By query group" not in page

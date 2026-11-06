@@ -7,16 +7,19 @@ from pathlib import Path
 
 import httpx
 import pytest
+import yaml
+from pydantic import ValidationError
 
 from irbench.datasets import fetch as fetch_module
 from irbench.datasets.fetch import (
     ChecksumError,
+    ManualFileMissing,
     MemberNotFound,
     RangeNotSupported,
     fetch_file,
     fetch_zip_member,
 )
-from irbench.datasets.registry import DatasetSpec, fetch_dataset, load_dataset_spec
+from irbench.datasets.registry import DatasetSpec, FileSpec, fetch_dataset, load_dataset_spec
 from irbench.paths import Workspace
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -60,8 +63,22 @@ def test_wands_spec_is_pinned():
     assert spec.license == "MIT"
     assert set(spec.files) == {"product", "query", "label"}
     for f in spec.files.values():
-        assert "/main/" not in f.url
+        assert f.url is not None and "/main/" not in f.url
         assert len(f.sha256) == 64
+
+
+def test_distribution_defaults_public(tmp_path):
+    root = tmp_path / "root"
+    (root / "datasets" / "d").mkdir(parents=True)
+    spec = {"id": "d", "version": "1", "license": "MIT", "source": "x", "files": {}}
+    path = root / "datasets" / "d" / "dataset.yaml"
+    path.write_text(yaml.safe_dump(spec))
+    assert load_dataset_spec(root, "d").distribution == "public"
+    path.write_text(yaml.safe_dump({**spec, "distribution": "internal"}))
+    assert load_dataset_spec(root, "d").distribution == "internal"
+    path.write_text(yaml.safe_dump({**spec, "distribution": "secret"}))
+    with pytest.raises(ValidationError):
+        load_dataset_spec(root, "d")
 
 
 def test_workspace_paths(tmp_path):
@@ -270,3 +287,86 @@ def test_missing_zip_member_names_url_and_member(tmp_path):
             _range_client(_zip_bytes(MEMBERS), []),
         )
     assert not (tmp_path / "n.jsonl.part").exists()
+
+
+def _manual_spec(files: dict) -> DatasetSpec:
+    return DatasetSpec.model_validate(
+        {"id": "set", "version": "1", "license": "x", "source": "x", "files": files}
+    )
+
+
+def _failing_client() -> httpx.Client:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"unexpected request: {request.url}")
+
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+def test_filespec_url_xor_manual():
+    ok = FileSpec.model_validate({"manual": "get it", "filename": "a.csv", "sha256": SHA})
+    assert ok.url is None and ok.member is None
+    with pytest.raises(ValidationError):
+        FileSpec.model_validate(
+            {"url": "https://x/a.csv", "manual": "m", "filename": "a.csv", "sha256": SHA}
+        )
+    with pytest.raises(ValidationError):
+        FileSpec.model_validate({"sha256": SHA})
+    with pytest.raises(ValidationError):
+        FileSpec.model_validate({"manual": "m", "sha256": SHA})  # no filename
+    with pytest.raises(ValidationError):
+        FileSpec.model_validate(
+            {"manual": "m", "filename": "a.zip", "member": "a.csv", "sha256": SHA}
+        )  # member needs a url
+
+
+def test_manual_file_present(tmp_path):
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    (raw / "a.csv").write_bytes(BODY)
+    spec = _manual_spec({"a": {"manual": "get it", "filename": "a.csv", "sha256": SHA}})
+    assert fetch_dataset(spec, raw, _failing_client()) == {"a": raw / "a.csv"}
+
+
+def test_manual_file_missing_lists_all(tmp_path):
+    raw = tmp_path / "raw"
+    spec = _manual_spec(
+        {
+            "a": {"manual": "download the files by hand", "filename": "a.csv", "sha256": SHA},
+            "b": {"manual": "download the files by hand", "filename": "b.csv", "sha256": SHA},
+            "c": {"url": "https://x/c.csv", "sha256": SHA},
+        }
+    )
+    with pytest.raises(ManualFileMissing) as excinfo:
+        fetch_dataset(spec, raw, _failing_client())  # the url file is not fetched
+    err = excinfo.value
+    assert err.paths == [raw / "a.csv", raw / "b.csv"]
+    assert err.instruction == "download the files by hand"
+    assert "download the files by hand" in str(err)
+    assert str(raw / "a.csv") in str(err) and str(raw / "b.csv") in str(err)
+    assert isinstance(err, FileNotFoundError)
+
+
+def test_manual_file_bad_checksum(tmp_path):
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    (raw / "a.csv").write_bytes(b"tampered")
+    spec = _manual_spec({"a": {"manual": "get it", "filename": "a.csv", "sha256": SHA}})
+    with pytest.raises(ChecksumError, match="a.csv"):
+        fetch_dataset(spec, raw, _failing_client())
+    assert (raw / "a.csv").exists()  # a file the runner placed is never deleted
+
+
+def test_mixed_manual_and_url_files(tmp_path):
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    (raw / "a.csv").write_bytes(BODY)
+    spec = _manual_spec(
+        {
+            "a": {"manual": "get it", "filename": "a.csv", "sha256": SHA},
+            "c": {"url": "https://x/c.csv", "sha256": SHA},
+        }
+    )
+    calls: list[str] = []
+    paths = fetch_dataset(spec, raw, _client(BODY, calls))
+    assert list(paths) == ["a", "c"]
+    assert calls == ["https://x/c.csv"]

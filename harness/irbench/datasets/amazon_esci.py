@@ -136,8 +136,13 @@ def _group_for(prefix: str, final: str) -> str | None:
 
 
 def normalize_amazon_esci(
-    raw: dict[str, Path], out: Path, corpus: Literal["full", "pool"] = "full"
+    raw: dict[str, Path],
+    out: Path,
+    corpus: Literal["full", "pool"] = "full",
+    locale: Literal["us", "es", "jp"] = "us",
 ) -> NormalizedDataset:
+    """`locale` picks the ESCI product locale. AmazonQAC (`raw["qac"]`) only exists for `us`:
+    it filters the query pool and yields the `prefixes` query set; other locales skip it."""
     # --- Products -> docs -------------------------------------------------------------
     products = [
         row
@@ -153,7 +158,7 @@ def normalize_amazon_esci(
                 "product_locale",
             ],
         )
-        if row.get("product_locale") == "us"
+        if row.get("product_locale") == locale
     ]
 
     # --- Examples (judgments) ----------------------------------------------------------
@@ -171,7 +176,7 @@ def normalize_amazon_esci(
                 "split",
             ],
         )
-        if row.get("product_locale") == "us"
+        if row.get("product_locale") == locale
     ]
 
     queries_by_id: dict[str, dict[str, Any]] = {}
@@ -235,18 +240,23 @@ def normalize_amazon_esci(
 
     pool_keys = {_normalize_key(queries_by_id[qid]["text"]) for qid in deduped}
 
-    # --- AmazonQAC: stream, keep sessions whose final term matches the pool -------------
+    # --- AmazonQAC (us only): keep sessions whose final term matches the pool -------------
     sessions_by_key: dict[str, list[list[str]]] = {}
-    pf = pq.ParquetFile(raw["qac"])
-    for batch in pf.iter_batches(columns=QAC_COLUMNS, batch_size=QAC_BATCH_SIZE):
-        for row in batch.to_pylist():
-            key = _normalize_key(row["final_search_term"] or "")
-            if key in pool_keys:
-                sessions_by_key.setdefault(key, []).append(list(row["prefixes"] or []))
+    if locale == "us":
+        pf = pq.ParquetFile(raw["qac"])
+        for batch in pf.iter_batches(columns=QAC_COLUMNS, batch_size=QAC_BATCH_SIZE):
+            for row in batch.to_pylist():
+                key = _normalize_key(row["final_search_term"] or "")
+                if key in pool_keys:
+                    sessions_by_key.setdefault(key, []).append(list(row["prefixes"] or []))
 
-    eligible = [
-        qid for qid in deduped if sessions_by_key.get(_normalize_key(queries_by_id[qid]["text"]))
-    ]
+        eligible = [
+            qid
+            for qid in deduped
+            if sessions_by_key.get(_normalize_key(queries_by_id[qid]["text"]))
+        ]
+    else:
+        eligible = list(deduped)
 
     rng = random.Random(SEED)
     sorted_eligible = sorted(eligible, key=qid_sort_key)
@@ -286,6 +296,8 @@ def normalize_amazon_esci(
         if source is not None:
             query_row["group"] = source
         query_rows.append(query_row)
+        if locale != "us":
+            continue
 
         # complete, from the ESCI query text itself, once per query.
         complete_id = f"{esci_qid}-{COMPLETE}"
@@ -321,10 +333,13 @@ def normalize_amazon_esci(
     n_queries = write_jsonl(queries_path, query_rows)
     write_qrels(qrels_path, main_qrels)
 
-    prefixes_queries_path = out / "queries.prefixes.jsonl"
-    prefixes_qrels_path = out / "qrels.prefixes.tsv"
-    write_jsonl(prefixes_queries_path, prefix_rows)
-    write_qrels(prefixes_qrels_path, prefix_qrels)
+    query_sets: dict[str, tuple[Path, Path]] = {}
+    if locale == "us":
+        prefixes_queries_path = out / "queries.prefixes.jsonl"
+        prefixes_qrels_path = out / "qrels.prefixes.tsv"
+        write_jsonl(prefixes_queries_path, prefix_rows)
+        write_qrels(prefixes_qrels_path, prefix_qrels)
+        query_sets["prefixes"] = (prefixes_queries_path, prefixes_qrels_path)
 
     return NormalizedDataset(
         docs_path,
@@ -333,5 +348,5 @@ def normalize_amazon_esci(
         n_docs,
         n_queries,
         dropped={"docs": dropped_docs, "judgments": dropped_judgments},
-        query_sets={"prefixes": (prefixes_queries_path, prefixes_qrels_path)},
+        query_sets=query_sets,
     )

@@ -98,6 +98,25 @@ report's *Engine configurations* page lists them. Turning on typo tolerance
 where the engine ships it off (`fuzziness` in Elasticsearch, `fuzzy` in
 ParadeDB) is allowed, as the rule above says.
 
+## Internal scenarios
+
+A dataset that sets `distribution: internal` in its `dataset.yaml` may not be
+redistributed (for example, data from a Kaggle competition). Scenarios built
+on it can be run, tuned and reported inside the team, and nowhere else. Their
+runs, their vectors and their docs pages are never published: `irbench publish`
+and `irbench vectors pack` refuse them, and `irbench lint` fails if any of them
+appears in `results/`, in `embeddings/published.yaml` or in the docs navigation.
+
+`irbench report` also refuses internal runs unless you pass `--internal`. The
+pages it writes then carry the banner "Internal: not for publication (Kaggle
+competition data)".
+
+CI cannot prepare an internal scenario, because the data is not in the
+repository. For these scenarios `not-prepared` is a notice, not an error, and
+the query-leak check does not run in CI (it runs locally after `prepare`). Tuned `justification:` entries on an internal
+scenario say what a setting does and that the sweep chose it. They give no
+scores.
+
 ## Rules `irbench lint` enforces
 
 | Rule | What it catches | Example |
@@ -108,7 +127,8 @@ ParadeDB) is allowed, as the rule above says.
 | `image-pin` | The compose file's `services.engine.image` has no version tag, or is pinned to `latest`. | `image: qdrant/qdrant:latest` fails; `image: qdrant/qdrant:v1.19.2` passes. |
 | `engine-files` | A required file is missing for an engine: `adapter.py`, `README.md`, or `docker/compose.yaml`. | An engine folder with no `README.md` fails lint even if its adapter works. |
 | `config-load` | An engine config fails to load or validate (bad YAML, unknown top-level key, invalid track). | A config with a typo'd top-level key instead of `default`/`tuned`/`credits`. |
-| `not-prepared` | The scenario a config targets hasn't been prepared yet, so its query set can't be checked for leaks. | Running `irbench lint` before `irbench prepare --scenario ecommerce/product-search`. |
+| `not-prepared` | The scenario a config targets hasn't been prepared yet, so its query set can't be checked for leaks. A notice, not an error, for an internal scenario. | Running `irbench lint` before `irbench prepare --scenario ecommerce/product-search`. |
+| `internal-data` | Something built on an internal dataset is in a place that gets published: a `results/*/manifest.json`, an entry in `embeddings/published.yaml`, or a page in `docs/docs.json`. | A `results/` directory holding a run of an internal scenario. |
 
 ## How N/A is decided and shown
 

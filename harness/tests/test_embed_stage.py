@@ -1,13 +1,17 @@
+import httpx
 import numpy as np
 import pytest
+import yaml
 
+from fake_engine import fake_root
 from irbench.embed.models import MODELS, get_embedder
+from irbench.embed.publish import pack_vectors
 from irbench.embed.vectors import read_vectors
 from irbench.paths import Workspace
 from irbench.stages.embed import embed_scenario
 from irbench.stages.prepare import prepare
 from test_embed_cache import FakeEmbedder
-from test_prepare import fixture_client, make_root
+from test_prepare import fixture_client, make_root, mark_internal
 
 SCENARIO = "ecommerce/product-search"
 
@@ -74,3 +78,34 @@ def test_vectors_land_at_workspace_paths(prepared_root):
     ws = Workspace(prepared_root)
     assert result.docs_path == ws.doc_vectors_path("wands", "fake")
     assert result.queries_path == ws.query_vectors_path(SCENARIO, "fake")
+
+
+def test_embed_rejects_other_model(prepared_root):
+    path = prepared_root / "scenarios" / SCENARIO / "scenario.yaml"
+    raw = yaml.safe_load(path.read_text())
+    raw["embedding_model"] = "multilingual-e5-small"
+    path.write_text(yaml.safe_dump(raw))
+    embedder = FakeEmbedder()
+    with pytest.raises(ValueError, match="multilingual-e5-small.*bge-small-en-v1.5"):
+        embed_scenario(prepared_root, SCENARIO, "bge-small-en-v1.5", embedder=embedder)
+    assert embedder.calls == []
+
+
+def test_embed_internal_never_downloads(tmp_path, wands_raw, monkeypatch):
+    root = fake_root(tmp_path, wands_raw)
+    pack_vectors(root, SCENARIO, "fake", tmp_path / "dist")  # a registry entry exists
+    ws = Workspace(root)
+    ws.doc_vectors_path("wands", "fake").unlink()
+    ws.query_vectors_path(SCENARIO, "fake").unlink()
+    mark_internal(root)
+    monkeypatch.setattr("irbench.stages.embed.get_embedder", lambda model_id: FakeEmbedder())
+    requests = []
+
+    def refuse(request):
+        requests.append(str(request.url))
+        return httpx.Response(500)
+
+    client = httpx.Client(transport=httpx.MockTransport(refuse))
+    result = embed_scenario(root, SCENARIO, "fake", client=client)
+    assert result.source == "computed"
+    assert requests == []

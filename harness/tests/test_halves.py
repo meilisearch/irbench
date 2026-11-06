@@ -62,6 +62,20 @@ def test_score_rows_per_half_and_report_keeps_the_test_half():
     assert shown["per_task"]["ndcg@10"] == {"b:keyword:keyword": 0.0}
 
 
+def test_report_keeps_the_test_half_of_the_paired_rows():
+    row = {"mode": "keyword", "base": "keyword", "perturbation": "corrected", "n": 1}
+    scores = {
+        "relevance": [],
+        "halves": {"a:keyword:keyword": "tune"},
+        "paired": [
+            {**row, "delta": 0.5, "ci95": [0.5, 0.5]},
+            {**row, "half": "tune", "delta": 0.1, "ci95": [0.1, 0.1]},
+            {**row, "half": "test", "delta": 0.9, "ci95": [0.9, 0.9]},
+        ],
+    }
+    assert published_half(scores)["paired"] == [{**row, "delta": 0.9, "ci95": [0.9, 0.9]}]
+
+
 def test_bundles_scored_before_halves_are_unchanged():
     scores = {"relevance": [{"mode": "keyword"}], "per_task": {"ndcg@10": {}}}
     assert published_half(scores) is scores

@@ -6,7 +6,7 @@ from ranx import Qrels as RanxQrels
 from ranx import Run as RanxRun
 from ranx import evaluate
 
-from irbench.models import Qrels, QueryTask, RunResults
+from irbench.models import REFERENCE_PERTURBATIONS, Qrels, QueryTask, RunResults
 
 # Cutoffs reported per metric. clean@k and found@k come from the Meilisearch relevancy-bench
 # protocol; nDCG@10 stays the headline score.
@@ -38,6 +38,21 @@ class GroupScore(BaseModel):
     half: str | None = None
     # 95% confidence interval of the mean nDCG@10 over the group's tasks (normal approximation).
     ndcg_ci95: tuple[float, float] | None = None
+
+
+class PairedDelta(BaseModel):
+    """Mean nDCG@10 of a variant minus its original, over the queries that have both."""
+
+    mode: str
+    base: str
+    perturbation: str
+    group: str | None = None
+    # "tune" or "test" for a row over one half of the queries (irbench.score.halves); None for
+    # the row over every query.
+    half: str | None = None
+    n: int
+    delta: float
+    ci95: tuple[float, float]
 
 
 def _ranked_scores(ids: list[str]) -> dict[str, float]:
@@ -171,15 +186,23 @@ def score_relevance(
 def _score_rows(
     tasks: list[QueryTask], qrels: Qrels, run: RunResults, half: str | None
 ) -> list[GroupScore]:
+    """Rows per (mode, base, perturbation), plus one per query group.
+
+    Reference kinds (a variant the dataset supplies, such as `corrected`) get their own
+    perturbation row and are left out of every `all` row, so the headline keeps measuring
+    what users type."""
     groups: dict[tuple[str, str, str], list[str]] = defaultdict(list)
-    by_query_group: dict[tuple[str, str, str], list[str]] = defaultdict(list)
+    by_query_group: dict[tuple[str, str, str, str], list[str]] = defaultdict(list)
     for task in tasks:
         if task.task_id not in qrels:
             raise ValueError(f"task {task.task_id} has no qrels")
-        groups[(task.mode, task.base, "all")].append(task.task_id)
-        groups[(task.mode, task.base, task.perturbation)].append(task.task_id)
-        if task.group is not None:
-            by_query_group[(task.mode, task.base, task.group)].append(task.task_id)
+        perturbations = [task.perturbation]
+        if task.perturbation not in REFERENCE_PERTURBATIONS:
+            perturbations.append("all")
+        for p in perturbations:
+            groups[(task.mode, task.base, p)].append(task.task_id)
+            if task.group is not None:
+                by_query_group[(task.mode, task.base, task.group, p)].append(task.task_id)
     # clean@k needs judged-non-relevant documents; qrels listing only relevant ones (CQADupStack,
     # LoTTE) would score every run 1, so it is left out for them.
     with_clean = has_negative_judgments(
@@ -199,16 +222,56 @@ def _score_rows(
                 ndcg_ci95=ci95(list(per_task.values())),
             )
         )
+    # The `all` group rows come first, in the order they always had.
+    group_keys = sorted(by_query_group, key=lambda k: (k[3] != "all", k[0], k[1], k[2], k[3]))
     rows += [
         GroupScore(
             mode=mode,
             base=base,
-            perturbation="all",
+            perturbation=p,
             group=group,
             half=half,
-            n=len(ids),
-            metrics=_evaluate(ids, qrels, run, with_clean)[0],
+            n=len(by_query_group[(mode, base, group, p)]),
+            metrics=_evaluate(by_query_group[(mode, base, group, p)], qrels, run, with_clean)[0],
         )
-        for (mode, base, group), ids in sorted(by_query_group.items())
+        for mode, base, group, p in group_keys
     ]
     return rows
+
+
+def paired_deltas(
+    tasks: list[QueryTask], per_task: dict[str, float], half: str | None = None
+) -> list[PairedDelta]:
+    """Variant minus original nDCG@10, per (mode, base, perturbation, group) and over all groups.
+
+    A pair is a variant task and the original task of the same query, mode and base; both must
+    have a score in `per_task` (which includes reference kinds). `half` labels rows computed
+    over one half of the queries (the caller passes that half's tasks)."""
+    diffs: dict[tuple[str, str, str, str | None], list[float]] = defaultdict(list)
+    for task in tasks:
+        if task.perturbation == "original":
+            continue
+        original_id = f"{task.variant_of}:{task.mode}:{task.base}"
+        if task.task_id not in per_task or original_id not in per_task:
+            continue
+        diff = per_task[task.task_id] - per_task[original_id]
+        keys: list[str | None] = [None]
+        if task.group is not None:
+            keys.append(task.group)
+        for group in keys:
+            diffs[(task.mode, task.base, task.perturbation, group)].append(diff)
+    return [
+        PairedDelta(
+            mode=mode,
+            base=base,
+            perturbation=p,
+            group=group,
+            half=half,
+            n=len(values),
+            delta=sum(values) / len(values),
+            ci95=ci95(values),
+        )
+        for (mode, base, p, group), values in sorted(
+            diffs.items(), key=lambda kv: (kv[0][0], kv[0][1], kv[0][2], kv[0][3] or "")
+        )
+    ]

@@ -4,6 +4,7 @@ published (spec §7); failed runs are published too, so the report shows the fai
 import shutil
 from pathlib import Path
 
+from irbench.internal import refuse_if_internal
 from irbench.io import read_json
 from irbench.paths import Workspace
 
@@ -25,6 +26,7 @@ def publish_run(root: Path, run_id: str, results_dir: Path | None = None) -> Pat
         raise ValueError(
             f"{src}/manifest.json has no hardware.id: not a complete run manifest"
         ) from e
+    refuse_if_internal(root, manifest.get("scenario"), manifest, f"publish {run_id}")
     if profile in UNPUBLISHABLE_PROFILES:
         raise ValueError(
             f"{run_id} ran on the {profile!r} profile; only reference-machine results are "

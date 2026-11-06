@@ -12,6 +12,19 @@ class ChecksumError(RuntimeError):
     pass
 
 
+class ManualFileMissing(FileNotFoundError):
+    """Raw files a runner must download by hand are not in the raw directory."""
+
+    def __init__(self, paths: list[Path], instruction: str):
+        self.paths = paths
+        self.instruction = instruction
+        listing = "\n".join(f"  {p}" for p in paths)
+        super().__init__(f"{instruction}\nmissing files:\n{listing}")
+
+    def __str__(self) -> str:  # FileNotFoundError would render (errno, strerror) otherwise
+        return str(self.args[0])
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as f:

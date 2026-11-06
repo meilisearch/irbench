@@ -1,15 +1,18 @@
 """Machine-checkable parity rules for engine configs (spec §7), run in CI by `irbench lint`."""
 
 import functools
+import json
 import re
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, get_args
+from typing import Any, Literal, get_args
 
 import yaml
 
+from irbench.embed.publish import load_registry
 from irbench.engines.config import TRACKS, TrackConfig, load_engine_config
+from irbench.internal import is_internal, manifest_is_internal
 from irbench.io import read_jsonl
 from irbench.models import BASE_MODES, Mode
 from irbench.paths import Workspace
@@ -27,9 +30,13 @@ class Finding:
     path: str
     rule: str
     message: str
+    # A notice reports something expected (an internal scenario nobody prepared yet); it
+    # is printed but does not fail `irbench lint`.
+    severity: Literal["error", "notice"] = "error"
 
     def __str__(self) -> str:
-        return f"{self.path}: [{self.rule}] {self.message}"
+        prefix = "notice: " if self.severity == "notice" else ""
+        return f"{prefix}{self.path}: [{self.rule}] {self.message}"
 
 
 def normalize(text: str) -> str:
@@ -88,14 +95,103 @@ def lint_repo(root: Path, queries: QueryLoader | None = None) -> tuple[int, list
     load = functools.cache(queries or (lambda scenario_id: QuerySet.load(root, scenario_id)))
     findings: list[Finding] = []
     n_configs = 0
+    internal_ids = _internal_scenarios(root)
     engine_dirs = (p for p in (root / "engines").iterdir() if p.is_dir() and p.name[0] not in "._")
     for engine_dir in sorted(engine_dirs):
         findings += _check_engine_files(root, engine_dir)
         for path in sorted((engine_dir / "configs").rglob("*.yaml")):
             n_configs += 1
             scenario_id = path.relative_to(engine_dir / "configs").with_suffix("").as_posix()
-            findings += _check_config(root, engine_dir.name, scenario_id, path, load)
+            findings += _check_config(
+                root, engine_dir.name, scenario_id, path, load, scenario_id in internal_ids
+            )
+    findings += _check_internal_data(root, internal_ids)
     return n_configs, findings
+
+
+def _internal_scenarios(root: Path) -> frozenset[str]:
+    """Ids of the scenarios whose dataset is internal-only. A scenario that fails to load is
+    skipped here; `config-load` and the other commands report it."""
+    scenarios = root / "scenarios"
+    out: set[str] = set()
+    for path in sorted(scenarios.rglob("scenario.yaml")) if scenarios.is_dir() else []:
+        scenario_id = path.parent.relative_to(scenarios).as_posix()
+        try:
+            if is_internal(root, scenario_id):
+                out.add(scenario_id)
+        except (ValueError, yaml.YAMLError):
+            continue
+    return frozenset(out)
+
+
+def _check_internal_data(root: Path, internal_ids: frozenset[str]) -> list[Finding]:
+    """Internal data must not appear in anything that is published from this repository:
+    result bundles, published vectors and the docs navigation."""
+    out: list[Finding] = []
+    for path in sorted((root / "results").glob("*/manifest.json")):
+        try:
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(manifest, dict):
+            continue
+        scenario_id = manifest.get("scenario")
+        if manifest_is_internal(manifest) or scenario_id in internal_ids:
+            out.append(
+                Finding(
+                    path.relative_to(root).as_posix(),
+                    "internal-data",
+                    f"run of internal scenario {scenario_id!r}: internal runs are never "
+                    "published; remove this directory from results/",
+                )
+            )
+    try:
+        vectors = load_registry(root)
+    except ValueError:
+        vectors = []  # a malformed registry is reported where it is loaded
+    for entry in vectors:
+        if entry.scenario in internal_ids:
+            out.append(
+                Finding(
+                    "embeddings/published.yaml",
+                    "internal-data",
+                    f"published vectors for internal scenario {entry.scenario!r} "
+                    f"(model {entry.model!r}): internal vectors are never published",
+                )
+            )
+    internal_pages = {f"scenarios/{i.rsplit('/', 1)[-1]}": i for i in internal_ids}
+    for page in _nav_pages(root / "docs" / "docs.json"):
+        if page in internal_pages:
+            out.append(
+                Finding(
+                    "docs/docs.json",
+                    "internal-data",
+                    f"navigation lists {page!r}, the page of internal scenario "
+                    f"{internal_pages[page]!r}: internal pages are never published",
+                )
+            )
+    return out
+
+
+def _nav_pages(path: Path) -> Iterator[str]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    yield from _strings_in(data.get("navigation") if isinstance(data, dict) else None)
+
+
+def _strings_in(value: Any) -> Iterator[str]:
+    # Mintlify nests groups inside groups and tabs; page entries are plain strings under
+    # "pages", so every string under `navigation` that is not a label is a candidate.
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, list):
+        for item in value:
+            yield from _strings_in(item)
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from _strings_in(item)
 
 
 def _check_engine_files(root: Path, engine_dir: Path) -> list[Finding]:
@@ -139,7 +235,7 @@ def _compose_image(text: str) -> str | None:
 
 
 def _check_config(
-    root: Path, engine: str, scenario_id: str, path: Path, load: QueryLoader
+    root: Path, engine: str, scenario_id: str, path: Path, load: QueryLoader, internal: bool
 ) -> list[Finding]:
     rel = path.relative_to(root).as_posix()
     try:
@@ -172,7 +268,10 @@ def _check_config(
     try:
         query_set = load(scenario_id)
     except FileNotFoundError as e:
-        return [*out, Finding(rel, "not-prepared", str(e))]
+        # An internal scenario cannot be prepared in CI (no Kaggle download), so its leak
+        # check is skipped with a notice; a public one that is not prepared is an error.
+        severity = "notice" if internal else "error"
+        return [*out, Finding(rel, "not-prepared", str(e), severity)]
     for name, track in tracks:
         # Only index and search reach the engine; justification and N/A reasons are prose.
         for where, value in _strings({"index": track.index, "search": track.search}, ""):

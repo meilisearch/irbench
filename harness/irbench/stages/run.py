@@ -14,6 +14,7 @@ from irbench.manifest import git_state, write_manifest
 from irbench.runs import STAGES, RunSpec
 from irbench.runtime.docker import DockerRuntime, Runner, Runtime, run_command
 from irbench.runtime.hardware import HardwareProfile, load_hardware
+from irbench.scenario import check_model, load_scenario
 from irbench.stages.context import ClientFactory, RunContext, default_client
 from irbench.stages.embed import embed_scenario
 from irbench.stages.index import index_stage
@@ -55,6 +56,7 @@ def run_pipeline(
     if unknown:
         raise ValueError(f"unknown stage(s) {unknown}; known: {', '.join(STAGES)}")
     ordered = [s for s in STAGES if s in stages]
+    check_model(load_scenario(root, spec.scenario), spec.model)
 
     ctx = RunContext(root, spec, client_factory or default_client)
     profile = load_hardware(root, spec.hardware)

@@ -63,6 +63,24 @@ def test_prepare_writes_all_outputs(tmp_path, wands_raw):
     assert "created_at" in manifest and "irbench_version" in manifest
 
 
+def mark_internal(root):
+    path = root / "datasets" / "wands" / "dataset.yaml"
+    path.write_text(
+        yaml.safe_dump({**yaml.safe_load(path.read_text()), "distribution": "internal"})
+    )
+
+
+def test_prepare_manifest_records_distribution(tmp_path, wands_raw):
+    root = make_root(tmp_path, wands_raw)
+    result = prepare(root, SCENARIO, client=fixture_client(wands_raw))
+    manifest_path = result.scenario_dir / "prepare.manifest.json"
+    assert json.loads(manifest_path.read_text())["dataset"]["distribution"] == "public"
+
+    mark_internal(root)
+    result = prepare(root, SCENARIO, client=fixture_client(wands_raw))
+    assert json.loads(manifest_path.read_text())["dataset"]["distribution"] == "internal"
+
+
 def test_prepare_is_deterministic(tmp_path, wands_raw):
     root = make_root(tmp_path, wands_raw)
     first = prepare(root, SCENARIO, client=fixture_client(wands_raw))
@@ -140,3 +158,45 @@ def test_sort_values_must_be_exact_in_float32():
     check_sort_precision(["d"], {"a": {"d": 18336}, "b": {"d": None}, "c": {"d": 4.5}})
     with pytest.raises(ValueError, match="2\\*\\*24"):
         check_sort_precision(["d"], {"a": {"d": 20200625}})
+
+
+def test_raw_from_shares_directory(tmp_path, wands_raw):
+    root = make_root(tmp_path, wands_raw)
+    spec_path = root / "datasets" / "wands" / "dataset.yaml"
+    spec = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
+    spec["raw_from"] = "amazon-esci"
+    spec_path.write_text(yaml.safe_dump(spec), encoding="utf-8")
+
+    prepare(root, SCENARIO, client=fixture_client(wands_raw))
+
+    shared = root / ".irbench" / "data" / "amazon-esci" / "raw"
+    assert {p.name for p in shared.iterdir()} == {f"{name}.csv" for name in wands_raw}
+    assert not (root / ".irbench" / "data" / "wands" / "raw").exists()
+
+
+def test_prepare_reads_corrected(tmp_path, wands_raw, monkeypatch):
+    root = make_root(tmp_path, wands_raw)
+    spec_path = root / "scenarios" / "ecommerce" / "product-search" / "scenario.yaml"
+    scenario = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
+    scenario["perturbations"]["kinds"].append("corrected")
+    spec_path.write_text(yaml.safe_dump(scenario), encoding="utf-8")
+
+    real = NORMALIZERS["wands"]
+
+    def with_corrected(raw, out_dir):
+        result = real(raw, out_dir)
+        rows = [
+            {**r, "corrected": f"{r['text']} fixed"} if r["qid"] == "1" else r
+            for r in read_jsonl(result.queries)
+        ]
+        write_jsonl(result.queries, rows)
+        return result
+
+    monkeypatch.setitem(NORMALIZERS, "wands", with_corrected)
+    result = prepare(root, SCENARIO, client=fixture_client(wands_raw))
+    rows = {r["qid"]: r for r in read_jsonl(result.scenario_dir / "queries.variants.jsonl")}
+    assert rows["1"]["corrected"].endswith(" fixed")
+    assert rows["1-corrected"]["perturbation"] == "corrected"
+    assert rows["1-corrected"]["text"] == rows["1"]["corrected"]
+    assert "corrected" not in rows["1-corrected"]
+    assert not any(qid.endswith("-corrected") and qid != "1-corrected" for qid in rows)

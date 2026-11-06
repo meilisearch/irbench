@@ -120,6 +120,7 @@ def write_bundle(
     synonyms=None,
     checks=None,
     effective=None,
+    distribution=None,
 ) -> Path:
     run_id = "__".join([scenario.replace("/", "__"), engine, model, track, hardware])
     d = results / run_id
@@ -150,6 +151,8 @@ def write_bundle(
         "dataset": {"id": "wands", "version": "3b74dcf4"},
         "seed": 20261009,
     }
+    if distribution is not None:
+        manifest["dataset"]["distribution"] = distribution
     (d / "manifest.json").write_text(json.dumps(manifest))
     if status == "succeeded":
         scores = {

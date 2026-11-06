@@ -1,4 +1,5 @@
 import json
+import shutil
 
 import pytest
 import yaml
@@ -216,3 +217,103 @@ def test_cli_exit_codes(tmp_path):
 def test_synonyms_reason_is_prose_not_a_setting(tmp_path):
     config = {"default": {"synonyms": "the engine cannot load synonyms.txt"}}
     assert lint(make_repo(tmp_path, config))[1] == []
+
+
+def make_internal(root):
+    """Marks the scenario's dataset internal in a copy of the repository's own spec."""
+    shutil.copytree(
+        REPO_ROOT / "scenarios" / "ecommerce", root / "scenarios" / "ecommerce", dirs_exist_ok=True
+    )
+    spec = yaml.safe_load((REPO_ROOT / "datasets/wands/dataset.yaml").read_text())
+    (root / "datasets" / "wands").mkdir(parents=True)
+    (root / "datasets/wands/dataset.yaml").write_text(
+        yaml.safe_dump({**spec, "distribution": "internal"})
+    )
+    return root
+
+
+def write_manifest(root, name, manifest):
+    d = root / "results" / name
+    d.mkdir(parents=True)
+    (d / "manifest.json").write_text(json.dumps(manifest))
+    return d
+
+
+def test_internal_data_results(tmp_path):
+    root = make_internal(make_repo(tmp_path, {"default": {}}))
+    # Flagged by the manifest alone, and by the spec for a manifest without `distribution`.
+    write_manifest(
+        root, "a", {"scenario": "ecommerce/gone", "dataset": {"distribution": "internal"}}
+    )
+    write_manifest(root, "b", {"scenario": SCENARIO, "dataset": {"id": "wands"}})
+    write_manifest(root, "c", {"scenario": "ecommerce/gone", "dataset": {"id": "wands"}})
+    _, findings = lint(root)
+    flagged = [f for f in findings if f.rule == "internal-data"]
+    assert [(f.path, f.severity) for f in flagged] == [
+        ("results/a/manifest.json", "error"),
+        ("results/b/manifest.json", "error"),
+    ]
+
+
+def test_internal_data_published_vectors(tmp_path):
+    root = make_internal(make_repo(tmp_path, {"default": {}}))
+    asset = {"url": "https://example.test/x", "sha256": "0" * 64, "count": 1, "dim": 2}
+    entry = {"model": "m", "dataset": "wands", "dataset_version": "v", "seed": 1}
+    rows = [
+        {"scenario": SCENARIO, **entry, "docs": asset, "queries": asset},
+        {"scenario": "knowledge-base/other", **entry, "docs": asset, "queries": asset},
+    ]
+    (root / "embeddings").mkdir()
+    (root / "embeddings/published.yaml").write_text(yaml.safe_dump({"vectors": rows}))
+    _, findings = lint(root)
+    flagged = [f for f in findings if f.rule == "internal-data"]
+    assert [(f.path, f.severity) for f in flagged] == [("embeddings/published.yaml", "error")]
+    assert SCENARIO in flagged[0].message
+
+
+def test_internal_data_docs_nav(tmp_path):
+    root = make_internal(make_repo(tmp_path, {"default": {}}))
+    nav = {
+        "navigation": {"groups": [{"group": "S", "pages": ["scenarios/product-search", "index"]}]}
+    }
+    (root / "docs").mkdir()
+    (root / "docs/docs.json").write_text(json.dumps(nav))
+    _, findings = lint(root)
+    flagged = [f for f in findings if f.rule == "internal-data"]
+    assert [(f.path, f.severity) for f in flagged] == [("docs/docs.json", "error")]
+
+
+def test_public_scenario_is_not_internal_data(tmp_path):
+    root = make_repo(tmp_path, {"default": {}})
+    shutil.copytree(REPO_ROOT / "scenarios", root / "scenarios")
+    shutil.copytree(REPO_ROOT / "datasets", root / "datasets")
+    write_manifest(root, "a", {"scenario": SCENARIO, "dataset": {"distribution": "public"}})
+    (root / "docs").mkdir()
+    (root / "docs/docs.json").write_text(
+        json.dumps({"navigation": {"pages": ["scenarios/product-search"]}})
+    )
+    assert lint(root)[1] == []
+
+
+def test_not_prepared_internal_is_notice(tmp_path):
+    root = make_repo(tmp_path, {"default": {}})
+    _, findings = lint_repo(root)  # public (no spec in this root): stays an error
+    assert [(f.rule, f.severity) for f in findings] == [("not-prepared", "error")]
+
+    make_internal(root)
+    _, findings = lint_repo(root)
+    assert [(f.rule, f.severity) for f in findings] == [("not-prepared", "notice")]
+    assert str(findings[0]).startswith("notice: engines/eng/configs/")
+
+
+def test_cli_lint_notices_exit_0(tmp_path):
+    root = make_internal(make_repo(tmp_path, {"default": {}}))
+    notice_only = CliRunner().invoke(app, ["lint", "--root", str(root)])
+    assert notice_only.exit_code == 0
+    assert "notice: " in notice_only.output and "[not-prepared]" in notice_only.output
+    assert "1 configs, 0 findings, 1 notices" in notice_only.output
+
+    write_manifest(root, "a", {"scenario": SCENARIO, "dataset": {"distribution": "internal"}})
+    failed = CliRunner().invoke(app, ["lint", "--root", str(root)])
+    assert failed.exit_code == 1
+    assert "[internal-data]" in failed.output and "1 findings" in failed.output

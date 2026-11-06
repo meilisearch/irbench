@@ -4,6 +4,7 @@ from pathlib import Path
 import typer
 
 from irbench import __version__
+from irbench.datasets.fetch import ChecksumError, ManualFileMissing
 from irbench.embed.publish import DEFAULT_RELEASE, REGISTRY, RELEASE_REPO, pack_vectors
 from irbench.io import read_json, read_jsonl, read_qrels, read_run
 from irbench.lint import lint_repo
@@ -11,7 +12,7 @@ from irbench.models import QueryTask
 from irbench.paths import Workspace, slug
 from irbench.perf_files import LEGACY_PAGE_SIZE
 from irbench.publish import publish_run
-from irbench.report.render import DEFAULT_DOCS_URL, build_site
+from irbench.report.render import DEFAULT_DOCS_URL, InternalRunsError, build_site
 from irbench.runs import STAGES, RunSpec
 from irbench.score.relevance import score_relevance
 from irbench.stages.embed import embed_scenario
@@ -45,7 +46,11 @@ def prepare(
     root: Path = ROOT_OPTION,
 ) -> None:
     """Download the dataset, generate query variants and per-mode tasks."""
-    r = run_prepare(root, scenario)
+    try:
+        r = run_prepare(root, scenario)
+    except (ManualFileMissing, ChecksumError) as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(code=1) from e
     typer.echo(
         f"{scenario}: {r.n_docs} docs, {r.n_queries} queries, {r.n_variants} variants, "
         f"{r.n_tasks} tasks; skipped {len(r.skipped_queries)} queries without relevant judgments"
@@ -82,7 +87,11 @@ def vectors_pack(
 ) -> None:
     """Copy computed vectors into release assets and record them in embeddings/published.yaml."""
     out_dir = out if out.is_absolute() else root / out
-    entry, files = pack_vectors(root, scenario, model, out_dir, release)
+    try:
+        entry, files = pack_vectors(root, scenario, model, out_dir, release)
+    except ValueError as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(code=1) from e
     typer.echo(
         f"packed {entry.docs.count} doc and {entry.queries.count} query vectors "
         f"(dim {entry.docs.dim}); updated {REGISTRY}"
@@ -140,8 +149,11 @@ def lint(root: Path = ROOT_OPTION) -> None:
     n, findings = lint_repo(root)
     for finding in findings:
         typer.echo(str(finding), err=True)
-    typer.echo(f"lint: {n} configs, {len(findings)} findings")
-    if findings:
+    errors = [f for f in findings if f.severity == "error"]
+    notices = len(findings) - len(errors)
+    summary = f"lint: {n} configs, {len(errors)} findings"
+    typer.echo(summary + (f", {notices} notices" if notices else ""))
+    if errors:
         raise typer.Exit(code=1)
 
 
@@ -264,11 +276,16 @@ def report(
     results: Path = typer.Option(..., "--results", help="results/ or .irbench/runs for a preview."),
     out: Path = typer.Option(..., "--out", help="Output directory (replaced on every build)."),
     docs_url: str = typer.Option(DEFAULT_DOCS_URL, "--docs-url"),
+    internal: bool = typer.Option(
+        False,
+        "--internal",
+        help="Include internal-only runs (private report, never published).",
+    ),
 ) -> None:
     """Build the static HTML report from run bundles."""
     try:
-        site = build_site(results, out, docs_url)
-    except (FileNotFoundError, FileExistsError) as e:
+        site = build_site(results, out, docs_url, allow_internal=internal)
+    except (FileNotFoundError, FileExistsError, InternalRunsError) as e:
         typer.echo(str(e), err=True)
         raise typer.Exit(code=1) from e
     for u in site.unreadable:
