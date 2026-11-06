@@ -140,3 +140,35 @@ def test_sort_values_must_be_exact_in_float32():
     check_sort_precision(["d"], {"a": {"d": 18336}, "b": {"d": None}, "c": {"d": 4.5}})
     with pytest.raises(ValueError, match="2\\*\\*24"):
         check_sort_precision(["d"], {"a": {"d": 20200625}})
+
+
+def test_raw_from_shares_directory(tmp_path, wands_raw):
+    root = make_root(tmp_path, wands_raw)
+    spec_path = root / "datasets" / "wands" / "dataset.yaml"
+    spec = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
+    spec["raw_from"] = "amazon-esci"
+    spec_path.write_text(yaml.safe_dump(spec), encoding="utf-8")
+
+    prepare(root, SCENARIO, client=fixture_client(wands_raw))
+
+    shared = root / ".irbench" / "data" / "amazon-esci" / "raw"
+    assert {p.name for p in shared.iterdir()} == {f"{name}.csv" for name in wands_raw}
+    assert not (root / ".irbench" / "data" / "wands" / "raw").exists()
+
+
+def test_manifest_records_dataset_params_and_stats(tmp_path, wands_raw, monkeypatch):
+    root = make_root(tmp_path, wands_raw)
+    plain = prepare(root, SCENARIO, client=fixture_client(wands_raw))
+    dataset = json.loads((plain.scenario_dir / "prepare.manifest.json").read_text())["dataset"]
+    assert dataset["stats"] == {} and dataset["params"] == {}
+
+    real = NORMALIZERS["wands"]
+
+    def with_stats(raw, out_dir):
+        return replace(real(raw, out_dir), stats={"judged_docs": 1})
+
+    monkeypatch.setitem(NORMALIZERS, "wands", with_stats)
+    result = prepare(root, SCENARIO, client=fixture_client(wands_raw))
+    dataset = json.loads((result.scenario_dir / "prepare.manifest.json").read_text())["dataset"]
+    assert dataset["stats"] == {"judged_docs": 1}
+    assert dataset["params"] == {}

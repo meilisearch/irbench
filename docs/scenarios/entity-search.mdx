@@ -1,0 +1,242 @@
+---
+title: "Scenario: entity-search"
+description: Entity search over a 1M-entity sample of DBpedia with graded human judgments (DBpedia-Entity v2)
+---
+
+Scenario id: `entity-search/dbpedia`. It tests the search a user runs to find
+one named thing (a person, a place, a film, a band) or a short list of them,
+in a collection where each record is a name and a short description. That is
+the search box of an encyclopedia, a media or music catalogue, a directory, a
+CRM or a knowledge graph. It is a common use of site search that the other
+scenarios do not cover: three of them send long questions against long
+documents, and WANDS has short queries but against a product catalogue.
+
+## Source
+
+- **Dataset:** DBpedia-Entity v2, from the `mteb/dbpedia` copy on Hugging Face
+  (BEIR format), pinned to revision
+  `7d8780d8ef0d0a55d13fa797fe39224ec806592c`. Reference: Hasibi et al.,
+  *DBpedia-Entity v2: A Test Collection for Entity Search*, SIGIR 2017.
+- **License:** MIT on the Hugging Face card and on the upstream repository
+  (`github.com/iai-group/DBpedia-Entity`). The entity text comes from DBpedia
+  2015-10, which is drawn from Wikipedia and licensed CC BY-SA 3.0.
+- **Size:** 1,000,000 documents (a sample of 4,635,922 entities, see below),
+  467 queries, 49,188 judgments (grades 0, 1, 2: 32,497, 9,809 and 6,882).
+
+## Fields and modes
+
+| Role | Fields |
+|---|---|
+| Searchable (priority order) | `title` (the entity name), `text` (the abstract) |
+| Filterable, sortable, facets | none |
+
+Modes: `keyword`, `semantic`, `hybrid`. Embeddings use `title` and `text`.
+Names are short (median 2 words) and so are abstracts (median 47 words), so
+almost none are truncated by the embedding model.
+
+`title` comes first because the name is the strongest signal. A search box
+that ranks a passing mention in an abstract above the entity itself would be
+wrong. Each document also keeps its DBpedia URI in a `uri` field, which is
+stored but not searched, so a result can be traced back.
+
+### Why filtered, sorted and faceted are not run
+
+The BEIR copy has only a name and an abstract per entity: no type, date,
+category or number. Inventing a field (abstract length, the first letter of
+the name) would test nothing a user does. Entity types would make these modes
+meaningful, since filtering on `Person` or `Film` and faceting by type is a
+real entity-search feature. They exist in DBpedia but would need a second
+data source and a per-query choice of filter values. That is left for later.
+The modes are absent from the scenario, not marked as unsupported per
+engine, because no engine could run them.
+
+## Queries
+
+All 467 queries are kept: the 400 test and 67 dev queries of the BEIR copy,
+the question-style ones included. The headline score is over all of them. The
+four query groups of the DBpedia-Entity v2 paper are reported separately,
+next to the overall scores:
+
+| Group | Queries | Median words | Judged per query (mean) | Relevant per query (median) | Examples |
+|---|---|---|---|---|---|
+| SemSearch ES | 113 | 2 | 66 | 9 | `glenn frey`, `bourbonnais il`, `mr rourke fantasy island`, `emery` |
+| INEX-LD | 99 | 4 | 104 | 17 | `vietnam war movie`, `bicycle benefits health`, `guitar chord minor` |
+| ListSearch | 115 | 6 | 96 | 28 | `Airports in Germany`, `Neil Gaiman novels`, `provinces and territories of Canada` |
+| QALD2 | 140 | 8 | 146 | 12 | `Who designed the Brooklyn Bridge?`, `Which instruments did John Lennon play?` |
+
+What each group is:
+
+- **SemSearch ES:** the entity-name use case in its plainest form. Mostly a
+  name, sometimes with a place or a word of context.
+- **INEX-LD:** short keyword queries about a topic.
+- **ListSearch:** queries that ask for a list of entities of one kind.
+- **QALD2:** natural-language questions, like the knowledge-base scenarios.
+  They are kept so the collection is used as published.
+
+Over all 467 queries the median length is 5 words; 68 queries have two words
+and 5 have one. Every query has at least one relevant entity; 62 have no
+grade-2 entity. The judgments are deep: 105 judged entities per query on
+average (median 88, range 21 to 1,499). Two thirds of them are grade 0, the
+near misses that the original pooling kept, and they stay in the qrels as
+judged non-relevant.
+
+## Corpus
+
+The full corpus has 4.64M entities. It does not fit the benchmark machine:
+the bge-small vectors alone would need 6.7 GB (4.64M × 384 × 4 bytes), and
+embedding them locally would take about 12 hours. The scenario therefore
+indexes a sample, and the sample is part of the dataset's definition.
+
+**Sampling rule.**
+
+1. Keep every entity that is judged (any grade, either split) for any of the
+   467 queries: 45,595 entities.
+2. Add distractors drawn uniformly at random, without replacement, from the
+   other entities, until the corpus holds 1,000,000 entities. The draw uses
+   `random.Random(20261031)` over the non-judged entities in corpus file
+   order.
+
+The draw depends only on the pinned file, the seed and the size. Measured on
+the real prepare run (2026-11-01): 1,000,000 documents, of which 45,595 are
+judged and 954,405 are distractors, drawn from 4,635,922. No document and no
+query was dropped, and no judgment was lost: every judged entity is in the
+corpus.
+
+**Why scores on the sample still mean something.**
+
+- *Every judged entity stays.* The judgments came from pooling the top
+  results of many 2017 systems. The grade-0 entities, 66% of the judgments,
+  are the near misses those systems ranked high: the entities that compete
+  hardest with the right answers. They are all in the sample, so the hard part
+  of each query is intact.
+- *Distractors are uniform.* They are not picked by BM25 or by an embedding
+  model, so no engine or retrieval mode gets a sample built around its own
+  ranking.
+- *Engines are compared with each other, on one corpus.* Scores are higher
+  than on the full corpus, because there are fewer unjudged entities to rank
+  above the right answers. What IRBench reports is the comparison between
+  engines on the same data.
+- *Unjudged results shrink.* On the full corpus, an engine's top 10 often
+  holds entities no one judged, which score as wrong. The sample drops most of
+  them, so judged@10 goes up and the scores rest on human judgments more.
+
+### Does the sample change who wins?
+
+Before the scenario was built, BM25 was run over the full corpus and over
+samples built by the same rule at several sizes, on all 467 queries. Two field
+choices stood in for two engines: name and abstract together, and name only.
+This is a lexical-only check. The script is a scratch tool outside the repo
+and it used a different random draw than the shipped one (same rule, another
+generator), so the table is evidence about the rule, not a measurement of the
+shipped set. The ranker is a stand-in BM25, not one of the six engines.
+
+nDCG@10 over the 467 queries, and judged@10:
+
+| Corpus | Entities | name + abstract | name only | Gap | judged@10 (name + abstract) |
+|---|---|---|---|---|---|
+| Full | 4,635,922 | 0.274 | 0.259 | +0.015 | 0.61 |
+| Sample | 2,000,000 | 0.294 | 0.272 | +0.022 | 0.70 |
+| **Sample (the size used)** | **1,000,000** | **0.307** | **0.280** | **+0.027** | **0.77** |
+| Sample | 500,000 | 0.317 | 0.290 | +0.027 | 0.83 |
+| Sample | 250,000 | 0.324 | 0.293 | +0.031 | 0.87 |
+| Sample | 100,000 | 0.329 | 0.299 | +0.030 | 0.90 |
+| Judged pool only | 45,595 | 0.334 | 0.303 | +0.031 | 0.92 |
+
+Per group, full corpus to 1M sample:
+
+| Group | name + abstract | name only |
+|---|---|---|
+| SemSearch ES | 0.496 to 0.519 | 0.567 to 0.590 |
+| INEX-LD | 0.239 to 0.275 | 0.209 to 0.235 |
+| ListSearch | 0.185 to 0.221 | 0.130 to 0.146 |
+| QALD2 | 0.194 to 0.229 | 0.152 to 0.170 |
+
+What it shows:
+
+- **The order holds.** At every size, overall and in every group, the same
+  field choice wins. Name and abstract together win overall and on INEX-LD,
+  ListSearch and QALD2. Name only wins on SemSearch ES, where queries are bare
+  names and a passing mention in an abstract is noise.
+- **Per query, the sample tracks the full corpus.** The Spearman correlation
+  of per-query nDCG@10, full corpus versus 1M, is 0.97 (name and abstract)
+  and 0.98 (name only). Of the 399 queries where the two choices score
+  differently on either corpus, 352 (88%) have the same winner on both.
+- **Scores rise by about a tenth** (0.274 to 0.307).
+- **Gaps widen, and can become significant.** The gap between the two choices
+  goes from +0.015 to +0.027. On the full corpus it is not significant
+  (p = 0.17); at 1M it is (p = 0.01). These p-values come from a paired
+  Wilcoxon test over the 467 queries, a different test from the report's ≈
+  marker (a paired randomization test over tasks, variants included), so do
+  not compare the two directly.
+
+## Caveats
+
+- **Scores are higher than on the full corpus.** Do not compare them with
+  published DBpedia-Entity numbers or with scores from another corpus size.
+  Compare engines with each other.
+- **Gaps between engines may look larger, and more significant, than on the
+  full 4.64M corpus.** The sample removes unjudged distractors that hurt every
+  engine, so differences in how each one ranks the judged entities stand out
+  more. This matters for how you read the report. The scenario page marks with
+  ≈ every run that is not significantly below the best (a paired randomization
+  test, p ≥ 0.05; see
+  [Methodology](/methodology/overview#confidence-intervals-and-significance)).
+  On this scenario, a run without ≈ is a real difference in ranking the same
+  candidates, but on the full corpus the gap may be smaller and not
+  significant. The check above covers lexical ranking only.
+- **The keyword-versus-semantic gap may be inflated.** The judgments were
+  pooled from 2017 systems, mostly lexical. Entities that a dense model ranks
+  high but nobody judged are more likely to be dropped by the sampling than
+  those a lexical ranker ranks high. That can raise semantic scores relative
+  to keyword scores on the same engine. It does not change the comparison
+  between engines within a mode, since every engine searches the same text and
+  the same vectors. This effect could not be measured: repeating the check
+  for semantic search needs the full corpus embedded, which is the 12-hour
+  cost that ruled it out.
+- **Unjudged results.** An entity nobody judged scores as wrong. judged@10 is
+  shown next to every nDCG@10. The sample raises it (0.61 on the full corpus
+  to 0.77 at 1M, for the BM25 stand-in), but some of an engine's top results
+  are still unjudged. When two runs are close and one has a much lower
+  judged@10, the qrels may underrate it. See
+  [Methodology](/methodology/overview#dataset-and-qrels-grades).
+- **What the sample cannot show.** How an engine copes with millions of
+  near-duplicate names (four people called `John Smith`). At 1M entities there
+  are fewer of them than in a real catalogue.
+
+## What was dropped
+
+Nothing: no document, query or judgment was dropped (measured on the prepare
+run of 2026-11-01).
+
+## Perturbations
+
+`typo` and `prefix`, seed `20261031`. People misspell names (`glen frey`), and
+`prefix` stands for a name not typed to the end. There is no synonym
+perturbation and no synonym list: no vocabulary was built for this scenario.
+
+## Fit test and fallback size
+
+No engine has indexed a million documents in IRBench before, so a fit test
+runs before any scored run. For each of the six engines, on the `local`
+profile and the default track:
+
+- the index builds without an out-of-memory kill or container restart, within
+  the scenario's `index_timeout_s` (2 hours);
+- the relevance stage stays under the 0.1% error rate.
+
+Peak container memory and build time are recorded per engine. If any one
+engine fails, every engine uses the fallback size of 500,000 documents (the
+`corpus_size` parameter of the dataset), after re-preparing and re-embedding.
+A scenario compares engines on one corpus, so the size is never chosen per
+engine. In the check above, 500,000 is almost as faithful as 1M (nDCG@10
+0.317 against 0.307, judged@10 0.83 against 0.77). If the fallback is used,
+the failure and its numbers will be stated here.
+
+To be completed after the fit test: the measured peak memory and index build
+time per engine, and whether the 1,000,000-document size was kept.
+
+## Tuned track
+
+The tuned track follows the same sweep as the other scenarios (see
+[Parity](/methodology/parity#tracks)), scored on nDCG@10 over the 467 queries.
+To be completed after the sweeps: the tuned settings and their measured gains.

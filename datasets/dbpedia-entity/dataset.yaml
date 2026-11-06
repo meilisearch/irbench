@@ -1,0 +1,19 @@
+id: dbpedia-entity
+version: "mteb-dbpedia@7d8780d8ef0d0a55d13fa797fe39224ec806592c"
+license: MIT (mteb/dbpedia card and github.com/iai-group/DBpedia-Entity); entity text from DBpedia 2015-10 / Wikipedia, CC BY-SA 3.0
+source: https://github.com/iai-group/DBpedia-Entity
+params:
+  corpus_size: 1000000
+files:
+  corpus:
+    url: https://huggingface.co/datasets/mteb/dbpedia/resolve/7d8780d8ef0d0a55d13fa797fe39224ec806592c/corpus.jsonl
+    sha256: 218fd9274382857e1424ae3f3ad664424636766df2673ec0caf75830c60fb1ad
+  queries:
+    url: https://huggingface.co/datasets/mteb/dbpedia/resolve/7d8780d8ef0d0a55d13fa797fe39224ec806592c/queries.jsonl
+    sha256: 7573758032694ac960d59b3c59746cf7ff49a01dfc32f12a47af87181640482f
+  qrels_test:
+    url: https://huggingface.co/datasets/mteb/dbpedia/resolve/7d8780d8ef0d0a55d13fa797fe39224ec806592c/qrels/test.tsv
+    sha256: 7939c61fa8f0f99c43bd04e2c118bd3d97ec7ee4d67d05c63d14fde103bedc96
+  qrels_dev:
+    url: https://huggingface.co/datasets/mteb/dbpedia/resolve/7d8780d8ef0d0a55d13fa797fe39224ec806592c/qrels/dev.tsv
+    sha256: 316a5c4bab1356cd49dca79175e15f0bbd16cb028063371fe08a69a136505a73

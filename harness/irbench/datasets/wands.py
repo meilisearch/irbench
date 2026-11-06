@@ -24,6 +24,9 @@ class NormalizedDataset:
     # Extra query sets a normalizer writes beyond `queries`/`qrels`, keyed by set name
     # (e.g. "prefixes"), mapping to (queries path, qrels path).
     query_sets: dict[str, tuple[Path, Path]] = field(default_factory=dict)
+    # Counts describing how the dataset was cut (e.g. a corpus sample), recorded in the
+    # prepare manifest; empty for loaders that keep the whole source.
+    stats: dict[str, int] = field(default_factory=dict)
 
 
 def _read_tsv(path: Path) -> Iterator[dict[str, str]]:

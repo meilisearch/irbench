@@ -2,6 +2,7 @@ from collections.abc import Callable
 
 from irbench.datasets.amazon_esci import normalize_amazon_esci
 from irbench.datasets.cqadupstack import normalize_cqadupstack
+from irbench.datasets.dbpedia_entity import normalize_dbpedia_entity
 from irbench.datasets.lotte import normalize_lotte
 from irbench.datasets.trec_covid import normalize_trec_covid
 from irbench.datasets.wands import NormalizedDataset, normalize_wands
@@ -13,4 +14,7 @@ NORMALIZERS: dict[str, Callable[..., NormalizedDataset]] = {
     "trec-covid": normalize_trec_covid,
     "trec-covid-abstracts": normalize_trec_covid,
     "amazon-esci": normalize_amazon_esci,
+    "amazon-esci-jp": normalize_amazon_esci,
+    "amazon-esci-es": normalize_amazon_esci,
+    "dbpedia-entity": normalize_dbpedia_entity,
 }

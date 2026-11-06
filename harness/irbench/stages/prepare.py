@@ -46,7 +46,7 @@ def prepare(root: Path, scenario_id: str, client: httpx.Client | None = None) ->
     scenario = load_scenario(root, scenario_id)
     spec = load_dataset_spec(root, scenario.dataset)
 
-    raw = fetch_dataset(spec, ws.raw_dir(spec.id), client)
+    raw = fetch_dataset(spec, ws.raw_dir(spec.raw_from or spec.id), client)
     normalized = NORMALIZERS[spec.id](raw, ws.dataset_dir(spec.id), **spec.params)
 
     docs_by_id = {d[scenario.id_field]: d for d in read_jsonl(normalized.docs)}
@@ -93,6 +93,8 @@ def prepare(root: Path, scenario_id: str, client: httpx.Client | None = None) ->
                 "id": spec.id,
                 "version": spec.version,
                 "files": {name: f.sha256 for name, f in spec.files.items()},
+                "params": spec.params,
+                "stats": normalized.stats,
             },
             "seed": p.seed,
             "counts": {
