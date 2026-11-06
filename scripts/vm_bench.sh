@@ -6,7 +6,7 @@
 #                                 track (relevance only, not published for speed) then their sweep
 #                                 variants (tune half, relevance only, aws-sweep profile)
 #   scripts/vm_bench.sh lane E...  rerun the sweeps lane of the given engines
-#   scripts/vm_bench.sh finals    tuned track, every stage including speed, one run at a time
+#   scripts/vm_bench.sh finals    tuned and default tracks, every stage including speed, one run at a time
 #                                 on the pinned aws-c7i-4xlarge profile
 #
 # Logs go to .irbench/logs/; each phase writes .irbench/logs/<phase>.done when it ends.
@@ -86,7 +86,10 @@ case "${1:-}" in
         else
           stages=prepare,embed,up,index,render,relevance,perf,score,down
         fi
+        # Both tracks with speed, back to back on the same machine: the default track shows
+        # what each tuned setting costs in indexing time, latency and throughput.
         run "$engine" "$s" tuned aws-c7i-4xlarge "$stages"
+        run "$engine" "$s" default aws-c7i-4xlarge "$stages"
       done
     done
     touch "$LOGS/finals.done"
