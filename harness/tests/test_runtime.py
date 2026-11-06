@@ -121,3 +121,36 @@ def test_wait_healthy_retries_until_200():
     )
     with pytest.raises(TimeoutError, match="/health"):
         wait_healthy(down, "/health", timeout_s=0, interval_s=0)
+
+
+def test_runtime_uses_track_compose(tmp_path):
+    root, _ = _root(tmp_path)
+    custom = root / "engines" / "meilisearch" / "docker" / "compose.kuromoji.yaml"
+    custom.write_text("services: {}\n")
+    run, calls = _recorder()
+    rt = DockerRuntime(
+        root,
+        "meilisearch",
+        load_hardware(REPO_ROOT, "aws-c7i-4xlarge"),
+        compose="compose.kuromoji.yaml",
+        runner=run,
+        state_dir=tmp_path / "state",
+    )
+    rt.up()
+    rt.down()
+    assert len(calls) == 2
+    for cmd in calls:
+        assert cmd[cmd.index("-f") + 1] == str(custom)
+        assert str(root / "engines" / "meilisearch" / "docker" / "compose.yaml") not in cmd
+
+
+def test_image_info_without_repo_digest_is_null(tmp_path):
+    root, _ = _root(tmp_path)
+    run, _ = _recorder(
+        {
+            "docker inspect": "irbench-es-kuromoji:9.5.5\n",
+            "docker image inspect": "[]",
+        }
+    )
+    rt = DockerRuntime(root, "meilisearch", load_hardware(REPO_ROOT, "local"), runner=run)
+    assert rt.image_info() == {"image": "irbench-es-kuromoji:9.5.5", "digest": None}

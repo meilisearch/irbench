@@ -4,7 +4,7 @@ import pytest
 import yaml
 
 from conftest import REPO_ROOT
-from irbench.scenario import load_scenario
+from irbench.scenario import check_model, load_scenario
 from irbench.terms import load_term_groups, scenario_term_groups
 
 SCENARIO = "ecommerce/product-search"
@@ -158,3 +158,91 @@ def test_knowledge_base_scenarios_load(scenario_id):
     s = load_scenario(REPO_ROOT, scenario_id)
     assert s.synonyms is None and s.perturbations.kinds == ["typo", "prefix"]
     assert s.page_sizes == [20, 100] and s.top_k == 100
+
+
+def test_ja_rejects_typo(tmp_path):
+    def mutate(raw):
+        raw["language"] = "ja"
+        raw["perturbations"]["kinds"] = ["typo"]
+
+    with pytest.raises(ValueError, match=r"(?s)typo.*ja|ja.*typo"):
+        _scenario_with(tmp_path, mutate)()
+
+
+def test_ja_accepts_prefix(tmp_path):
+    def mutate(raw):
+        raw["language"] = "ja"
+        raw["perturbations"]["kinds"] = ["prefix"]
+
+    assert _scenario_with(tmp_path, mutate)().language == "ja"
+
+
+def test_language_defaults_to_en():
+    ids = sorted(
+        p.parent.relative_to(REPO_ROOT / "scenarios").as_posix()
+        for p in (REPO_ROOT / "scenarios").glob("*/*/scenario.yaml")
+    )
+    assert ids
+    for scenario_id in ids:
+        s = load_scenario(REPO_ROOT, scenario_id)
+        raw = yaml.safe_load((s.directory / "scenario.yaml").read_text(encoding="utf-8"))
+        if "language" not in raw:
+            assert s.language == "en", scenario_id
+        if "embedding_model" not in raw:
+            assert s.embedding_model is None, scenario_id
+
+
+def test_check_model_accepts_unpinned_and_matching(tmp_path):
+    s = load_scenario(REPO_ROOT, SCENARIO)
+    check_model(s, "anything")
+    pinned = s.model_copy(update={"embedding_model": "multilingual-e5-small"})
+    check_model(pinned, "multilingual-e5-small")
+
+
+def test_check_model_rejects_other_model():
+    s = load_scenario(REPO_ROOT, SCENARIO).model_copy(
+        update={"embedding_model": "multilingual-e5-small"}
+    )
+    with pytest.raises(ValueError) as e:
+        check_model(s, "bge-small-en-v1.5")
+    assert str(e.value) == (f"{s.id} is embedded with multilingual-e5-small, not bge-small-en-v1.5")
+
+
+def test_zh_language_accepted(tmp_path):
+    def mutate(raw):
+        raw["language"] = "zh"
+        raw["perturbations"]["kinds"] = []
+
+    assert _scenario_with(tmp_path, mutate)().language == "zh"
+
+
+def test_zh_rejects_typo(tmp_path):
+    def mutate(raw):
+        raw["language"] = "zh"
+        raw["perturbations"]["kinds"] = ["typo"]
+
+    with pytest.raises(ValueError, match="'typo' is not supported for language 'zh'"):
+        _scenario_with(tmp_path, mutate)()
+
+
+def test_headline_metric_default_ndcg():
+    assert load_scenario(REPO_ROOT, SCENARIO).headline_metric == "ndcg@10"
+
+
+def test_headline_metric_accepts_mrr(tmp_path):
+    def mutate(raw):
+        raw["headline_metric"] = "mrr@10"
+
+    assert _scenario_with(tmp_path, mutate)().headline_metric == "mrr@10"
+
+
+def test_headline_metric_rejects_other(tmp_path):
+    def mutate(raw):
+        raw["headline_metric"] = "recall@10"
+
+    with pytest.raises(ValueError, match="headline_metric"):
+        _scenario_with(tmp_path, mutate)()
+
+
+def test_publishable_default_true():
+    assert load_scenario(REPO_ROOT, SCENARIO).publishable is True

@@ -1,0 +1,35 @@
+# Meilisearch on ecommerce/title-search-zh.
+#
+# default: Meilisearch as shipped. adapter.py generates only what the scenario
+#   schema requires (searchable order, filterable/sortable/facet fields,
+#   userProvided embedder, facet value limit).
+# tuned: changes within the parity rules (docs/methodology/parity). Add a
+#   `tuned:` block here; it is deep-merged over `default`.
+#
+# Keys: index (merged into index settings), search.<keyword|semantic|hybrid>
+# (merged into search bodies of that base), unsupported (key -> reason),
+# justification (key -> why a non-default ANN or ranking parameter is set).
+# Chinese (spec 2026-10-31 Chinese title search §5): Meilisearch as shipped plus `cmn`
+#   (Mandarin) as the language of titles and queries.
+# tuned: written after the sweeps (plan Task 11).
+default:
+  index:
+    localizedAttributes:
+    - attributePatterns: ["*"]
+      locales: [cmn]
+  search:
+    keyword:
+      locales: [cmn]
+    hybrid:
+      locales: [cmn]
+  unsupported: {}
+  justification:
+    localizedAttributes: >-
+      Default-track language setting (spec 2026-10-31 Chinese title search §5.1, the
+      multilingual spec's rule): the engine's own documented setting for Chinese,
+      nothing installed.
+      Tells charabia the titles are Mandarin: jieba segmentation and Chinese
+      normalisation, instead of guessing the language per string.
+    locales: >-
+      The same for queries: a short Han query can otherwise be detected as Japanese and
+      segmented with the Japanese dictionary.

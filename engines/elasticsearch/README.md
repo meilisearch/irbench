@@ -31,6 +31,20 @@ Found by a sweep scored on nDCG@10 per scenario and base; each value is justifie
 
 Config keys the adapter applies itself (`search.<base>`): `multi_match` (merged into every `multi_match`, plain, filtered and hybrid alike) and `fusion` (`{method: rrf | linear, rank_constant, weights: [keyword, vector], normalizer}`, hybrid).
 
+## Languages
+
+The non-English scenarios (Japanese, Spanish and Chinese) set the language in the config's `default` block. Each setting has a `justification:` entry.
+
+| Scenario | default track | tuned track |
+|---|---|---|
+| Japanese | `index.analyzer: cjk`, the built-in analyzer. It splits Japanese into overlapping two-character pieces, not into words | may use `analysis-kuromoji`, the official Elastic plugin, installed in an image that has the same version as the engine. The tuned config selects it with `compose: compose.kuromoji.yaml` (a `justification.compose` entry is required) and sets the kuromoji analyzer, tried with its `search` mode next to `cjk`. It is kept only if it wins on nDCG@10 |
+| Spanish | `index.analyzer: spanish`, the built-in analyzer (stemming and stop words) | no plugin; the sweep may add built-in filters such as `asciifolding` |
+| Chinese (`ecommerce/title-search-zh`, `media/video-search-zh`) | `index.analyzer: cjk` (two-character pieces): Elasticsearch ships no Chinese word analyzer | may use `compose: compose.zh.yaml`, an image with `analysis-smartcn` and `analysis-icu` (official) and IK (`infinilabs/analysis-ik`, very popular, the maintainer's 9.5.5 build pinned by sha256). The sweep tries `standard`, `cjk`, `smartcn`, `icu_analyzer`, `ik_smart` and `ik_max_word` on the keyword base; a variant replaces `cjk` only if significantly better |
+
+`index.analyzer` is the analyzer of every searchable text field. The adapter applies it itself: it is not merged into the create-index body. With no `index.analyzer`, nothing changes (the standard tokenizer). If a scenario ships a `synonyms.txt`, the search analyzer stays `irbench_search` (standard tokenizer plus the synonym filter) and the language analyzer is used at index time only.
+
+The English scenarios do not use the `english` analyzer: they run the standard tokenizer. Spanish uses the `spanish` analyzer because that is the documented way to tell Elasticsearch the text is Spanish. The two are not consistent, and the English scenarios are left as they are.
+
 ## Modes
 
 - keyword: `multi_match`.

@@ -1,0 +1,116 @@
+---
+title: "Scenario: video-search-zh"
+description: Chinese video title search, real short queries against 100,579 video titles, one judgment per query (C-MTEB VideoRetrieval)
+---
+
+Scenario id: `media/video-search-zh`. It tests title search over a media catalogue: show names, episode numbers, people's names, and mixed Latin and Chinese text (`ukBboy` against `uk bboy`).
+
+## Source
+
+- **Dataset:** [C-MTEB/VideoRetrieval](https://huggingface.co/datasets/C-MTEB/VideoRetrieval) (titles, 1,000
+  dev queries and their qrels), from Alibaba's
+  [Multi-CPR](https://github.com/Alibaba-NLP/Multi-CPR), plus Multi-CPR train
+  queries whose judged title is in the same corpus. All files are pinned by
+  revision or commit and sha256 in `datasets/cmteb-video/dataset.yaml`.
+- **License:** not specified (see below).
+- **Dataset id:** `cmteb-video`.
+
+## Size
+
+| | Count |
+|---|---|
+| Titles | 100,579 (100,930 in the source; 351 exact duplicates merged into the smallest id, 6 judgments moved) |
+| Dev queries (C-MTEB) | 1,000 |
+| Train queries (Multi-CPR, judged title in the corpus) | 3,000, sampled from 8,449 |
+| Judgments | one per query, grade 1 |
+
+Median title: 24 characters, 81% with a space; 1,402 titles are over 200
+characters (cast lists). Median query: 7 characters, 2.3% with a space.
+Examples: `鸡西新闻2019`, `胜者为王2天下无敌正片`.
+
+Queries carry a group, `dev` or `train`. The `dev` group is the C-MTEB task
+itself, comparable with published C-MTEB numbers; the train queries are there to
+cut noise (engines are not trained, so a train query is as good a test). The
+sample is seeded (`20261031`). Text is kept as written: no full-width folding, no
+case folding, no traditional/simplified conversion.
+
+On video, the two groups are not equally hard. Keyword MRR@10 on the default
+track: Elasticsearch 0.536 on `dev` against 0.176 on `train`, Qdrant 0.541
+against 0.202 (on e-commerce the groups are close: 0.385 against 0.369 for
+Elasticsearch). Many train queries are vague (`电影小孩子看的`, "a film for kids")
+and are judged against one catalogue entry, often a long cast list: the judged
+title shares no character with its query for 5.1% of train queries against 0.3%
+of dev ones, and its median length is 38 characters against 24. The labels look
+click-based. The scenario keeps all 4,000 queries: the train group is a harder,
+noisier set of real queries, not a broken one. Read the `dev` row for numbers
+comparable with C-MTEB, and expect the headline to sit well below it.
+
+## Fields and modes
+
+One searchable field, `title`. Modes: `keyword`, `semantic`, `hybrid`.
+`filtered`, `faceted` and `sorted` are N/A: the data has an id and a title,
+nothing else. Page sizes for the speed runs: 20 and 100.
+
+## One judgment per query
+
+Each query has exactly one title marked relevant and nothing marked irrelevant.
+So every metric is the rank of that one title: MRR@10 is 1 / rank (0 past 10),
+success@1 is "ranked first", recall@k is "in the top k". Every other title counts
+as wrong, even when it is the same product from another seller or another clip of
+the same show, so scores are lower bounds. judged@10 is at most 0.1 by
+construction and is not shown.
+
+The scenario page headlines **MRR@10**, the metric of the Multi-CPR paper, with
+its 95% interval. A second table gives success@1, recall@10, recall@100 and
+nDCG@10, each with its interval. A score marked ≈ is not significantly below the
+column's best (paired randomization test, p ≥ 0.05): with one judgment per query
+many differences are within noise, and the page says so instead of ranking them.
+
+Measured on the 1,000 dev queries with two simple BM25 variants (one token per
+character, two-character pieces), one run's MRR@10 is known to about ±0.027 and a
+paired difference to about ±0.02. The scenario has 4,000 queries, which halves
+both. Absolute scores depend on the 100k-title corpus (the Multi-CPR paper's BM25
+on the full corpus is far lower); only the comparison between engines on this
+corpus means anything.
+
+## Semantic search
+
+The vectors come from `multilingual-e5-small` (`intfloat/multilingual-e5-small`,
+384 dimensions, MIT), pinned on the scenario. Queries are embedded with the
+`query: ` prefix and titles with `passage: `. It was not trained on Multi-CPR;
+the BGE Chinese models were, which would make the semantic side reflect that
+training. Exact (brute-force) retrieval with it reaches about the score of a plain
+keyword baseline on the dev queries, so hybrid fuses two comparable halves.
+**Semantic and hybrid scores here are not comparable with the English scenarios.**
+
+## Chinese settings
+
+| Engine | default track | tuned track |
+|---|---|---|
+| Meilisearch | `localizedAttributes` locale `cmn` on the title, `locales: ["cmn"]` on keyword and hybrid requests (charabia: jieba segmentation) | usual sweep, no plugin |
+| Elasticsearch | `index.analyzer: cjk` (two-character pieces); Elasticsearch ships no Chinese word analyzer | `compose.zh.yaml`: `analysis-smartcn` and `analysis-icu` (official) and IK (very popular); variants `standard`, `cjk`, `smartcn`, `icu_analyzer`, `ik_smart`, `ik_max_word` |
+| Typesense | `index.searchable_fields.locale: zh` | usual sweep, no plugin |
+| Qdrant | `index.bm25_options.tokenizer: multilingual` | usual sweep, no plugin |
+| ParadeDB | `index.tokenizer: pdb.jieba` | its other built-in tokenizers, `chinese_lindera` and `chinese_compatible` |
+| Postgres | `index.text_search_config: simple`: Postgres has no Chinese configuration, so an unspaced title is one token and keyword search finds little | `compose.zh.yaml`: PGroonga (`TokenBigram`, `TokenNgram`) and zhparser (very popular; built from pinned upstream commits) |
+
+Plugins follow the rule in [Methodology](/methodology/parity#language-plugins-on-the-tuned-track).
+On these scenarios a sweep variant is kept only when it is significantly better
+than the default value (Holm-corrected paired test), and analyzers and tokenizers
+are chosen on the keyword base.
+
+## Licence and publication
+
+Multi-CPR has no licence file and its README states no terms; the C-MTEB copies
+have none either. **Runs of this scenario are internal**: the scenario sets
+`publishable: false` and `irbench publish` refuses them. Build a local report with
+`irbench report --results .irbench/runs`. Raw files are downloaded at prepare time
+and never committed.
+
+## Perturbations
+
+None. `typo` is not how Chinese is mistyped (an input method picks the wrong
+character for the right sound), and a scenario with `language: zh` that lists it
+is rejected. `prefix` would cut nearly every query, since 97% have no space, and
+its variants would mix into the headline score; a Chinese as-you-type scenario
+would carry them separately.

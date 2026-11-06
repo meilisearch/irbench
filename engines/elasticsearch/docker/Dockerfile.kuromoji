@@ -1,0 +1,4 @@
+# Tuned Japanese track: the vendor's official analysis-kuromoji plugin on top of the same
+# Elasticsearch version as compose.yaml (a plugin must match the version exactly).
+FROM elasticsearch:9.5.5
+RUN bin/elasticsearch-plugin install --batch analysis-kuromoji

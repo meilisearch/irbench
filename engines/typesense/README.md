@@ -25,6 +25,18 @@ Search parameters only, found by a sweep scored on nDCG@10 per scenario and base
 - English stop words (`stop_words: english`) on WANDS, community-qa, covid-papers-abstracts and web-questions, and English stemming (`stemming: english`) on WANDS and covid-papers-abstracts, chosen by the committed sweeps (2026-11-06, tune half). Neither helped on covid-papers, so both stay off there.
 - On covid-papers-abstracts, keyword drops words until 10 documents match and hybrid uses `alpha` 0.7.
 
+## Languages
+
+The non-English scenarios (Japanese, Spanish and Chinese) set the language in the config's `default` block. Each setting has a `justification:` entry.
+
+| Scenario | default track | tuned track |
+|---|---|---|
+| Japanese | `index.searchable_fields.locale: ja` | no plugin; usual sweep |
+| Spanish | `index.searchable_fields.locale: es` | no plugin; usual sweep |
+| Chinese (`ecommerce/title-search-zh`, `media/video-search-zh`) | `index.searchable_fields.locale: zh` | no plugin; usual sweep |
+
+`searchable_fields` is merged into every searchable field (see the last section), so the locale is set on all of them. With no `locale`, nothing changes (Typesense's default tokenization, no locale).
+
 ## Modes
 
 All requests go through `POST /multi_search` (one search per request), so a 384-float vector never sits in a URL.

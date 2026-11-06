@@ -61,6 +61,7 @@ class Adapter(EngineAdapter):
     host_port = 18108
     health_path = "/health"
     data_dir = "/data"
+    language_keys = ("index.searchable_fields.locale",)
 
     @property
     def synonym_set(self) -> str:

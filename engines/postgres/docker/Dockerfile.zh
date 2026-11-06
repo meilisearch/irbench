@@ -1,0 +1,32 @@
+# Tuned Chinese track (spec 2026-10-31 Chinese title search §5.2), on the same image as
+# compose.yaml (official pgvector, postgresql-17-pgvector from PGDG):
+# - PGroonga from PGroonga's official apt repository, as in Dockerfile.pgroonga;
+# - zhparser (amutu/zhparser, PostgreSQL licence) on the SCWS segmenter (hightman/scws, BSD):
+#   the usual Chinese parser for Postgres text search. Neither has a PGDG package, so both are
+#   built unmodified from pinned upstream commits, with SCWS's shipped dictionary.
+FROM pgvector/pgvector:0.8.7-pg17
+# SCWS at its 1.2.3 release tag (the commit zhparser's own Dockerfiles build); master's Makefile.am no
+# longer passes automake.
+ARG SCWS_COMMIT=a04ef5e655213eb6b07fb57761d0eac72c281ad4
+ARG ZHPARSER_COMMIT=2e995c4df672563992b4d7a147b8fa2d0d4cda6c
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates wget \
+ && wget -q "https://packages.groonga.org/debian/groonga-apt-source-latest-$(. /etc/os-release && echo "$VERSION_CODENAME").deb" \
+ && apt-get install -y --no-install-recommends ./groonga-apt-source-latest-*.deb \
+ && rm -f groonga-apt-source-latest-*.deb \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends postgresql-17-pgdg-pgroonga=4.0.6-1 \
+ && apt-get install -y --no-install-recommends \
+      build-essential git autoconf automake libtool postgresql-server-dev-17 \
+ && git clone https://github.com/hightman/scws.git /tmp/scws \
+ && git -C /tmp/scws checkout "$SCWS_COMMIT" \
+ && cd /tmp/scws && touch README && aclocal && autoconf && autoheader && libtoolize \
+ && automake --add-missing && ./configure && make && make install \
+ && git clone https://github.com/amutu/zhparser.git /tmp/zhparser \
+ && git -C /tmp/zhparser checkout "$ZHPARSER_COMMIT" \
+ && cd /tmp/zhparser && make && make install \
+ && ldconfig \
+ && cd / && rm -rf /tmp/scws /tmp/zhparser \
+ && apt-get purge -y --auto-remove build-essential git autoconf automake libtool \
+      postgresql-server-dev-17 \
+ && rm -rf /var/lib/apt/lists/*

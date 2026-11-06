@@ -137,6 +137,9 @@ class EngineAdapter(ABC):
     host_port: ClassVar[int]
     health_path: ClassVar[str]
     data_dir: ClassVar[str]
+    # Config key paths (`index.analyzer`, ...) that carry this engine's language setting; a
+    # non-English scenario's default track must set one of them (`irbench lint`).
+    language_keys: ClassVar[tuple[str, ...]] = ()
 
     def __init__(self, ctx: IndexContext):
         self.ctx = ctx

@@ -1,0 +1,28 @@
+# Qdrant on media/video-search-zh.
+#
+# default: Qdrant as shipped. adapter.py generates only what the scenario
+#   schema requires (a Cosine dense vector, one BM25 sparse vector per searchable
+#   field, payload indexes for filterable, sortable and facet fields). HNSW and
+#   search parameters are Qdrant's defaults.
+# tuned: changes within the parity rules; add a `tuned:` block (deep-merged).
+#
+# Keys: index (merged into the create-collection body),
+# search.<keyword|semantic|hybrid> (merged into query bodies of that base),
+# unsupported (key -> reason, shown as N/A in results), justification.
+# Chinese (spec 2026-10-31 Chinese title search §5): Qdrant as shipped plus the
+#   `multilingual` BM25 tokenizer.
+# tuned: written after the sweeps (plan Task 11).
+default:
+  index:
+    bm25_options:
+      tokenizer: multilingual
+  search: {}
+  unsupported: {}
+  justification:
+    bm25_options: >-
+      Default-track language setting (spec 2026-10-31 Chinese title search §5.1, the
+      multilingual spec's rule): the engine's own documented setting for Chinese,
+      nothing installed.
+      The `multilingual` tokenizer segments CJK text (charabia); the default `word`
+      tokenizer splits on spaces and punctuation only, so an unspaced title would be one
+      token.

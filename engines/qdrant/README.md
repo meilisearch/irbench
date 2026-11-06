@@ -22,6 +22,18 @@ Found by a sweep scored on nDCG@10 per scenario and base; each value is justifie
 
 Config keys the adapter applies itself: `index.bm25_avg_len`, `index.bm25_options` (sent with every document's BM25 inference), `search.<base>.fusion` (the hybrid query, default `{fusion: rrf}`) and `search.<base>.keyword_pool` (the per-field prefetch limit).
 
+## Languages
+
+The non-English scenarios (Japanese, Spanish and Chinese) set the language in the config's `default` block. Each setting has a `justification:` entry.
+
+| Scenario | default track | tuned track |
+|---|---|---|
+| Japanese | `index.bm25_options` for the language, as documented for v1.19.2 | no plugin; usual sweep |
+| Spanish | `index.bm25_options` for Spanish, as documented for v1.19.2 | no plugin; usual sweep |
+| Chinese (`ecommerce/title-search-zh`, `media/video-search-zh`) | `index.bm25_options: {tokenizer: multilingual}`: the default `word` tokenizer splits on spaces and punctuation only, so an unspaced title would be one token | no plugin; usual sweep |
+
+`index.bm25_options` is sent with every document's BM25 inference (see the keys above). The config's justification names which options it sets. Qdrant's options may not split Japanese into words. If they do not, its Japanese keyword scores reflect that. That is a result, not a setup error.
+
 ## Modes
 
 - semantic: Query API `query: <vector>, using: dense`.

@@ -10,6 +10,7 @@ from fake_engine import (
     fake_loadgen,
     fake_root,
     perfect_answers,
+    set_scenario,
 )
 from irbench.cli import app
 from irbench.io import read_json
@@ -94,6 +95,25 @@ def test_unknown_stage_is_rejected_before_anything_runs(tmp_path, wands_raw):
     assert runtime.calls == []
 
 
+def test_run_rejects_other_model(tmp_path, wands_raw):
+    root = fake_root(tmp_path, wands_raw)
+    set_scenario(root, embedding_model="multilingual-e5-small")
+    runtime, embedder = FakeRuntime(), FakeEmbedder()
+    spec = RunSpec(scenario=SCENARIO, engine="fake", model="bge-small-en-v1.5")
+    with pytest.raises(ValueError, match="multilingual-e5-small.*bge-small-en-v1.5"):
+        run_pipeline(
+            root,
+            spec,
+            list(STAGES),
+            runtime_factory=lambda *a: runtime,
+            client_factory=_server(root).client_factory,
+            prepare_client=fixture_client(wands_raw),
+            embedder=embedder,
+        )
+    assert runtime.calls == []
+    assert embedder.calls == []
+
+
 def test_tuned_track_records_its_diff(tmp_path, wands_raw):
     config = {**FAKE_CONFIG, "tuned": {"search": {"keyword": {"boost": 2}}}}
     root = fake_root(tmp_path, wands_raw, config=config)
@@ -104,6 +124,35 @@ def test_tuned_track_records_its_diff(tmp_path, wands_raw):
     assert manifest["config"]["diff_vs_default"] == {
         "search.keyword": {"default": None, "effective": {"boost": 2}}
     }
+
+
+def test_runtime_factory_receives_the_track_compose_file(tmp_path, wands_raw):
+    config = {**FAKE_CONFIG, "tuned": {"compose": "compose.kuromoji.yaml"}}
+    root = fake_root(tmp_path, wands_raw, config=config)
+    seen = []
+
+    def factory(*args):
+        seen.append(args[3:])
+        return FakeRuntime()
+
+    for track in ("default", "tuned"):
+        spec = RunSpec(scenario=SCENARIO, engine="fake", model="fake", track=track)
+        run_pipeline(root, spec, ["render"], runtime_factory=factory)
+    assert seen == [("compose.yaml",), ("compose.kuromoji.yaml",)]
+
+
+def test_prepare_only_run_does_not_need_an_engine_config(tmp_path, wands_raw):
+    root = fake_root(tmp_path, wands_raw)
+    (root / "engines/fake/configs/ecommerce/product-search.yaml").unlink()
+    spec = RunSpec(scenario=SCENARIO, engine="fake", model="fake")
+    manifest = run_pipeline(
+        root,
+        spec,
+        ["prepare"],
+        runtime_factory=lambda *a: FakeRuntime(),
+        prepare_client=fixture_client(wands_raw),
+    )
+    assert manifest["status"] == "succeeded"
 
 
 def test_cli_run_prints_scores_and_na(tmp_path, wands_raw, monkeypatch):
@@ -268,6 +317,28 @@ def test_manifest_records_the_synonyms_reason(tmp_path, wands_raw):
         prepare_client=fixture_client(wands_raw),
     )
     assert manifest["config"]["synonyms"] == "no synonyms.txt"
+
+
+def test_scores_record_the_headline_metric(tmp_path, wands_raw):
+    root = fake_root(tmp_path, wands_raw)
+    set_scenario(root, headline_metric="mrr@10")
+    run_pipeline(
+        root,
+        FAKE_SPEC,
+        list(STAGES),
+        runtime_factory=lambda *a: FakeRuntime(),
+        client_factory=_server(root).client_factory,
+        prepare_client=fixture_client(wands_raw),
+        embedder=FakeEmbedder(),
+        loadgen_runner=fake_loadgen(),
+    )
+    scores = read_json(RunContext(root, FAKE_SPEC).run_dir / "scores.json")
+    assert scores["headline_metric"] == "mrr@10"
+    assert set(scores["per_task"]) == {"ndcg@10", "mrr@10"}
+    assert scores["per_task"]["mrr@10"].keys() == scores["per_task"]["ndcg@10"].keys()
+    assert scores["single_judgment"] is False  # WANDS judges many products per query
+    overall = next(g for g in scores["relevance"] if g["perturbation"] == "all")
+    assert "mrr@10" in overall["ci95"]
 
 
 def test_each_stage_records_the_commit_it_ran_at(tmp_path, wands_raw, monkeypatch):

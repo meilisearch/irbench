@@ -1,0 +1,278 @@
+"""Language settings are config keys: each adapter carries one through its existing channel."""
+
+from dataclasses import replace
+
+import pytest
+
+from adapter_helpers import make_adapter, make_task
+from conftest import REPO_ROOT
+from irbench.engines.base import EngineAdapter, load_adapter_class
+
+ENGINES = ["meilisearch", "elasticsearch", "typesense", "qdrant", "postgres", "postgres-paradedb"]
+LANGUAGE_KEYS = {
+    "meilisearch": ("index.localizedAttributes",),
+    "elasticsearch": ("index.analyzer",),
+    "typesense": ("index.searchable_fields.locale",),
+    "qdrant": ("index.bm25_options",),
+    "postgres": ("index.text_search_config",),
+    "postgres-paradedb": ("index.tokenizer",),
+}
+
+
+def test_base_adapter_has_no_language_keys():
+    assert EngineAdapter.language_keys == ()
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_every_adapter_names_its_language_keys(engine):
+    assert load_adapter_class(REPO_ROOT, engine).language_keys == LANGUAGE_KEYS[engine]
+
+
+def test_es_analyzer_key():
+    adapter = make_adapter("elasticsearch", {"index": {"analyzer": "cjk"}}, synonyms=[])
+    body = adapter.index_body()
+    props = body["mappings"]["properties"]
+    for name in adapter.ctx.scenario.index_fields.searchable:
+        assert props[name]["analyzer"] == props[name]["search_analyzer"] == "cjk"
+    assert "analyzer" not in body["settings"]
+    assert "analyzer" not in body
+    assert "irbench_search" not in body["settings"]["analysis"].get("analyzer", {})
+
+
+def test_es_analyzer_key_keeps_the_synonym_analyzer_for_search():
+    adapter = make_adapter("elasticsearch", {"index": {"analyzer": "cjk"}})
+    body = adapter.index_body()
+    props = body["mappings"]["properties"]
+    for name in adapter.ctx.scenario.index_fields.searchable:
+        assert props[name]["analyzer"] == "cjk"
+        assert props[name]["search_analyzer"] == "irbench_search"
+    assert "irbench_search" in body["settings"]["analysis"]["analyzer"]
+    assert "analyzer" not in body["settings"] and "analyzer" not in body
+
+
+def test_es_without_the_key_has_no_index_analyzer():
+    props = make_adapter("elasticsearch").mappings()["properties"]
+    assert all("analyzer" not in p for p in props.values())
+
+
+def test_pg_text_search_config_key():
+    ddl = make_adapter("postgres", {"index": {"text_search_config": "spanish"}}).setup_ddl()
+    assert "COPY = spanish" in ddl and "COPY = english" not in ddl
+
+
+def test_pg_default_config_is_english():
+    assert "COPY = english" in make_adapter("postgres").setup_ddl()
+
+
+def test_pg_thesaurus_follows_the_config_language():
+    track = {"index": {"text_search_config": "spanish"}}
+    ddl = make_adapter("postgres", track, synonyms=[["gris", "plomo"]]).setup_ddl()
+    assert "Dictionary = spanish_stem" in ddl and "english_stem" not in ddl
+    ddl = make_adapter("postgres", synonyms=[["grey", "gray"]]).setup_ddl()
+    assert "Dictionary = english_stem" in ddl
+
+
+def test_pg_text_search_config_is_an_identifier():
+    adapter = make_adapter("postgres", {"index": {"text_search_config": "x; DROP TABLE y"}})
+    with pytest.raises(ValueError, match="unsafe SQL identifier"):
+        adapter.setup_ddl()
+
+
+@pytest.mark.parametrize(
+    "expr", ["pdb.lindera(japanese)", "pdb.simple('stemmer=spanish', 'ascii_folding=true')"]
+)
+def test_paradedb_tokenizer_key(expr):
+    # pg_search 0.26: `(<column>::pdb.<tokenizer>(<args>))` inside the index column list, see
+    # https://www.paradedb.com/docs/documentation/tokenizers/available-tokenizers/lindera and
+    # https://www.paradedb.com/docs/documentation/token-filters/stemming
+    adapter = make_adapter("postgres-paradedb", {"index": {"tokenizer": expr}})
+    ddl = adapter.text_index_ddl()
+    fields = adapter.ctx.scenario.index_fields.searchable
+    assert ddl == (
+        f"CREATE INDEX ON {adapter.table} USING bm25 (id, "
+        + ", ".join(f"({f}::{expr})" for f in fields)
+        + ")"
+    )
+
+
+def test_paradedb_without_the_key_keeps_bare_columns():
+    adapter = make_adapter("postgres-paradedb")
+    fields = ", ".join(adapter.ctx.scenario.index_fields.searchable)
+    assert adapter.text_index_ddl().endswith(f"USING bm25 (id, {fields})")
+
+
+def test_paradedb_tokenizer_is_not_free_text():
+    adapter = make_adapter("postgres-paradedb", {"index": {"tokenizer": "x); DROP TABLE y; --"}})
+    with pytest.raises(ValueError, match="tokenizer"):
+        adapter.text_index_ddl()
+
+
+def test_meili_typesense_qdrant_pass_through():
+    meili = make_adapter(
+        "meilisearch",
+        {
+            "index": {"localizedAttributes": [{"attributePatterns": ["*"], "locales": ["jpn"]}]},
+            "search": {"keyword": {"locales": ["jpn"]}},
+        },
+    )
+    assert meili.index_settings()["localizedAttributes"] == [
+        {"attributePatterns": ["*"], "locales": ["jpn"]}
+    ]
+    assert meili.render(make_task("keyword"), None, 10).body["locales"] == ["jpn"]
+
+    ts = make_adapter("typesense", {"index": {"searchable_fields": {"locale": "ja"}}})
+    searchable = ts.ctx.scenario.index_fields.searchable
+    fields = {f["name"]: f for f in ts.fields()}
+    assert all(fields[name]["locale"] == "ja" for name in searchable)
+
+    qdrant = make_adapter("qdrant", {"index": {"bm25_options": {"language": "spanish"}}})
+    doc = {name: "sofá gris" for name in qdrant.ctx.scenario.index_fields.searchable}
+    sparse = qdrant._sparse_vectors(doc)
+    assert sparse and all(v["options"] == {"language": "spanish"} for v in sparse.values())
+    assert "bm25_options" not in qdrant.collection_body()
+
+
+@pytest.mark.parametrize("expr", ["pdb.simple(--)", "pdb.simple('a'); DROP TABLE t", "english"])
+def test_paradedb_tokenizer_rejects_comments_and_statements(expr):
+    adapter = make_adapter("postgres-paradedb", {"index": {"tokenizer": expr}})
+    with pytest.raises(ValueError, match="tokenizer"):
+        adapter.text_index_ddl()
+
+
+def test_pgroonga_render():
+    adapter = make_adapter(
+        "postgres", {"index": {"text_search": "pgroonga"}}, synonyms=[["grey", "gray"]]
+    )
+    setup = adapter.setup_ddl()
+    assert "CREATE EXTENSION IF NOT EXISTS pgroonga" in setup and "vector" in setup
+    assert "TEXT SEARCH" not in setup
+    assert adapter.extra_columns() == []
+    fields = adapter.ctx.scenario.index_fields.searchable
+    ddl = adapter.text_index_ddl()
+    assert ddl == (
+        f"CREATE INDEX {adapter.pgroonga_index} ON {adapter.table} USING pgroonga "
+        f"((ARRAY[{', '.join(fields)}]))"
+    )
+    request = adapter.render(make_task("keyword", text="ズボン"), None, 10)
+    weights = ", ".join(str(len(fields) - i) for i in range(len(fields)))
+    assert f"ARRAY[{', '.join(fields)}] &@~ pgroonga_condition($1::text, " in request.sql
+    assert f"weights => ARRAY[{weights}]" in request.sql
+    assert f"index_name => '{adapter.pgroonga_index}'" in request.sql
+    assert "pgroonga_score(tableoid, ctid)" in request.sql
+    assert "tsv" not in request.sql and "ts_rank" not in request.sql
+    assert request.params[0] == "ズボン"
+
+
+def test_pgroonga_index_name_fits_an_identifier():
+    adapter = make_adapter("postgres", {"index": {"text_search": "pgroonga"}})
+    adapter.ctx = replace(adapter.ctx, index="irbench_" + "x" * 80)
+    assert len(adapter.pgroonga_index) <= 63
+
+
+def test_pgroonga_rejects_options_it_cannot_honour():
+    adapter = make_adapter(
+        "postgres",
+        {"index": {"text_search": "pgroonga"}, "search": {"keyword": {"match": "any"}}},
+    )
+    with pytest.raises(ValueError, match="pgroonga"):
+        adapter.render(make_task("keyword"), None, 10)
+    adapter = make_adapter(
+        "postgres",
+        {"index": {"text_search": "pgroonga"}, "search": {"keyword": {"rank": "ts_rank_cd"}}},
+    )
+    with pytest.raises(ValueError, match="pgroonga"):
+        adapter.render(make_task("keyword"), None, 10)
+
+
+def test_pg_unknown_text_search_is_rejected():
+    adapter = make_adapter("postgres", {"index": {"text_search": "bm25"}})
+    with pytest.raises(ValueError, match="text_search"):
+        adapter.setup_ddl()
+
+
+def test_pg_tsvector_is_the_default_text_search():
+    for track in (None, {"index": {"text_search": "tsvector"}}):
+        adapter = make_adapter("postgres", track)
+        assert "USING gin (tsv)" in adapter.text_index_ddl()
+        assert "pgroonga" not in adapter.setup_ddl()
+        assert "websearch_to_tsquery" in adapter.render(make_task("keyword"), None, 10).sql
+
+
+def test_pg_zhparser_config():
+    adapter = make_adapter("postgres", {"index": {"text_search_config": "zhparser"}}, synonyms=[])
+    ddl = adapter.setup_ddl()
+    cfg = adapter.ts_config
+    assert "CREATE EXTENSION IF NOT EXISTS zhparser;" in ddl
+    assert f"CREATE TEXT SEARCH CONFIGURATION {cfg} (PARSER = zhparser);" in ddl
+    assert f"ALTER TEXT SEARCH CONFIGURATION {cfg} ADD MAPPING FOR n,v,a,i,e,l WITH simple;" in ddl
+    assert "COPY =" not in ddl
+
+
+def test_pg_zhparser_rejects_synonyms():
+    adapter = make_adapter(
+        "postgres", {"index": {"text_search_config": "zhparser"}}, synonyms=[["沙发", "长椅"]]
+    )
+    with pytest.raises(ValueError, match="zhparser"):
+        adapter.setup_ddl()
+
+
+def test_pg_simple_config_unchanged():
+    ddl = make_adapter("postgres", {"index": {"text_search_config": "simple"}}).setup_ddl()
+    assert "COPY = simple" in ddl and "zhparser" not in ddl
+
+
+@pytest.mark.parametrize("tokenizer", ["TokenBigram", "TokenNgram"])
+def test_pgroonga_tokenizer_option(tokenizer):
+    track = {"index": {"text_search": "pgroonga", "pgroonga_tokenizer": tokenizer}}
+    ddl = make_adapter("postgres", track).text_index_ddl()
+    assert ddl.endswith(f"WITH (tokenizer='{tokenizer}')")
+
+
+def test_pgroonga_without_tokenizer_has_no_with():
+    ddl = make_adapter("postgres", {"index": {"text_search": "pgroonga"}}).text_index_ddl()
+    assert "WITH" not in ddl
+
+
+def test_pgroonga_tokenizer_rejects_unknown():
+    track = {"index": {"text_search": "pgroonga", "pgroonga_tokenizer": "x'); DROP TABLE t; --"}}
+    with pytest.raises(ValueError, match="pgroonga_tokenizer"):
+        make_adapter("postgres", track).text_index_ddl()
+
+
+def _keyword_sql(track):
+    adapter = make_adapter("postgres", track, synonyms=[])
+    return adapter.render(make_task("keyword", text="宝宝护肚"), None, 10).sql
+
+
+def test_pg_query_plain_uses_plainto_tsquery():
+    sql = _keyword_sql({"search": {"keyword": {"query": "plain"}}})
+    assert "plainto_tsquery(" in sql and "websearch_to_tsquery(" not in sql
+
+
+def test_pg_query_plain_with_match_any():
+    sql = _keyword_sql({"search": {"keyword": {"query": "plain", "match": "any"}}})
+    assert "replace(plainto_tsquery(" in sql and "' & ', ' | '" in sql
+
+
+def test_pg_query_default_is_websearch():
+    assert "websearch_to_tsquery(" in _keyword_sql({})
+
+
+def test_pg_query_rejects_unknown():
+    with pytest.raises(ValueError, match="query"):
+        _keyword_sql({"search": {"keyword": {"query": "fuzzy"}}})
+
+
+def test_qdrant_query_uses_the_bm25_options():
+    """Documents and queries must be tokenized alike: a `multilingual` tokenizer (or a
+    language's stemmer) on documents only would leave the query as one unsplit token."""
+    options = {"tokenizer": "multilingual", "k": 1.5}
+    qdrant = make_adapter("qdrant", {"index": {"bm25_options": options}})
+    body = qdrant.render(make_task("keyword", text="宝宝护肚"), None, 10).body
+    leaves = body["prefetch"]
+    assert leaves and all(leaf["query"]["options"] == options for leaf in leaves)
+
+
+def test_qdrant_query_without_options_is_unchanged():
+    body = make_adapter("qdrant").render(make_task("keyword"), None, 10).body
+    assert all("options" not in leaf["query"] for leaf in body["prefetch"])

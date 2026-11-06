@@ -1,0 +1,15 @@
+# Tuned Chinese track (spec 2026-10-31 Chinese title search §5.2): official or very popular
+# Chinese analysis plugins on top of the same Elasticsearch version as compose.yaml (a plugin
+# must match the version exactly).
+# - analysis-smartcn, analysis-icu: official Elastic plugins.
+# - analysis-ik (infinilabs/analysis-ik, Apache-2.0): the community plugin most Chinese
+#   deployments use; its maintainer's 9.5.5 build, checked against a pinned sha256 and
+#   installed unmodified with its shipped dictionary.
+FROM elasticsearch:9.5.5
+ARG IK_URL=https://get.infini.cloud/elasticsearch/analysis-ik/9.5.5
+ARG IK_SHA256=76d1437d1ad1d2e3b68e7fe9938ef38194e1d517ef3d150cf67f0e329633e051
+RUN bin/elasticsearch-plugin install --batch analysis-smartcn analysis-icu \
+ && curl -fsSL -o /tmp/analysis-ik.zip "$IK_URL" \
+ && echo "$IK_SHA256  /tmp/analysis-ik.zip" | sha256sum -c - \
+ && bin/elasticsearch-plugin install --batch file:///tmp/analysis-ik.zip \
+ && rm /tmp/analysis-ik.zip

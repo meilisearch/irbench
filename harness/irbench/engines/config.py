@@ -47,6 +47,18 @@ class TrackConfig(BaseModel):
     justification: dict[str, str] = {}
     # Prose, not a setting: why the engine cannot load the shared synonyms.txt.
     synonyms: str | None = None
+    # A file name in engines/<engine>/docker/ replacing compose.yaml for this track, e.g.
+    # an image with the vendor's language plugin. Not a path: no separators.
+    compose: str | None = None
+
+    @field_validator("compose")
+    @classmethod
+    def _compose_is_a_file_name(cls, value: str | None) -> str | None:
+        if value is not None and (
+            value in ("", ".", "..") or "/" in value or "\\" in value or "\0" in value
+        ):
+            raise ValueError(f"compose must be a file name in docker/, not a path: {value!r}")
+        return value
 
     @field_validator("search")
     @classmethod
@@ -113,8 +125,9 @@ class EngineConfig:
 
     def hash(self, name: str) -> str:
         data = self.track(name).model_dump()
-        if data["synonyms"] is None:  # keep hashes of configs that predate the key
-            del data["synonyms"]
+        for key in ("synonyms", "compose"):
+            if data[key] is None:  # keep hashes of configs that predate the key
+                del data[key]
         canonical = json.dumps(data, sort_keys=True)
         return hashlib.sha256(canonical.encode()).hexdigest()
 

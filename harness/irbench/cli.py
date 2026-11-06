@@ -264,10 +264,11 @@ def report(
     results: Path = typer.Option(..., "--results", help="results/ or .irbench/runs for a preview."),
     out: Path = typer.Option(..., "--out", help="Output directory (replaced on every build)."),
     docs_url: str = typer.Option(DEFAULT_DOCS_URL, "--docs-url"),
+    root: Path = ROOT_OPTION,
 ) -> None:
     """Build the static HTML report from run bundles."""
     try:
-        site = build_site(results, out, docs_url)
+        site = build_site(results, out, docs_url, root)
     except (FileNotFoundError, FileExistsError) as e:
         typer.echo(str(e), err=True)
         raise typer.Exit(code=1) from e

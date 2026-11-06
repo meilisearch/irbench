@@ -216,3 +216,232 @@ def test_cli_exit_codes(tmp_path):
 def test_synonyms_reason_is_prose_not_a_setting(tmp_path):
     config = {"default": {"synonyms": "the engine cannot load synonyms.txt"}}
     assert lint(make_repo(tmp_path, config))[1] == []
+
+
+def add_compose(root, name, compose, dockerfiles=None):
+    docker = root / "engines" / "eng" / "docker"
+    (docker / name).write_text(yaml.safe_dump(compose))
+    for rel, text in (dockerfiles or {}).items():
+        (docker / rel).parent.mkdir(parents=True, exist_ok=True)
+        (docker / rel).write_text(text)
+
+
+def kuromoji_config(**tuned):
+    return {
+        "default": {},
+        "tuned": {
+            "compose": "compose.kuromoji.yaml",
+            "justification": {"compose": "the kuromoji plugin is not in the stock image"},
+            **tuned,
+        },
+    }
+
+
+def build_compose(build=None, image="irbench-eng-kuromoji:9.5.5"):
+    engine = {"build": build or {"context": ".", "dockerfile": "Dockerfile.kuromoji"}}
+    if image is not None:
+        engine["image"] = image
+    return {"services": {"engine": engine}}
+
+
+def test_compose_needs_justification(tmp_path):
+    config = {"default": {}, "tuned": {"compose": "compose.kuromoji.yaml"}}
+    root = make_repo(tmp_path, config)
+    add_compose(root, "compose.kuromoji.yaml", {"services": {"engine": {"image": "eng:1"}}})
+    _, findings = lint(root)
+    assert rules(findings) == ["unjustified-setting"]
+    assert "compose" in findings[0].message and "[tuned]" in findings[0].message
+
+
+def test_justified_compose_with_pinned_image_is_clean(tmp_path):
+    root = make_repo(tmp_path, kuromoji_config())
+    add_compose(root, "compose.kuromoji.yaml", {"services": {"engine": {"image": "eng:1"}}})
+    assert lint(root)[1] == []
+
+
+def test_compose_must_exist(tmp_path):
+    root = make_repo(
+        tmp_path,
+        kuromoji_config() | {"tuned": kuromoji_config()["tuned"] | {"compose": "nope.yaml"}},
+    )
+    _, findings = lint(root)
+    assert rules(findings) == ["compose-missing"]
+    assert "nope.yaml" in findings[0].message
+    assert findings[0].path == "engines/eng/configs/ecommerce/product-search.yaml"
+
+
+def test_compose_with_a_path_is_a_config_load_finding(tmp_path):
+    config = kuromoji_config()
+    config["tuned"]["compose"] = "../x.yaml"
+    assert rules(lint(make_repo(tmp_path, config))[1]) == ["config-load"]
+
+
+def test_track_compose_image_must_pin_a_version(tmp_path):
+    root = make_repo(tmp_path, kuromoji_config())
+    add_compose(root, "compose.kuromoji.yaml", {"services": {"engine": {"image": "eng:latest"}}})
+    _, findings = lint(root)
+    assert rules(findings) == ["image-pin"]
+    assert findings[0].path == "engines/eng/docker/compose.kuromoji.yaml"
+
+
+def test_build_compose_pins_from(tmp_path):
+    root = make_repo(tmp_path, kuromoji_config())
+    add_compose(
+        root,
+        "compose.kuromoji.yaml",
+        build_compose(),
+        {
+            "Dockerfile.kuromoji": "# plugin\nFROM docker.elastic.co/elasticsearch/elasticsearch:9.5.5\nRUN true\n"
+        },
+    )
+    assert lint(root)[1] == []
+
+
+@pytest.mark.parametrize(
+    "dockerfile",
+    [
+        "FROM docker.elastic.co/elasticsearch/elasticsearch\n",
+        "FROM docker.elastic.co/elasticsearch/elasticsearch:latest\n",
+        "RUN true\n",
+        "",
+    ],
+)
+def test_build_compose_rejects_unpinned_from(tmp_path, dockerfile):
+    root = make_repo(tmp_path, kuromoji_config())
+    add_compose(root, "compose.kuromoji.yaml", build_compose(), {"Dockerfile.kuromoji": dockerfile})
+    _, findings = lint(root)
+    assert rules(findings) == ["image-pin"]
+    assert findings[0].path == "engines/eng/docker/compose.kuromoji.yaml"
+
+
+def test_build_compose_missing_dockerfile_is_a_finding(tmp_path):
+    root = make_repo(tmp_path, kuromoji_config())
+    add_compose(root, "compose.kuromoji.yaml", build_compose())
+    assert rules(lint(root)[1]) == ["image-pin"]
+
+
+def test_build_service_must_set_image(tmp_path):
+    root = make_repo(tmp_path, kuromoji_config())
+    add_compose(
+        root,
+        "compose.kuromoji.yaml",
+        build_compose(image=None),
+        {"Dockerfile.kuromoji": "FROM eng:1\n"},
+    )
+    _, findings = lint(root)
+    assert rules(findings) == ["image-pin"]
+    assert "image" in findings[0].message
+
+
+def test_build_mapping_respects_context_and_dockerfile(tmp_path):
+    root = make_repo(tmp_path, kuromoji_config())
+    build = {"context": "kuromoji", "dockerfile": "Dockerfile.es"}
+    add_compose(
+        root,
+        "compose.kuromoji.yaml",
+        build_compose(build=build),
+        {"kuromoji/Dockerfile.es": "FROM eng:9.5.5\n"},
+    )
+    assert lint(root)[1] == []
+    (root / "engines/eng/docker/kuromoji/Dockerfile.es").write_text("FROM eng\n")
+    assert rules(lint(root)[1]) == ["image-pin"]
+
+
+def test_build_mapping_defaults_to_dockerfile_in_context(tmp_path):
+    root = make_repo(tmp_path, kuromoji_config())
+    add_compose(
+        root,
+        "compose.kuromoji.yaml",
+        build_compose(build={"context": "."}),
+        {"Dockerfile": "FROM eng:9.5.5\n"},
+    )
+    assert lint(root)[1] == []
+
+
+def test_default_track_compose_is_checked_too(tmp_path):
+    config = {
+        "default": {"compose": "compose.alt.yaml", "justification": {"compose": "alt"}},
+    }
+    root = make_repo(tmp_path, config)
+    _, findings = lint(root)
+    assert rules(findings) == ["compose-missing"]
+    add_compose(root, "compose.alt.yaml", {"services": {"engine": {"image": "eng:1"}}})
+    assert lint(root)[1] == []
+
+
+def test_build_string_is_the_context_directory(tmp_path):
+    root = make_repo(tmp_path, kuromoji_config())
+    add_compose(
+        root,
+        "compose.kuromoji.yaml",
+        build_compose(build="kuromoji"),
+        {"kuromoji/Dockerfile": "FROM --platform=linux/amd64 eng:9.5.5 AS base\n"},
+    )
+    assert lint(root)[1] == []
+
+
+def make_language_repo(tmp_path, language, config, language_keys=("index.analyzer",)):
+    """A repo whose one scenario has `language` and whose adapter declares `language_keys`."""
+    root = make_repo(tmp_path, config)
+    scenario = yaml.safe_load((REPO_ROOT / "scenarios" / SCENARIO / "scenario.yaml").read_text())
+    scenario["language"] = language
+    if language == "ja":  # typo is rejected for Japanese
+        scenario["perturbations"]["kinds"] = ["prefix"]
+    directory = root / "scenarios" / SCENARIO
+    directory.mkdir(parents=True)
+    (directory / "scenario.yaml").write_text(yaml.safe_dump(scenario))
+    (root / "engines" / "eng" / "adapter.py").write_text(
+        "from irbench.engines.base import EngineAdapter\n\n\n"
+        "class Adapter(EngineAdapter):\n"
+        f"    name = 'eng'\n    language_keys = {tuple(language_keys)!r}\n"
+    )
+    return root
+
+
+def test_lint_language_setting(tmp_path):
+    _, findings = lint(make_language_repo(tmp_path, "es", {"default": {"index": {}}}))
+    assert rules(findings) == ["language-setting"]
+    assert "eng" in findings[0].message and "index.analyzer" in findings[0].message
+    assert findings[0].path == "engines/eng/configs/ecommerce/product-search.yaml"
+
+
+def test_lint_language_setting_is_satisfied_by_a_key_in_default(tmp_path):
+    config = {"default": {"index": {"analyzer": "spanish"}, "justification": {"analyzer": "x"}}}
+    assert lint(make_language_repo(tmp_path, "es", config))[1] == []
+
+
+def test_lint_language_setting_reads_the_default_track_only(tmp_path):
+    config = {"default": {}, "tuned": {"index": {"analyzer": "x"}, "justification": {"index": "x"}}}
+    _, findings = lint(make_language_repo(tmp_path, "ja", config))
+    assert rules(findings) == ["language-setting"]
+
+
+def test_lint_language_setting_accepts_a_nested_path(tmp_path):
+    config = {
+        "default": {
+            "index": {"searchable_fields": {"locale": "ja"}},
+            "justification": {"searchable_fields": "x"},
+        }
+    }
+    root = make_language_repo(tmp_path, "ja", config, ("index.searchable_fields.locale",))
+    assert lint(root)[1] == []
+    config = {"default": {"index": {"searchable_fields": {"infix": "on"}}}}
+    config["default"]["justification"] = {"searchable_fields": "x"}
+    root = make_language_repo(tmp_path / "b", "ja", config, ("index.searchable_fields.locale",))
+    assert rules(lint(root)[1]) == ["language-setting"]
+
+
+def test_lint_language_setting_accepts_any_one_of_the_keys(tmp_path):
+    config = {"default": {"index": {"b": 1}, "justification": {"b": "x"}}}
+    assert lint(make_language_repo(tmp_path, "es", config, ("index.a", "index.b")))[1] == []
+
+
+def test_lint_english_scenario_never_needs_a_language_setting(tmp_path):
+    assert lint(make_language_repo(tmp_path, "en", {"default": {}}))[1] == []
+
+
+def test_lint_invalid_scenario_is_a_finding_not_a_crash(tmp_path):
+    root = make_language_repo(tmp_path, "es", {"default": {}})
+    scenario = root / "scenarios" / SCENARIO / "scenario.yaml"
+    scenario.write_text(scenario.read_text().replace("language: es", "language: xx"))
+    assert rules(lint(root)[1]) == ["scenario-load"]

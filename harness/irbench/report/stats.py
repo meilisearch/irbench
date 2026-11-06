@@ -30,3 +30,15 @@ def paired_randomization_p(
         signs = rng.choice((-1.0, 1.0), size=(size, len(diff)))
         hits += int((np.abs(signs @ diff) / len(diff) >= observed - 1e-12).sum())
     return (hits + 1) / (rounds + 1)
+
+
+def holm(pvalues: dict[str, float]) -> dict[str, float]:
+    """Holm-Bonferroni adjusted p-values (step-down, monotone, capped at 1)."""
+    order = sorted(pvalues, key=lambda k: pvalues[k])
+    m = len(order)
+    adjusted: dict[str, float] = {}
+    running = 0.0
+    for i, key in enumerate(order):
+        running = max(running, min(1.0, (m - i) * pvalues[key]))
+        adjusted[key] = running
+    return adjusted

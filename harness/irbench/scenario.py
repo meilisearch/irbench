@@ -23,7 +23,7 @@ class FilterTemplate(BaseModel):
 
 class PerturbationSpec(BaseModel):
     seed: int
-    kinds: list[Literal["typo", "prefix", "synonym"]]
+    kinds: list[Literal["typo", "prefix", "synonym", "accents"]]
     vocabulary: str | None = None
 
     @model_validator(mode="after")
@@ -66,6 +66,14 @@ class Scenario(BaseModel):
     index_timeout_s: int
     perturbations: PerturbationSpec
     synonyms: str | None = None
+    language: Literal["en", "ja", "es", "zh"] = "en"
+    # When set, the scenario's text is only meaningful under this embedding model.
+    embedding_model: str | None = None
+    # The metric of the scenario page's relevance matrix, interval and tie marks. mrr@10 for
+    # sets with one judged document per query, where nDCG@10 squashes the same rank.
+    headline_metric: Literal["ndcg@10", "mrr@10"] = "ndcg@10"
+    # False keeps runs out of `irbench publish` (data without publishing terms).
+    publishable: bool = True
 
     _directory: Path = PrivateAttr()
 
@@ -93,6 +101,12 @@ class Scenario(BaseModel):
                 raise ValueError(f"sort template field {s.field!r} is not sortable")
         if "faceted" in self.modes and not f.facets:
             raise ValueError("faceted mode needs at least one facet field")
+        if self.language in ("ja", "zh") and "typo" in self.perturbations.kinds:
+            # Typed through an input method, and str.isalpha() is true for kana and Han
+            # characters, so typo would swap characters of unspaced text into non-words.
+            raise ValueError(
+                f"perturbation kind 'typo' is not supported for language {self.language!r}"
+            )
         sizes = self.perf.page_sizes
         if sizes is not None:
             if not sizes:
@@ -122,6 +136,13 @@ class Scenario(BaseModel):
     @property
     def synonyms_path(self) -> Path | None:
         return None if self.synonyms is None else self._directory / self.synonyms
+
+
+def check_model(scenario: Scenario, model_id: str) -> None:
+    """Refuse to embed or run a scenario with a model other than the one it pins."""
+    pinned = scenario.embedding_model
+    if pinned is not None and pinned != model_id:
+        raise ValueError(f"{scenario.id} is embedded with {pinned}, not {model_id}")
 
 
 def load_scenario(root: Path, scenario_id: str) -> Scenario:

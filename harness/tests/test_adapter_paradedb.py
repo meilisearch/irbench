@@ -1,11 +1,16 @@
+import numpy as np
 import pytest
 
 from adapter_helpers import SCENARIO, make_adapter, make_task
 from conftest import REPO_ROOT
-from irbench.engines.base import IndexContext, SqlRequest, load_adapter_class
+from irbench.engines.base import IndexContext, SqlRequest, engine_base_url, load_adapter_class
 from irbench.engines.config import load_engine_config
 from irbench.models import Filter, Sort
+from irbench.runtime.docker import DockerRuntime, wait_ready
+from irbench.runtime.hardware import load_hardware
 from irbench.scenario import load_scenario
+from irbench.stages.context import default_client
+from irbench.stages.relevance import run_request
 
 ENGINE = "postgres-paradedb"
 
@@ -93,6 +98,37 @@ def test_conjunction_and_fuzzy_options():
     a = make_adapter("postgres-paradedb", {"search": {"keyword": {"match": "all", "fuzzy": 1}}})
     sql = a.render(make_task("keyword"), None, 10).sql
     assert "name &&& $1::text::pdb.fuzzy(1)::pdb.boost(5)" in sql
+
+
+@pytest.mark.docker
+def test_paradedb_lindera_japanese():
+    """`index.tokenizer: pdb.lindera(japanese)` segments both the indexed text and the query, so
+    `ズボン` finds a title where it is one word of an unspaced phrase, and `東京` (Tokyo) does not
+    match 京都大学 (Kyoto University), which the default tokenizer would, character by character."""
+    cls = load_adapter_class(REPO_ROOT, ENGINE)
+    adapter = make_adapter(
+        ENGINE, {"index": {"tokenizer": "pdb.lindera(japanese)"}}, dim=3, synonyms=[]
+    )
+    docs = [
+        {"id": "1", "name": "空調服ズボン メンズ"},
+        {"id": "2", "name": "東京都庁"},
+        {"id": "3", "name": "京都大学"},
+    ]
+    runtime = DockerRuntime(REPO_ROOT, ENGINE, load_hardware(REPO_ROOT, "local"))
+    runtime.up()
+    client = default_client(engine_base_url(cls, "localhost"))
+    try:
+        wait_ready(client, cls.health_path, 180)
+        adapter.create_index(client)
+        adapter.load_documents(client, docs, np.eye(3, dtype=np.float32))
+        adapter.wait_until_indexed(client, len(docs), 60)
+        for text, expected in (("ズボン", ["1"]), ("東京", ["2"])):
+            task = make_task("keyword", text=text)
+            result = run_request(client, adapter, task, adapter.render(task, None, 10), 30)
+            assert result.ids == expected, text
+    finally:
+        client.close()
+        runtime.down()
 
 
 def test_language_keys_become_token_filters_on_every_searchable_field():
