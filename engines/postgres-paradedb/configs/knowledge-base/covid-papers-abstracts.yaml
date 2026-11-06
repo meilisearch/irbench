@@ -41,11 +41,10 @@ default:
       always prepares) the `|||` right-hand side is no longer a constant and
       pg_search fails with "must be a text or text array value".
       force_custom_plan keeps every execution on a custom plan.
-# tuned: the best settings found by a sweep of the engine's documented search settings,
-# scored on nDCG@10 per scenario and retrieval base (2026-10-20). Typo tolerance, prefix
-# search and stemming stay at the engine's defaults, except where turning on typo tolerance
-# the engine ships off is allowed by the parity rules; hybrid stays the engine's native
-# fusion.
+# tuned: the best settings found by sweeps of the engine's documented settings, scored on
+# nDCG@10 per scenario and retrieval base (2026-10-20), then re-checked by the committed sweep
+# in sweeps/ on the tune half of the queries (2026-11-06; selection rule in
+# docs/methodology/parity). Hybrid stays the engine's native fusion.
 tuned:
   search:
     hybrid:

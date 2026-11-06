@@ -17,28 +17,32 @@ default:
   index: {}
   search: {}
   unsupported: {}
-# tuned: the best settings found by a sweep of the engine's documented search settings,
-# scored on nDCG@10 per scenario and retrieval base (2026-10-20). Typo tolerance, prefix
-# search and stemming stay at the engine's defaults, except where turning on typo tolerance
-# the engine ships off is allowed by the parity rules; hybrid stays the engine's native
-# fusion.
+# tuned: the best settings found by sweeps of the engine's documented settings, scored on
+# nDCG@10 per scenario and retrieval base (2026-10-20), then re-checked by the committed sweep
+# in sweeps/ on the tune half of the queries (2026-11-06; selection rule in
+# docs/methodology/parity). Hybrid stays the engine's native fusion.
 tuned:
+  index:
+    stemming: english
+    stop_words: english
   search:
     hybrid:
       multi_match:
-        type: most_fields
-        fuzziness: AUTO
+        type: best_fields
+        fuzziness: '0'
       fusion:
         method: linear
         weights:
         - 1
         - 2.5
   justification:
-    hybrid.multi_match: 'The keyword side of hybrid: `most_fields` adds the scores of every matching
-      field, so a document matching in several fields ranks higher. `fuzziness: AUTO` turns on
-      Elasticsearch''s typo tolerance (off by default; the parity rules allow settings that only
-      turn a feature on): 1 edit for words of 3-5 characters, 2 above. Hybrid nDCG@10 0.491 ->
-      0.565.'
+    stemming: See stop_words.
+    stop_words: '`stemming: english, stop_words: english`: the engine''s English analysis, part of what it ships
+      (the parity rules turn on each engine''s language features). Keyword nDCG@10 0.349 -> 0.380,
+      hybrid 0.551 -> 0.549 (2026-11-06 sweep, tune half).'
+    hybrid.multi_match: 'The keyword side of hybrid keeps the defaults (`best_fields`, no
+      fuzziness): with the vector side weighted 2.5x, typo tolerance on the keyword side lowers
+      hybrid. Hybrid nDCG@10 0.551 -> 0.558 against `most_fields` with `fuzziness: AUTO` (2026-11-06 sweep, tune half).'
     fusion: 'The native `linear` retriever: min-max normalized scores, the vector side weighted
       2.5x. On these question queries keyword matching is weak, so the best fusion leans on the
       vector side.'

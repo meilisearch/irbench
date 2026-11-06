@@ -19,12 +19,13 @@ default:
   index: {}
   search: {}
   unsupported: {}
-# tuned: the best settings found by a sweep of the engine's documented search settings,
-# scored on nDCG@10 per scenario and retrieval base (2026-10-20). Typo tolerance, prefix
-# search and stemming stay at the engine's defaults, except where turning on typo tolerance
-# the engine ships off is allowed by the parity rules; hybrid stays the engine's native
-# fusion.
+# tuned: the best settings found by sweeps of the engine's documented settings, scored on
+# nDCG@10 per scenario and retrieval base (2026-10-20), then re-checked by the committed sweep
+# in sweeps/ on the tune half of the queries (2026-11-06; selection rule in
+# docs/methodology/parity). Hybrid stays the engine's native fusion.
 tuned:
+  index:
+    stop_words: english
   search:
     keyword:
       multi_match:
@@ -34,7 +35,16 @@ tuned:
       multi_match:
         type: most_fields
         fuzziness: AUTO
+      fusion:
+        weights:
+        - 1
+        - 2
   justification:
+    stop_words: '`stop_words: english`: the engine''s English analysis, part of what it ships
+      (the parity rules turn on each engine''s language features). Keyword nDCG@10 0.560 -> 0.576,
+      hybrid 0.736 -> 0.753; stemming as well scored keyword 0.571 (2026-11-06 sweep, tune half).'
+    fusion: 'Native RRF (k = 60) with the vector ranking weighted 2x (`weights` on the `rrf`
+      retriever). Hybrid nDCG@10 0.736 -> 0.769 (2026-11-06 sweep, tune half).'
     keyword.multi_match: '`most_fields` adds the scores of every matching field, so a document
       matching in several fields ranks higher. `fuzziness: AUTO` turns on Elasticsearch''s typo
       tolerance (off by default; the parity rules allow settings that only turn a feature on):

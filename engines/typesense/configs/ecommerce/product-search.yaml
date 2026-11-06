@@ -16,6 +16,9 @@ default:
   search: {}
   unsupported: {}
 tuned:
+  index:
+    stemming: english
+    stop_words: english
   search:
     keyword:
       drop_tokens_threshold: 250
@@ -27,6 +30,10 @@ tuned:
       text_match_type: max_weight
       vector_query_options: {alpha: 0.5}
   justification:
+    stemming: See stop_words.
+    stop_words: '`stemming: english, stop_words: english`: Typesense''s English analysis, part of what it ships (the
+      parity rules turn on each engine''s language features). Keyword nDCG@10 0.644 -> 0.648,
+      hybrid 0.654 -> 0.661 (2026-11-06 sweep, tune half).'
     drop_tokens_threshold: >-
       Typesense's default (1) drops query words only when nothing matches all of them, so
       a long or partly-off query returns few or no results. Dropping words until 250 documents match, the first words of the
@@ -41,5 +48,3 @@ tuned:
     vector_query_options: >-
       `alpha` 0.5 (default 0.3) is the vector side's weight in Typesense's native rank
       fusion; hybrid nDCG@10 0.593 -> 0.657 in the sweep (alpha 0.3/0.5 with word dropping are within its 95% interval).
-  # Stemming and stop words stay off: the parity rules keep stemming at each engine's
-  # language default, and no other engine removes stop words.

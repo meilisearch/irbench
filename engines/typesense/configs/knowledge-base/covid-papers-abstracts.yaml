@@ -18,21 +18,28 @@ default:
   search: {}
   unsupported: {}
 tuned:
+  index:
+    stemming: english
+    stop_words: english
   search:
     keyword:
-      drop_tokens_threshold: 250
+      drop_tokens_threshold: 10
       drop_tokens_mode: left_to_right
       text_match_type: max_weight
     hybrid:
       text_match_type: sum_score
       rerank_hybrid_matches: true
-      vector_query_options: {alpha: 0.5}
+      vector_query_options: {alpha: 0.7}
   justification:
+    stemming: See stop_words.
+    stop_words: '`stemming: english, stop_words: english`: Typesense''s English analysis, part of what it ships (the
+      parity rules turn on each engine''s language features). Keyword nDCG@10 0.371 -> 0.401,
+      hybrid 0.666 -> 0.677 (2026-11-06 sweep, tune half).'
     drop_tokens_threshold: >-
       Typesense's default (1) drops query words only when nothing matches all of them, so
-      a long or partly-off query returns few or no results. Dropping words until 250 documents match, the first words of the
+      a long or partly-off query returns few or no results. Dropping words until 10 documents match, the first words of the
       query first (`drop_tokens_mode: left_to_right`; the default drops the last ones), is
-      the best keyword setting of the sweep here: keyword nDCG@10 0.275 -> 0.412. A documented
+      the best keyword setting of the sweep here: keyword nDCG@10 0.275 -> 0.412 (2026-10-20); 10 rather than 250 documents: 0.371 -> 0.384 (2026-11-06 sweep, tune half). A documented
       search parameter.
     drop_tokens_mode: See drop_tokens_threshold.
     text_match_type: >-
@@ -43,7 +50,6 @@ tuned:
       Scores the documents found by only one side on the other side too before fusion,
       instead of giving them no score there. A documented hybrid search parameter.
     vector_query_options: >-
-      `alpha` 0.5 (default 0.3) is the vector side's weight in Typesense's native rank
-      fusion; hybrid nDCG@10 0.507 -> 0.602 in the sweep; dropping words lowers hybrid here.
-  # Stemming and stop words stay off: the parity rules keep stemming at each engine's
-  # language default, and no other engine removes stop words.
+      `alpha` 0.7 (default 0.3) is the vector side's weight in Typesense's native rank
+      fusion; hybrid nDCG@10 0.507 -> 0.602 at 0.5 (2026-10-20), 0.666 -> 0.705 at 0.7 (2026-11-06 sweep, tune half);
+      dropping words lowers hybrid here.
